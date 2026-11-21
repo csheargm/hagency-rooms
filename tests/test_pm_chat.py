@@ -13,6 +13,7 @@ from common import intents
 from server import pm_brain
 from common import room_state
 from server.loop import Loop
+from server.loop_progress import issue_key
 
 ANNA, BETTY = "@anna:bridge.localhost", "@betty:bridge.localhost"     # anna owns the room
 PM = f"@{github.PM_BOT}:bridge.localhost"
@@ -71,7 +72,7 @@ class Talk(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.lp = Loop.__new__(Loop)
-        self.lp.room_repos = {}
+        self.lp.room_repos, self.lp.state, self.lp.lock = {}, {}, asyncio.Lock()
         self.lp.user_id, self.lp.pending, self.lp.boards = PM, {}, {}
         self.lp.generation, self.lp.busy = {}, set()
         self.said, self.levels = [], []
@@ -86,6 +87,9 @@ class Talk(unittest.TestCase):
         create = RoomGetStateResponse([{"type": "m.room.create", "sender": ANNA, "content": {"room_version": "12"}}], "!r")
         self.lp.say = say
         self.lp.client = SimpleNamespace(room_put_state=put_state, room_get_state=mock.AsyncMock(return_value=create))
+        lv = mock.patch.object(Loop, "level", lambda _, rid: asyncio.sleep(0, (self.levels or ["off"])[-1]))
+        lv.start()                    # the room's mode as last written (pm_paused re-checks it)
+        self.addCleanup(lv.stop)
         self.room = SimpleNamespace(room_id="!r", users={ANNA: None, BETTY: None}, invited_users={},
                                     power_levels=SimpleNamespace(get_user_level=lambda u: 0))
 
@@ -126,6 +130,63 @@ class Talk(unittest.TestCase):
         self.tell(ANNA, "@pm take it all the way")
         self.assertEqual(self.levels, ["autonomous"])
         self.assertIn("Running on my own now", self.said[-1])
+
+    def pause(self, *numbers, room="!r", repo="your-name/hagency-hello", pr=None):
+        self.lp.save = mock.Mock()
+        for n in numbers:
+            self.lp.state[issue_key(repo, n)] = {"room": room, "repo": repo, "stage": "stopped",
+                                                 **({"pr": pr} if pr else {})}
+
+    def test_driving_everything_tries_the_paused_issues_again(self):
+        """Screen test: "@pm can you drive to finish all issues" → "Running on my own now", and nothing
+        happened: #7 and #9 were paused."""
+        self.pause(9, 7)
+        self.tell(ANNA, "@pm take it all the way")
+        self.assertEqual(self.levels, ["autonomous"])
+        self.assertIn("Running on my own now", self.said[-1])
+        self.assertIn("I put #7 and #9 back in the queue: they were paused after an agent couldn't finish.", self.said[-1])
+        self.assertEqual({}, self.lp.state)                # back in the queue
+        self.lp.save.assert_called()
+
+    def test_an_open_pr_keeps_its_issue_paused_and_says_how_to_go_on(self):
+        self.pause(7, pr=12)
+        self.pause(9)
+        with mock.patch.object(Loop, "pr_open", mock.AsyncMock(return_value=True)):
+            self.tell(ANNA, "@pm take it all the way")
+        self.assertIn("I put #9 back in the queue: it was paused after an agent couldn't finish.", self.said[-1])
+        self.assertIn('#7 stays paused: its PR #12 may still be open', self.said[-1])
+        self.assertIn('say "@pm retry #7"', self.said[-1])
+        self.assertEqual([issue_key("your-name/hagency-hello", 7)], list(self.lp.state))
+
+    def test_a_contributor_cant_restart_paused_work_by_asking_to_drive(self):
+        self.pause(9)
+        self.tell(BETTY, "@pm take it all the way")
+        self.assertEqual(self.levels, [])
+        self.assertEqual(1, len(self.lp.state))
+
+    def test_assist_mode_names_a_paused_issue_and_leaves_it_paused(self):
+        self.pause(9)
+        self.tell(ANNA, "@pm assist mode")
+        self.assertIn("#9 is paused because an agent couldn't finish it, so I won't start it", self.said[-1])
+        self.assertEqual(1, len(self.lp.state))
+
+    def test_only_this_rooms_repo_counts_as_paused_here(self):
+        self.pause(3, room="!other")
+        self.pause(4, repo="someone/else")
+        self.tell(ANNA, "@pm take it all the way")
+        self.assertNotIn("paused", self.said[-1])
+        self.assertEqual(2, len(self.lp.state))
+
+    def test_nothing_paused_means_no_note(self):
+        self.tell(ANNA, "@pm take it all the way")
+        self.assertNotIn("paused", self.said[-1])
+
+    def test_a_refused_switch_says_only_why_and_retries_nothing(self):
+        self.pause(9)
+        with mock.patch.object(Loop, "change_level", mock.AsyncMock(return_value="This room has no repo yet.")):
+            self.tell(ANNA, "@pm take it all the way")
+        self.assertEqual("This room has no repo yet.", self.said[-1])
+        self.assertEqual(1, len(self.lp.state))
 
     def test_a_stray_yes_doesnt_approve_someone_elses_plan(self):
         self.room.power_levels = SimpleNamespace(get_user_level=lambda u: 50)    # betty is a maintainer too

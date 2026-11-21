@@ -2,7 +2,7 @@
 
 All GitHub writes use this agent's own identity (github.run(..., agent)). The agent CLI only
 edits a plain working tree: the clone's .git is moved OUTSIDE the agent's writable folder
-first, so the agent can't plant git hooks/config that the bridge's later git commands would run.
+first, so the agent can't plant git hooks/config that the agent adapter's later git commands would run.
 """
 import re
 import shutil

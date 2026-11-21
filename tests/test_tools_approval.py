@@ -128,7 +128,7 @@ class AskOwner(unittest.TestCase):
 
 class BridgeWeb(unittest.TestCase):
     def test_locked_turns_never_get_web_and_owner_turns_use_the_owners_own_settings(self):
-        """ADR 0006: no per-room web grant for the bridge's CLI any more. A locked turn (loop task,
+        """ADR 0006: no per-room web grant for the agent adapter's CLI any more. A locked turn (loop task,
         @pm's brain, a member's question) has no web; the owner's own turn always has web (unless they disabled it)."""
         self.assertNotIn("WebSearch", " ".join(agents._claude_argv(Path("/w"), None)))
         self.assertNotIn("--tools", agents._claude_argv(Path("/w"), None, owner=True))

@@ -21,7 +21,7 @@ the room can't steer it, because only you can trigger it.**
   flags; saved session ids are validated.
 - **Its own folder.** The agent works in `~/.hagency/work/<owner>/<room>/`, outside the app.
 - **No secrets in chat, logs or git.** Passwords are generated into a git-ignored `.env`; agent
-  replies are scrubbed of credential-shaped text and the bridge's own token.
+  replies are scrubbed of credential-shaped text and the agent adapter's own token.
 
 A change touching any of these needs a test that shows the check still holds.
 

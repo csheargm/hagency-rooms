@@ -36,6 +36,7 @@ from common import room_state
 from common.bridge_config import ELEMENT_ORIGIN
 from server.console_agents import add_agent, can_add, first_pick, my_agents   # My agents: kept apart (file size)
 from common.setup_accounts import HS, SERVER_NAME
+from server import pm_paused
 
 SESSION_S, MAX_SESSIONS = 12 * 3600, 1000
 LINK_S = 600
@@ -172,7 +173,8 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         if value != "off" and not await room_state.is_moderator(loop.client, room, user):
             return "only the room owner or a maintainer can change the mode"
         await loop.say(room_id, await loop.change_level(room_id, value) or
-                       f"Mode changed to {value} by {user.split(':')[0][1:]} (from the console).")
+                       f"Mode changed to {value} by {user.split(':')[0][1:]} (from the console)."
+                       + await pm_paused.after_switch(loop, room_id, value))
         return "ok"
     if action == "follow" and value in registry.FOLLOW:
         done = await loop.set_follow(room, user, value, agent or None)

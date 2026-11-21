@@ -98,7 +98,7 @@ def task_name(creds: dict) -> str:
 
 
 def child_python() -> str:
-    """python.exe beside pythonw.exe (the bridge's output must go somewhere); else this one."""
+    """python.exe beside pythonw.exe (the agent adapter's output must go somewhere); else this one."""
     exe = Path(sys.executable)
     console = exe.with_name("python.exe")
     return str(console) if exe.name.lower() == "pythonw.exe" and console.exists() else str(exe)
