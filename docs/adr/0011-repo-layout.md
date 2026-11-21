@@ -39,6 +39,9 @@ mcp_tools/         the agents' MCP tools (not "mcp": that is the MCP library's n
 ## Consequences
 - An installed agent keeps running its old code until its owner re-runs the connect line (as for any
   update). Its stored paths still work after the update, because the launchers keep the old names.
+- A `supervise.py` that was already running when its folder is updated keeps its old watcher, which
+  looks only at the root: restart it once (`./start.sh` again, or re-run the connect line for a
+  Hermes agent) so edits inside the package folders restart its children again (GPT review).
 - Names saved outside the code stay as they are, on purpose: the Matrix device ID `BRIDGE_<OWNER>`,
   `.bridge-session.json`, the `bridge` logger. Renaming them would sign agents in as new devices or
   make them forget conversations.

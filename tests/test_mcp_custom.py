@@ -42,6 +42,9 @@ class HermesTools(unittest.TestCase):
         self.work = self.tmp / "work"
         (self.work / "docs").mkdir(parents=True)
         (self.work / "pm_voice.py").write_text("CAPTION = 'x'\n")
+        (self.work / "server" / "__pycache__").mkdir(parents=True)
+        (self.work / "server" / "pm_find.py").write_text("X = 1\n")
+        (self.work / "server" / "__pycache__" / "pm_find.cpython-312.pyc").write_bytes(b"")
         self.matrix = Matrix()
         self.offers = {}
         for target, name, value in (
@@ -54,6 +57,13 @@ class HermesTools(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         mcp_custom._change.clear()
+
+    def test_the_file_list_shows_the_code_in_package_folders(self):
+        """GPT review (ADR 0011): only the root's files were listed, so moved code was invisible."""
+        files = asyncio.run(mcp_custom.start_code_change("shorter caption"))["files"]
+        self.assertIn("server/pm_find.py", files)
+        self.assertIn("pm_voice.py", files)
+        self.assertFalse([f for f in files if "__pycache__" in f])
 
     def test_the_offer_lands_in_the_private_room_with_buttons(self):
         started = asyncio.run(mcp_custom.start_code_change("change your code so the caption is shorter"))

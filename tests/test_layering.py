@@ -63,7 +63,8 @@ class Layout(unittest.TestCase):
     def test_nothing_imports_a_moved_module_by_its_old_bare_name(self):
         """`import registry` would load nothing (or a launcher): every import names the package."""
         moved = {p.stem for package in PACKAGES for p in code_files(package)} - {"__init__"}
-        files = [p for p in ROOT.rglob("*.py") if ".venv" not in p.parts and p.parent != ROOT]
+        # only the official source (GPT review: custom/<owner>/ holds owners' own older versions)
+        files = [p for d in (*PACKAGES, "tests", "deploy") for p in (ROOT / d).rglob("*.py")]
         offenders = {str(p.relative_to(ROOT)): sorted(imported_modules(p) & moved) for p in files}
         self.assertEqual({}, {k: v for k, v in offenders.items() if v})
 

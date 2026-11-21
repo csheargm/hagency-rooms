@@ -50,7 +50,7 @@ def main():
         ts = int(time.time() * 1000)
         say(anna, room_id, "@anna-agent reply with just the word ALPHA")
         time.sleep(2)
-        os.utime(ROOT / "lifecycle.py")                 # "save" a code file
+        os.utime(ROOT / "common" / "lifecycle.py")      # "save" a code file in a package (ADR 0011)
         time.sleep(1.5)
         say(anna, room_id, "@anna-agent reply with just the word BRAVO")
         deadline = time.time() + 300

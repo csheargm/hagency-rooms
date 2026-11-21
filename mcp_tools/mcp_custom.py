@@ -10,7 +10,7 @@ Hagency's part (these tools, the room rules), not Hermes itself.
 from pathlib import Path
 
 from adapters.agents import bridge_custom
-from common import customize
+from common import customize, paths
 from mcp_tools import mcp_core as core
 from common import registry
 from mcp_tools.mcp_core import mcp
@@ -74,10 +74,20 @@ async def start_code_change(request: str) -> dict:
         return {"error": str(e)}
     _change.clear()
     _change["request"] = request
-    files = sorted(str(p.relative_to(work)) for p in work.iterdir() if p.is_file() and not p.name.startswith("."))
+    files = code_inventory(work)
     return {"files": files, "instructions": bridge_custom.edit_prompt(request),
             "next": "Read files with read_my_code(path), change them with write_my_code({path: full new content}), "
                     "then call finish_code_change(summary) with 2-4 short lines on what you changed."}
+
+
+def code_inventory(work: Path) -> list[str]:
+    """The files the agent may change: the root's (launchers, scripts, docs) and, since ADR 0011, the
+    code in each package folder (GPT review: listing only the root hid adapters/agents/bridge.py)."""
+    top = [p for p in work.iterdir() if p.is_file()]
+    nested = [p for d in paths.CODE_DIRS if (work / d).is_dir() for p in (work / d).rglob("*") if p.is_file()]
+    keep = [p for p in top + nested
+            if not any(part.startswith(".") or part == "__pycache__" for part in p.relative_to(work).parts)]
+    return sorted(str(p.relative_to(work)) for p in keep)
 
 
 @mcp.tool()
