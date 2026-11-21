@@ -23,6 +23,7 @@ from server import pm_brain
 from server.pm_address import Addressing, without_quote  # noqa: F401 - without_quote: other modules import it from here
 from common.saved_dict import SavedDict
 from common import room_state
+from server import pm_paused
 
 log = logging.getLogger("loop")
 CONFIRM_S = 300
@@ -163,11 +164,12 @@ class Chat(Addressing):
             await self.say(rid, "Only the room owner or a maintainer can change how I run this project.")
         elif intent == intents.ASSIST:
             await self.say(rid, await self.change_level(rid, "assist") or
-                           "OK: agents build and review, and each change waits for a person to merge it.")
+                           "OK: agents build and review, and each change waits for a person to merge it."
+                           + await pm_paused.after_switch(self, rid, "assist"))
         elif intent == intents.AUTONOMOUS:   # an explicit phrase from the owner/maintainer: no extra ✅
             await self.say(rid, await self.change_level(rid, "autonomous") or
                            "Running on my own now: agents build, review and merge without asking. "
-                           "Say \"stop\" anytime.")
+                           "Say \"stop\" anytime." + await pm_paused.after_switch(self, rid, "autonomous"))
         elif intent == intents.WEB:          # ADR 0006: nothing to switch; say so instead of pretending
             await self.say(rid, WEB_ANSWER)
         elif intent == intents.CONSOLE:
@@ -220,7 +222,8 @@ class Chat(Addressing):
         else:                                 # a mode switch asked about with ✅ (ask_mode)
             level = p.get("level", "autonomous")
             await self.say(room.room_id, await self.change_level(room.room_id, level) or
-                           f"OK — {LEVEL_WORDS[level]}. Say \"stop\" anytime.")
+                           f"OK — {LEVEL_WORDS[level]}. Say \"stop\" anytime."
+                           + await pm_paused.after_switch(self, room.room_id, level))
         return True
 
     def outcomes(self) -> dict:
@@ -269,4 +272,5 @@ class Chat(Addressing):
                 await self.say(room.room_id, "only room moderators can change the loop level")
             else:
                 await self.say(room.room_id, await self.change_level(room.room_id, args[0])
-                               or f"loop level: {args[0]} for {await room_state.repo_of(self.client, room.room_id)}")
+                               or f"loop level: {args[0]} for {await room_state.repo_of(self.client, room.room_id)}"
+                               + await pm_paused.after_switch(self, room.room_id, args[0]))
