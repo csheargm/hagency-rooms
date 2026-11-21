@@ -87,6 +87,9 @@ class Talk(unittest.TestCase):
         create = RoomGetStateResponse([{"type": "m.room.create", "sender": ANNA, "content": {"room_version": "12"}}], "!r")
         self.lp.say = say
         self.lp.client = SimpleNamespace(room_put_state=put_state, room_get_state=mock.AsyncMock(return_value=create))
+        lv = mock.patch.object(Loop, "level", lambda _, rid: asyncio.sleep(0, (self.levels or ["off"])[-1]))
+        lv.start()                    # the room's mode as last written (pm_paused re-checks it)
+        self.addCleanup(lv.stop)
         self.room = SimpleNamespace(room_id="!r", users={ANNA: None, BETTY: None}, invited_users={},
                                     power_levels=SimpleNamespace(get_user_level=lambda u: 0))
 
@@ -141,7 +144,7 @@ class Talk(unittest.TestCase):
         self.tell(ANNA, "@pm take it all the way")
         self.assertEqual(self.levels, ["autonomous"])
         self.assertIn("Running on my own now", self.said[-1])
-        self.assertIn("#7, #9 are paused after an agent couldn't finish them: back in the queue now.", self.said[-1])
+        self.assertIn("I put #7 and #9 back in the queue: they were paused after an agent couldn't finish.", self.said[-1])
         self.assertEqual({}, self.lp.state)                # back in the queue
         self.lp.save.assert_called()
 
@@ -150,7 +153,7 @@ class Talk(unittest.TestCase):
         self.pause(9)
         with mock.patch.object(Loop, "pr_open", mock.AsyncMock(return_value=True)):
             self.tell(ANNA, "@pm take it all the way")
-        self.assertIn("#9 is paused after an agent couldn't finish it: back in the queue now.", self.said[-1])
+        self.assertIn("I put #9 back in the queue: it was paused after an agent couldn't finish.", self.said[-1])
         self.assertIn('#7 stays paused: its PR #12 may still be open', self.said[-1])
         self.assertIn('say "@pm retry #7"', self.said[-1])
         self.assertEqual([issue_key("your-name/hagency-hello", 7)], list(self.lp.state))

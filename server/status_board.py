@@ -65,8 +65,8 @@ def render(items: dict, level: str, queued: list[dict], now: float, repo: str = 
         lines += ["", "**Done (last 24 h)**", "", *done]
     if stopped:                       # screen test: "needs a person", but not what a person can do
         first = min(num(k) for k, v in recent if v["stage"] == "stopped")
-        lines += ["", "**Needs a person**", "", *stopped, "", f"To go on: say **@pm retry #{first}** to try again "
-                  "(make the issue clearer on GitHub first if it was unclear), or do it yourself and close it."]
+        lines += ["", "**Needs a person**", "", *stopped, "", f"To go on: say **@pm retry #{first}** (or the number of another paused issue) to try "
+                  "again, making the issue clearer on GitHub first if it was unclear, or do it yourself and close it."]
     return "\n".join(lines)
 
 

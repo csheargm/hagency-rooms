@@ -33,7 +33,8 @@ class EveryModeSwitch(unittest.TestCase):
                                     (room_state, "repo_of", mock.AsyncMock(return_value=REPO)),
                                     (room_state, "binding_of", mock.AsyncMock(return_value=(REPO, None))),
                                     (room_state, "is_moderator", mock.AsyncMock(return_value=True)),
-                                    (Loop, "change_level", mock.AsyncMock(return_value=None))):
+                                    (Loop, "change_level", mock.AsyncMock(return_value=None)),
+                                    (Loop, "level", mock.AsyncMock(return_value="autonomous"))):
             p = mock.patch.object(target, name, value)
             p.start()
             self.addCleanup(p.stop)
@@ -52,19 +53,36 @@ class EveryModeSwitch(unittest.TestCase):
                 mock.patch.object(console.console_personal, "refusal", return_value=None):
             self.assertEqual("ok", asyncio.run(console.act(self.lp, "!r", ANNA, "mode", "autonomous")))
         self.assertIn("from the console", self.said[-1])
-        self.assertIn("#7, #9 are paused after an agent couldn't finish them: back in the queue now.", self.said[-1])
+        self.assertIn("I put #7 and #9 back in the queue: they were paused after an agent couldn't finish.", self.said[-1])
         self.assertEqual({}, self.lp.state)
 
     def test_a_confirmed_switch(self):
         self.lp.pending["!r"] = {"kind": "mode", "level": "autonomous", "event_id": "$q", "by": ANNA,
                                  "until": time.time() + 60}
         asyncio.run(self.lp.confirm(self.room, ANNA))
-        self.assertIn("back in the queue now", self.said[-1])
+        self.assertIn("back in the queue", self.said[-1])
         self.assertEqual({}, self.lp.state)
 
     def test_the_level_command(self):
         asyncio.run(self.lp.command(self.room, ANNA, ["!level", "autonomous"]))
-        self.assertIn("back in the queue now", self.said[-1])
+        self.assertIn("back in the queue", self.said[-1])
+
+    def test_a_pause_that_came_back_meanwhile_is_kept(self):
+        """GPT review: retried and paused again (a new entry, maybe a new PR) while GitHub was asked."""
+        self.lp.state = paused(7, pr=12)
+
+        async def pr_open(pr, repo):
+            self.lp.state.update(paused(7, pr=13))          # a fresh pause replaced the one we looked at
+            return False
+        self.lp.pr_open = pr_open
+        self.assertEqual("", asyncio.run(pm_paused.retry_all(self.lp, "!r")))
+        self.assertEqual(13, self.lp.state[issue_key(REPO, 7)]["pr"])
+
+    def test_stopped_meanwhile_means_nothing_goes_back(self):
+        """GPT review: someone said "stop" while GitHub was being asked."""
+        with mock.patch.object(Loop, "level", mock.AsyncMock(return_value="off")):
+            self.assertEqual("", asyncio.run(pm_paused.retry_all(self.lp, "!r")))
+        self.assertEqual(2, len(self.lp.state))
 
     def test_switching_off_touches_nothing(self):
         self.assertEqual("", asyncio.run(pm_paused.after_switch(self.lp, "!r", "off")))
@@ -95,7 +113,7 @@ class WhatAPersonCanDo(unittest.TestCase):
 
     def test_the_steps_name_each_action_and_the_agents_log(self):
         steps = pm_paused.next_steps(7, "@cx-agent:matrix.hagencylabs.xyz")
-        for part in ("**Try again:** say **@pm retry #7**", "**Make the issue clearer**",
+        for part in ("**Try again:** the room's owner or a maintainer says **@pm retry #7**", "**Make the issue clearer**",
                      "cx-agent's owner can read cx-agent.log", "**Do it yourself:**", "close #7"):
             self.assertIn(part, steps)
         self.assertNotIn("log", pm_paused.next_steps(7))       # no agent known: no log to point at
@@ -114,10 +132,19 @@ class WhatAPersonCanDo(unittest.TestCase):
         self.assertIn("**What you can do:**", said[-1])
         self.assertEqual("stopped", item["stage"])
 
+    def test_an_agents_text_renders_as_plain_text(self):
+        """GPT review: through the real pipeline (escape → issue links → Markdown), nothing the agent
+        wrote becomes a link, emphasis or code, and no escape turns into a bogus issue link."""
+        import markdown
+        from common import github
+        from common.redact import markup_safe
+        html_out = markdown.markdown(github.linkify(markup_safe("[x](http://evil) **b** _c_ `d` <i>e</i> [y]"), REPO))
+        self.assertEqual("<p>[x](http://evil) **b** _c_ `d` &lt;i&gt;e&lt;/i&gt; [y]</p>", html_out)
+
     def test_the_board_says_how_to_go_on(self):
         board = render(paused(9, 7), "autonomous", [], time.time(), REPO)
         self.assertIn("**Needs a person**", board)
-        self.assertIn("say **@pm retry #7** to try again", board)
+        self.assertIn("say **@pm retry #7** (or the number of another paused issue) to try again", board)
 
 
 class AgentsHint(unittest.TestCase):

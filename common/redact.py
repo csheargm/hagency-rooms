@@ -14,6 +14,8 @@ CREDENTIAL_RE = re.compile(
     r"|gh[pousr]_[A-Za-z0-9_]{6,}|github_pat_[A-Za-z0-9_]{20,}|eyJ[\w-]+\.[\w-]+\.[\w-]+|-----BEGIN[^-]*-----"
     r"|\bsk-[A-Za-z0-9_-]{20,}|\bsyt_[A-Za-z0-9_-]{10,}|\bxox[abposr]-[A-Za-z0-9-]{10,}|\bAKIA[0-9A-Z]{16}\b")
 REDACTED = "<redacted>"
+# Markdown's own characters, backslash-escaped (GPT review: entities like "&#91;" became issue links #91)
+MARKDOWN_RE = re.compile(r"[\\`*_\[\]]")
 
 
 def room_safe(text: object, limit: int = MAX_ROOM_ERROR) -> str:
@@ -32,4 +34,4 @@ def secret_safe(text: object, *secrets: str) -> str:
 def markup_safe(text: object) -> str:
     """Issue titles and reasons come from issue authors and agents: never let them become markup
     (the status board and @pm's messages are rendered as HTML in Element and in the side panel)."""
-    return html.escape(" ".join(str(text).split()), quote=False).replace("[", "&#91;").replace("*", "&#42;")
+    return MARKDOWN_RE.sub(r"\\\g<0>", html.escape(" ".join(str(text).split()), quote=False))
