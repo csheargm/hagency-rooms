@@ -39,7 +39,8 @@ from pm_welcome import Welcome
 from pm_agents import MoreAgents
 import routing
 from status_board import Boards
-from bridge import HOMESERVER, ROOT, SERVER_NAME, is_stale, read_env
+from bridge_config import HOMESERVER, ROOT, SERVER_NAME, read_env
+from lifecycle import is_stale
 
 POLL_S = float(os.environ.get("LOOP_POLL_S", "30"))
 FAST_POLL_S = min(POLL_S, 5.0)        # while waiting on GitHub (mergeability, a merge, a close)

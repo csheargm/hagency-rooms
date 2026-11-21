@@ -25,7 +25,8 @@ import project_rooms
 import registry
 import remote_people
 import server_admins
-from bridge import ROOT, SERVER_NAME, is_stale
+from bridge_config import ROOT, SERVER_NAME
+from lifecycle import is_stale
 from local_signup import WELCOME_ALIAS, WELCOME_LOCALPART
 import intents
 from pm_address import unaddressed

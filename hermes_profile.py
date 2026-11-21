@@ -24,7 +24,7 @@ from pathlib import Path
 import github
 import workdirs
 import bridge_config
-from bridge import ROOT, SERVER_NAME
+from bridge_config import ROOT, SERVER_NAME
 
 HERMES_HOME = Path.home() / ".hermes"
 PY = str(ROOT / ".venv" / "bin" / "python")

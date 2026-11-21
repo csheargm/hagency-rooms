@@ -16,7 +16,7 @@ import identity
 import matrix_calls
 import project_rooms
 import server_admins
-from bridge import ROOT, SERVER_NAME
+from bridge_config import ROOT, SERVER_NAME
 from project_rooms import LOBBY_ALIAS, LOBBY_LOCALPART
 from saved_dict import SavedDict
 

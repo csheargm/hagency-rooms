@@ -165,7 +165,7 @@ class LoopResults(unittest.TestCase):
         self.assertEqual(self.deliver("@b-agent:x", {"kind": "build", "issue": 7, "error": "x"}), "reviewing")
 
     def test_stale_events_dropped(self):
-        from bridge import is_stale
+        from lifecycle import is_stale
         self.assertTrue(is_stale(SimpleNamespace(server_timestamp=1_000), 100_000))
         self.assertFalse(is_stale(SimpleNamespace(server_timestamp=99_000), 100_000))
 

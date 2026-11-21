@@ -8,7 +8,7 @@ import re
 
 from nio import RoomMessageText
 
-from bridge import ROOT
+from bridge_config import ROOT
 from saved_dict import SavedDict
 
 ADDRESS_RE = re.compile(r"^\s*@?(pm|product manager)\b[:,]?\s*(.*)$", re.I | re.S)

@@ -122,7 +122,7 @@ class OwnerStopsAndStartsTheirAgent(unittest.TestCase):
         path.write_text(json.dumps(self.people))
         for p in (*self.switch.patches(), mock.patch.object(registry, "PATH", path),
                   mock.patch.object(workdirs, "WORK_HOME", Path(tempfile.mkdtemp())),
-                  mock.patch.object(bridge, "is_stale", lambda *a: False),
+                  mock.patch.object(bridge.lifecycle, "is_stale", lambda *a: False),
                   mock.patch.object(bridge.room_context, "snapshot", lambda *a: {"status": "", "conversation": ""})):
             p.start()
             self.addCleanup(p.stop)

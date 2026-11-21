@@ -17,7 +17,7 @@ import re
 
 import agents
 import lifecycle
-from bridge import ROOT
+from bridge_config import ROOT
 from redact import room_safe
 
 BRAIN = os.environ.get("PM_BRAIN", "claude")         # claude (no tools) | codex | off

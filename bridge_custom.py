@@ -19,6 +19,7 @@ from nio import MatrixRoom, ReactionEvent
 import agents
 import customize
 import github
+import lifecycle
 from redact import room_safe
 from saved_dict import SavedDict
 
@@ -103,8 +104,7 @@ class BridgeCustom:
             log.warning("couldn't add %s in %s: %s", key, rid, e)
 
     async def on_custom_reaction(self, room: MatrixRoom, event: ReactionEvent) -> None:
-        from bridge import is_stale           # here: bridge.py imports this module
-        if event.sender != self.owner_id or is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
+        if event.sender != self.owner_id or lifecycle.is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
             return                            # my own buttons, anyone else's clicks, and replays do nothing
         offer = self.offers().get(event.reacts_to)
         if not offer or offer.get("room") != room.room_id or offer.get("done") or not is_private(room):

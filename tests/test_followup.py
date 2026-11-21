@@ -48,7 +48,7 @@ class FollowUp(unittest.TestCase):
         for p in (mock.patch.object(bridge.agents, "run_turn", run_turn),
                   mock.patch.object(bridge.room_context, "snapshot", lambda *a: {"status": "", "conversation": ""}),
                   mock.patch.object(workdirs, "WORK_HOME", Path(tempfile.mkdtemp())),
-                  mock.patch.object(bridge, "is_stale", lambda *a: False)):
+                  mock.patch.object(bridge.lifecycle, "is_stale", lambda *a: False)):
             p.start()
             self.addCleanup(p.stop)
 

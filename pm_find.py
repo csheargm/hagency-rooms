@@ -16,7 +16,7 @@ from nio import MatrixRoom, ReactionEvent
 
 import project_rooms
 import room_state
-from bridge import SERVER_NAME
+from bridge_config import SERVER_NAME
 from pm_joining import ASK
 from project_rooms import plain
 

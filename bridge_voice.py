@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from nio import MatrixRoom, RoomMessageAudio
 
 import identity
+import lifecycle
 import voice
 
 log = logging.getLogger("bridge")
@@ -55,8 +56,7 @@ class BridgeVoice:
         return {}
 
     async def on_voice(self, room: MatrixRoom, event: RoomMessageAudio) -> None:
-        from bridge import is_stale           # here: bridge.py imports this module
-        if is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
+        if lifecycle.is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
             return
         if event.sender == self.user_id or event.sender.split(":")[0].endswith("-agent"):
             return                            # never other agents' audio (loop guard)
