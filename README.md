@@ -1,8 +1,9 @@
 # Hagency Rooms — chat where each person brings their own agent (Matrix + Element)
 
 One-day prototype: a stock Matrix homeserver (Synapse) and Element as the chat app, plus a
-~270-line Python agent adapter that lets each person's **own** agent (Codex, Claude Code, Hermes, a local
-Ollama model or a remote model, on their own computer) join rooms as a Matrix user (`@anna-agent`, `@betty-agent`).
+Python agent adapter that lets each person's **own** agent (Codex, Claude Code, a local Ollama model
+or a remote model, on their own computer) join rooms as a Matrix user (`@anna-agent`, `@betty-agent`);
+Hermes joins through its own Matrix gateway, with our adapter handling only its code-change buttons.
 
 ## Get started (no setup)
 
@@ -104,7 +105,7 @@ are launchers under the names installed agents and the docs use (`python bridge.
 
 ## Run it locally
 
-1. Start everything — server, accounts (first run only) and both agent adapters:
+1. Start everything — server, accounts (first run only), @pm and each person's agent:
 
    ```bash
    cd hagency-rooms && ./start.sh      # in your clone

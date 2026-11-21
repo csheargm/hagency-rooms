@@ -27,11 +27,12 @@ class EncryptedRooms(unittest.TestCase):
         b = Bridge("anna", "codex")
         b.send = mock.AsyncMock()
         event = SimpleNamespace(sender=BETTY)
-        for _ in range(2):
-            asyncio.run(b.on_encrypted(SimpleNamespace(room_id="!r"), event))
-        b.send.assert_awaited_once()
+        for rid in ("!r", "!r", "!other"):          # GPT review: once per room, to that room
+            asyncio.run(b.on_encrypted(SimpleNamespace(room_id=rid), event))
+        self.assertEqual([c.args[0] for c in b.send.await_args_list], ["!r", "!other"])
         note = b.send.await_args.args[1]
         self.assertIn("I can't read encrypted rooms yet", note)
+        self.assertIn("without encryption", note)           # what to do instead
         self.assertNotRegex(note, r"(?i)bridge|e2ee|v1")
 
 

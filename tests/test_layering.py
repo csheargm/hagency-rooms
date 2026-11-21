@@ -85,7 +85,7 @@ class Layout(unittest.TestCase):
 
 class PmProcess(unittest.TestCase):
     def test_pm_never_loads_the_bridge_or_the_client(self):
-        """A fresh process importing @pm's entry points: no agent adapter module, nothing of client/
+        """A fresh process importing @pm's entry points: no adapters.agents.bridge* module, nothing of client/
         (GPT review: a scan by file name missed helpers that loop imports)."""
         probe = ("import sys; from server import loop, console, panel; "
                  "print(sorted(m for m in sys.modules if m.startswith(('client', 'adapters.agents.bridge'))))")

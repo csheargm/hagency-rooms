@@ -15,7 +15,7 @@ Status: ✅ works today · 🟡 works with a manual step · ❌ missing (smalles
 | 6 | Anna: "spec is ready". One agent writes a short spec from the discussion and posts it. The people edit it, then approve it. | Anna + agent | ❌ `!spec draft` / `!spec approve` |
 | 7 | The approved spec becomes GitHub issues (`agent-ok`) in the project repo. | @pm | ❌ part of `!spec approve` |
 | 8 | Project repo with the merge ruleset. | Anna | 🟡 `github_setup.py ruleset` exists; a fresh repo per project is a manual `gh repo create` |
-| 9 | `!level assist`: @pm hands issues to the two agents. One builds, the other person's agent reviews, and the pinned **Project status** shows it live. | @pm + agents | ✅ (Hermes via `hagency_mcp.py`, Codex via agent adapter) |
+| 9 | `!level assist`: @pm hands issues to the two agents. One builds, the other person's agent reviews, and the pinned **Project status** shows it live. | @pm + agents | ✅ (Hermes via `hagency_mcp.py`, Codex via the agent adapter) |
 | 10 | Human review: in Assist, each PR stops at "ready — a person merges". Anna or Betty reads it and merges on GitHub. | people | ✅ |
 | 11 | Test drive: they run Hello World from the repo, locally or on GitHub Pages. | people | 🟡 manual (`git pull` and open it) |
 | 12 | They talk about what to change. Anna: "update the spec". The new issues go back into the loop. | all | ❌ same `!spec` as step 6; the loop then picks the new issues up ✅ |
