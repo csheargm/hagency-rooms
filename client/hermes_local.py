@@ -7,7 +7,7 @@ the two Hermes profiles (ADR 0006), and what its background service runs.
 Both read the sign-in from HAGENCY_CREDENTIALS (never from argv). As on the server
 (supervise.hermes_children), "<name>room" obeys only its owner and "<name>loop" only @pm's loop
 tasks, logged in as the same agent account; the hagency MCP server they run signs in with the same
-file. A clean exit of the buttons bridge (the server disconnected the agent) stops all of it, so the
+file. A clean exit of the buttons agent adapter (the server disconnected the agent) stops all of it, so the
 service stays stopped. macOS and Linux only: Hermes itself runs on Windows only inside WSL.
 """
 import argparse
@@ -94,7 +94,7 @@ def keep_running() -> None:
 
     async def go() -> None:
         done = asyncio.Event()
-        kids[-1].on_clean_exit = done         # the buttons bridge exits 0 when the server disconnects us
+        kids[-1].on_clean_exit = done         # the buttons agent adapter exits 0 when the server disconnects us
         await supervise.run(kids, done)
     asyncio.run(go())
 

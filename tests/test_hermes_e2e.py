@@ -2,7 +2,7 @@
 (`annatestroom`: only anna, her own tools; `annatestloop`: only pm's tasks, contained tools; ADR 0006);
 there is no room allowlist, so the owner can also DM it. Both talk to Matrix
 through Hermes's own gateway and to the GitHub loop through hagency_mcp.py; betty's agent is the
-Codex bridge. Real Matrix, real Hermes and Codex, fake GitHub. Stop ./start.sh first.
+Codex agent adapter. Real Matrix, real Hermes and Codex, fake GitHub. Stop ./start.sh first.
 Run: .venv/bin/python -m tests.test_hermes_e2e
 
 A. Hermes answers its owner in the room, and ignores betty (MATRIX_ALLOWED_USERS).

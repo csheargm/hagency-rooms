@@ -3,7 +3,7 @@
 Folders per owner under custom/<owner>/ (git-ignored), all in the official folder (HAGENCY_HOME):
   work/          a git worktree on branch custom/<owner>: the agent edits only here, in its sandbox.
   live-<commit>/ one checkout per commit the owner chose with "Use it myself", never changed after;
-                 supervise.py runs the owner's bridge from the selected one.
+                 supervise.py runs the owner's agent adapter from the selected one.
 Nothing the agent wrote runs here before the owner clicks. "Use it myself" then runs that code with
 this computer account's access, so it is only offered where the owner is the only person whose agent
 runs on this computer (or the operator opts in, HAGENCY_CUSTOM_SHARED_OK=1). "Send as pull request"
@@ -26,7 +26,7 @@ from common import paths
 
 ROOT = Path(os.environ.get("HAGENCY_HOME") or paths.ROOT)   # official folder, even inside live-*/
 COPIES = ROOT / "custom"
-USE_FILE = ROOT / "data" / "custom-use.json"     # owner → commit their bridge runs (absent: official)
+USE_FILE = ROOT / "data" / "custom-use.json"     # owner → commit their agent adapter runs (absent: official)
 UPSTREAM = os.environ.get("HAGENCY_UPSTREAM", "csheargm/hagency-rooms")
 PY = str(ROOT / ".venv" / "bin" / "python")
 TEST_TIMEOUT_S = 600
@@ -92,7 +92,7 @@ def in_use() -> dict[str, str]:
 
 
 def code_dir(owner: str) -> tuple[Path, str | None]:
-    """Where the owner's bridge runs from, and which commit: their chosen version, or official (None)."""
+    """Where the owner's agent adapter runs from, and which commit: their chosen version, or official (None)."""
     sha = in_use().get(owner)
     if sha and why_not_use(owner):            # the operator took the opt-in back: official until it's given again
         return ROOT, None

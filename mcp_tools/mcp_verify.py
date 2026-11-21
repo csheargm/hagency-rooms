@@ -1,6 +1,6 @@
 """hagency MCP tools for "is this issue already done?": the builder found nothing to change, so a
 second person's agent checks the repo (read-only) and, once confirmed, the builder closes the issue.
-The same steps the Codex/Claude bridge runs in tasks.verify / tasks.close."""
+The same steps the Codex/Claude agent adapter runs in tasks.verify / tasks.close."""
 import os
 from pathlib import Path
 

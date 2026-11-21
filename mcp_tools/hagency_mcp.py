@@ -1,6 +1,6 @@
 """hagency MCP server: lets any MCP-capable agent (Hermes, Claude Code, Codex...) take part in a
-Hagency room's GitHub loop without a bridge. The agent does the thinking and the file edits;
-this server does the rest, the same way the Codex/Claude bridge does (tasks.py):
+Hagency room's GitHub loop without an agent adapter. The agent does the thinking and the file edits;
+this server does the rest, the same way the Codex/Claude agent adapter does (tasks.py):
   - reads the task pm addressed to this agent (only pm, only this agent);
   - clones/commits/pushes/opens PRs/reviews/merges with the agent's OWN GitHub identity
     (.gh/<agent>/), so the agent itself never holds a GitHub token or runs git;

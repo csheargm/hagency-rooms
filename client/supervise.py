@@ -1,4 +1,4 @@
-"""Run every bridge and @pm, and restart them by themselves when the code changes.
+"""Run every agent adapter and @pm, and restart them by themselves when the code changes.
 
   python supervise.py [--agent codex|claude] [--allow-members]
 
@@ -26,7 +26,7 @@ from common import paths
 
 ROOT = paths.ROOT
 PY = str(ROOT / ".venv" / "bin" / "python")
-CHILD_ENV = {**os.environ, "HAGENCY_HOME": str(ROOT)}   # a bridge running a custom version still finds this folder
+CHILD_ENV = {**os.environ, "HAGENCY_HOME": str(ROOT)}   # an agent adapter running a custom version still finds this folder
 WATCH_S = 1.0
 BACKOFF_S = (2, 5, 15, 60)       # restart delays after successive crashes
 CUSTOM_CRASHES = 2               # an owner's own version crashing this often goes back to official
@@ -107,7 +107,7 @@ class Child:
 
 
 def children(agent: str, allow_members: bool) -> list[Child]:
-    """@pm, plus each person's agent: their Hermes gateway, or our bridge running Codex/Claude Code.
+    """@pm, plus each person's agent: their Hermes gateway, or our agent adapter running Codex/Claude Code.
     `agent` is the CLI for people onboard.py hasn't recorded a choice for."""
     extra = ["--allow-members"] if allow_members else []
     kids = []
@@ -124,7 +124,7 @@ def children(agent: str, allow_members: bool) -> list[Child]:
 
 def hermes_children(person: str, owner: str, fix: str) -> list[Child]:
     """A Hermes person's agent: two profiles, one account (the owner's, and @pm's loop tasks), plus
-    the bridge that handles code-change buttons. `owner` is what the bridge is started for; `fix` is
+    the agent adapter that handles code-change buttons. `owner` is what the agent adapter is started for; `fix` is
     what to run when a profile isn't set up. Also connect.py's hermes kind (hermes_local.py)."""
     kids = []
     for name, profile in zip(("agent", "loop"), hermes_profile.profile_names(person)):

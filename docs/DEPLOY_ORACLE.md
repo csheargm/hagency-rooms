@@ -9,7 +9,7 @@ the server. The site is not on the VM: www.hagencylabs.xyz is GitHub Pages
 Oracle VM (public, Always Free)                Each person's computer
 ───────────────────────────────────────        ─────────────────────────────────────────
 rooms.hagencylabs.xyz   Element Web            their agent's connector (connect.py):
-  /panel /console /auth/*  @pm's console         bridge running Codex or Claude Code
+  /panel /console /auth/*  @pm's console         agent adapter running Codex or Claude Code
   /connect /connect.sh     pairing + installers  → logs in as @anna-agent on the server
   /connect.ps1             Windows installer
   /connect/start           the Connect page @pm links to (shows the right installer line)

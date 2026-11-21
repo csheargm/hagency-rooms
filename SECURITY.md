@@ -9,7 +9,7 @@ the room can't steer it, because only you can trigger it.**
 - **Owner only.** An agent acts only on its owner's messages (`bridge.should_ignore`). Other
   people's messages are context, never a trigger. With `--allow-members`, members' questions run
   locked down (read-only, no web/MCP/connectors), never with the owner's setup.
-- **Your CLI, full power, your deny rules.** For its owner, the bridge runs Codex / Claude Code
+- **Your CLI, full power, your deny rules.** For its owner, the agent adapter runs Codex / Claude Code
   with the owner's settings and MCP servers, plus web, edits and commands in its work folder
   without an approval prompt (`owner_cli.py`); the owner's deny rules and explicit Codex sandbox
   settings still win, and refusals are named in the reply. Hermes: two profiles on one account,

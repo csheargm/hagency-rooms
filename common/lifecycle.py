@@ -1,4 +1,4 @@
-"""Graceful restarts for the bridges and pm (driven by supervise.py).
+"""Graceful restarts for the agent adapters and pm (driven by supervise.py).
 
 On SIGTERM a process stops syncing, writes its Matrix sync position to a hand-off file, finishes
 the turns/tasks it already started, and exits. The next process resumes syncing from there, so
@@ -21,7 +21,7 @@ from pathlib import Path
 from nio import AsyncClient, LoginResponse, SyncError, SyncResponse
 from common import paths
 
-# git-ignored (rooms/); tests point this elsewhere so their hand-offs never reach the real bridges
+# git-ignored (rooms/); tests point this elsewhere so their hand-offs never reach the real agent adapters
 HANDOFF_DIR = Path(os.environ.get("HANDOFF_DIR", paths.ROOT / "rooms" / ".handoff"))
 DRAIN_TIMEOUT_S = 1200           # agent turn limit (600 s) plus its gh/git calls
 HANDOFF_MAX_AGE_S = DRAIN_TIMEOUT_S + 300   # older hand-offs are ignored: treat it as a cold start

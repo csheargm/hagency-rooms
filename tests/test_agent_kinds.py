@@ -147,7 +147,7 @@ class Turns(unittest.TestCase):
         _, seen = self.turn("remote", REMOTE)
         self.assertFalse(any(KEY in a for a in seen["argv"]))
         self.assertEqual(seen["env"][codex_provider.KEY_ENV], KEY)
-        self.assertNotIn(codex_provider.KEY_ENV, os.environ)              # the bridge itself never holds it
+        self.assertNotIn(codex_provider.KEY_ENV, os.environ)              # the agent adapter itself never holds it
 
     def test_codex_kind_gets_no_provider_and_no_key(self):
         codex_provider.save_key(self.folder, KEY, REMOTE["base_url"])
@@ -179,7 +179,7 @@ class Turns(unittest.TestCase):
                          '{"error": "***"}')
 
     def test_a_key_is_only_sent_to_the_address_it_was_typed_for(self):
-        """GPT review: during a reconnect the running bridge still has the old address."""
+        """GPT review: during a reconnect the running agent adapter still has the old address."""
         codex_provider.save_key(self.folder, KEY, "https://new.example.com/v1")
         with self.assertRaisesRegex(agents.AgentError, "another service address"):
             self.turn("remote", REMOTE)

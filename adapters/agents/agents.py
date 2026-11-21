@@ -7,7 +7,7 @@ parsed as a CLI flag) and nothing runs through a shell.
 
 Two kinds of turn (docs/adr/0006-owner-cli-powers.md):
   - owner=True: the owner's own message. The CLI runs as the owner configured it on this machine
-    (their settings, MCP servers, deny rules); the bridge adds no lockdown, only what a chat room
+    (their settings, MCP servers, deny rules); the agent adapter adds no lockdown, only what a chat room
     needs to work without interactive approvals: web, edits and commands in the work folder
     (owner_cli.py). Whatever is still refused, the reply says plainly which setting blocked it.
   - owner=False (default): turns not driven by the owner's own words, on untrusted text (loop

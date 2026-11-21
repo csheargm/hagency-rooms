@@ -4,7 +4,7 @@ agent in the panel's My agents card (console.act), or "@pm call my agent NAME" /
 (registry.owns), and never a word about other people's agents. @pm sets it on the server with
 Synapse's admin API (local_signup.admin_call: admin-bot, one sign-in per change), so it works while
 the agent's computer is off; nothing sets an agent's name back (setup_accounts names only @pm, the
-bridges and connect never set one), and agents.json keeps it so the panel shows it after a restart.
+agent adapters and connect never set one), and agents.json keeps it so the panel shows it after a restart.
 A few renames per person per hour. Mixed into loop.Loop (say, addressed_text, in_private).
 """
 import asyncio

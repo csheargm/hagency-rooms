@@ -5,12 +5,12 @@
 
 connect.ps1 has connect.py save the sign-in first (--pair-only), then registers this to run at
 logon: the Windows counterpart of agent_service.py (launchd / systemd on macOS / Linux). It reads
-that sign-in (~/.hagency/credentials.json), runs the bridge as a hidden child with
+that sign-in (~/.hagency/credentials.json), runs the agent adapter as a hidden child with
 HAGENCY_CREDENTIALS pointing at the file (so no secret is ever on a command line), and starts it
 again when it fails, waiting longer each time it fails quickly. A clean exit (the server
 disconnected the agent) stops it, as with the other services. Only one runs per sign-in folder
 (agent.lock), and everything it starts ends with it (a Windows job), so a stopped or restarted
-task never leaves a second bridge behind. Output goes to ~/.hagency/logs/<agent>.log.
+task never leaves a second agent adapter behind. Output goes to ~/.hagency/logs/<agent>.log.
 """
 import argparse
 import ctypes
@@ -29,7 +29,7 @@ FIRST_DELAY_S = 5
 MAX_DELAY_S = 300
 HEALTHY_RUN_S = 3600                          # ran this long: the next failure starts the backoff over
 LOG_MAX_BYTES = 5 * 1024 * 1024
-CREATE_NO_WINDOW = 0x08000000                 # Windows: the bridge gets no console window
+CREATE_NO_WINDOW = 0x08000000                 # Windows: the agent adapter gets no console window
 JOB_KILL_ON_CLOSE = 0x2000                    # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
 JOB_EXTENDED_LIMITS = 9                       # JobObjectExtendedLimitInformation
 
@@ -44,7 +44,7 @@ class _JobLimits(ctypes.Structure):
 
 
 def tie_children_to_me() -> None:
-    """Windows: put this process in a job that ends everything it starts (the bridge, its CLI) when
+    """Windows: put this process in a job that ends everything it starts (the agent adapter, its CLI) when
     this process ends, however it ends. Raises OSError if Windows refuses."""
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)
     k32.CreateJobObjectW.restype = ctypes.c_void_p
@@ -60,13 +60,13 @@ def tie_children_to_me() -> None:
 
 def tie_or_say(home: Path, tie=tie_children_to_me) -> None:
     """The job is a safety net (the lock already keeps one keeper): if Windows refuses it, the agent
-    still runs, and the log says a stopped task may leave its bridge running until it exits."""
+    still runs, and the log says a stopped task may leave its agent adapter running until it exits."""
     try:
         tie()
     except OSError as e:
         try:
             with open_log(home / "logs" / "connect_win.log") as log:
-                log.write(f"[connect_win] no job for the agent ({e}); stopping this may leave the bridge running\n".encode())
+                log.write(f"[connect_win] no job for the agent ({e}); stopping this may leave the agent adapter running\n".encode())
         except OSError:
             pass                              # can't even say so: running the agent matters more than the note
 
@@ -105,7 +105,7 @@ def child_python() -> str:
 
 
 def bridge_command(creds: dict, creds_path: Path) -> tuple[list[str], dict]:
-    """argv and environment for the bridge: the sign-in travels by file path, never in argv."""
+    """argv and environment for the agent adapter: the sign-in travels by file path, never in argv."""
     argv = [child_python(), str(APP / "bridge.py"), creds["owner"], "--agent", creds.get("agent") or "codex"]
     # utf-8: its log is a file, which on Windows would otherwise be cp1252 and choke on a check mark
     return argv, {**os.environ, "HAGENCY_CREDENTIALS": str(creds_path), "PYTHONIOENCODING": "utf-8"}
@@ -136,7 +136,7 @@ def open_log_or_nothing(path: Path):
 
 def keep_running(home: Path, runs: int | None = None, spawn=subprocess.Popen, sleep=time.sleep,
                  clock=time.monotonic) -> None:
-    """Run the bridge, and again each time it fails (`runs` limits it, for tests)."""
+    """Run the agent adapter, and again each time it fails (`runs` limits it, for tests)."""
     creds_path = home / "credentials.json"
     delay = 0.0
     while runs is None or runs > 0:

@@ -69,7 +69,7 @@ function Remove-OurShortcuts([string]$Startup) {
 }
 
 function Stop-OldAgent {
-    # Before updating: stop the running agent (connect_win.py's job ends the bridge with it), so its
+    # Before updating: stop the running agent (connect_win.py's job ends the agent adapter with it), so its
     # files and Python aren't in use. agent.pid is the fallback for one started from Startup.
     $ErrorActionPreference = 'Continue'          # nothing to stop is not an error
     $state.Stopped = @(Get-OurTasks)            # started again if this run fails before replacing them
@@ -84,7 +84,7 @@ function Stop-OldAgent {
         $id = 0
         if (-not [int]::TryParse($line.Trim(), [ref]$id)) { continue }
         $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $id" -ErrorAction SilentlyContinue
-        # Only a Python running our own keeper or bridge: a stale number may belong to something else by now.
+        # Only a Python running our own keeper or agent adapter: a stale number may belong to something else by now.
         if ($proc -and $proc.Name -like 'python*.exe' -and $proc.CommandLine -and
             @($ours | Where-Object { $proc.CommandLine.IndexOf($_, [StringComparison]::OrdinalIgnoreCase) -ge 0 }).Count -gt 0) {
             taskkill.exe /PID $id /T /F | Out-Null    # with the CLI it runs; already gone is fine

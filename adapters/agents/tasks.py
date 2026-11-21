@@ -1,4 +1,4 @@
-"""Loop tasks a bridge runs for pm: build an issue, review a PR, merge a PR.
+"""Loop tasks an agent adapter runs for pm: build an issue, review a PR, merge a PR.
 
 All GitHub writes use this agent's own identity (github.run(..., agent)). The agent CLI only
 edits a plain working tree: the clone's .git is moved OUTSIDE the agent's writable folder
@@ -267,7 +267,7 @@ async def file_issues(agent: str, backend: str, base: Path, task: dict) -> dict:
 
 HANDLERS = {"build": build, "review": review, "merge": merge, "verify": verify, "close": close,
             "plan": plan, "file_issues": file_issues, "fix": fix}
-AUTONOMOUS_ONLY = {"merge", "close"}       # bridges re-check the room level before these
+AUTONOMOUS_ONLY = {"merge", "close"}       # agent adapters re-check the room level before these
 
 
 async def handle(agent: str, backend: str, base: Path, task: dict) -> dict:

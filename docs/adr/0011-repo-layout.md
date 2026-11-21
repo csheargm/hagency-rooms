@@ -31,7 +31,7 @@ mcp_tools/         the agents' MCP tools (not "mcp": that is the MCP library's n
   path stored on a computer or written in docs keeps working, with no migration step.
 - **Rules**, enforced by `tests/test_layering.py`: `common/` imports only `common/`; `adapters/`
   only `adapters/` and `common/`; `server/` and `client/` never import each other; `mcp_tools/`
-  imports neither. @pm's process never loads the bridge or `client/`. Module names stay unique
+  imports neither. @pm's process never loads the agent adapter or `client/`. Module names stay unique
   across packages (`customize.SENSITIVE` matches by file name). The root holds only launchers.
 - `common/paths.py` is the one place that knows where the repo folder is (`ROOT`) and which folders
   hold code (`CODE_DIRS`: `supervise.py` restarts children when any of them changes).

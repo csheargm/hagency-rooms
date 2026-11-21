@@ -92,7 +92,7 @@ class Talk(unittest.TestCase):
     def test_go_back_to_the_official_bridge(self):
         """Through @pm (official code), so it works even when Betty's own version is broken."""
         with mock.patch("common.customize.go_back", return_value=True) as back:
-            self.tell(BETTY, "@pm go back to the official bridge")
+            self.tell(BETTY, "@pm go back to the official version")   # the words the switch message suggests
         back.assert_called_once_with("betty")
         self.assertIn("going back to the official version", self.said[-1])
 

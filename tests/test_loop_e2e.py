@@ -1,6 +1,6 @@
 """End-to-end test of the GitHub loop over the real Matrix server with real Codex agents and a
-fake GitHub (tests/fake_gh.py + a local bare repo). Starts its own anna/betty bridges,
-@pm — stop ./start.sh's bridges first. Run: .venv/bin/python -m tests.test_loop_e2e
+fake GitHub (tests/fake_gh.py + a local bare repo). Starts its own anna/betty agent adapters,
+@pm — stop ./start.sh's agent adapters first. Run: .venv/bin/python -m tests.test_loop_e2e
 
 Flow checked: Autonomous level → an already-satisfied issue is verified by the other agent and
 closed (not stopped). Then: issue claimed → PR opened → review requested from the

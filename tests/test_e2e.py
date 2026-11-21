@@ -1,7 +1,7 @@
 """End-to-end test of the real user flow: humans @mention agents in #bridge-test over the
 Matrix client API and we check that the right agent replies (and only that agent).
 
-Needs: stack up (./start.sh) and both bridges running. Run: .venv/bin/python -m tests.test_e2e
+Needs: stack up (./start.sh) and both agent adapters running. Run: .venv/bin/python -m tests.test_e2e
 """
 import json
 import time
@@ -16,7 +16,7 @@ REPLY_TIMEOUT_S = 300
 def test_room() -> str:
     """The tests' own room, so their messages and fake links never show up in the Lounge."""
     room_id = ensure_room(load_env(), TEST_ROOM_ALIAS, "Bridge tests")
-    time.sleep(3)                          # running bridges accept the agents' invites
+    time.sleep(3)                          # running agent adapters accept the agents' invites
     return room_id
 
 
@@ -111,12 +111,12 @@ def check_owner_only(betty, room_id, anna_agent):
 
 
 def check_encrypted_room_warning(token, agent):
-    """The bridge has no E2EE: in an encrypted room it must say so instead of going silent."""
+    """The agent adapter has no E2EE: in an encrypted room it must say so instead of going silent."""
     room_id = api("POST", "/_matrix/client/v3/createRoom", token, {
         "name": "E2EE probe", "preset": "private_chat", "invite": [agent],
         "initial_state": [{"type": "m.room.encryption", "state_key": "",
                            "content": {"algorithm": "m.megolm.v1.aes-sha2"}}]})["room_id"]
-    time.sleep(3)  # let the bridge auto-join
+    time.sleep(3)  # let the agent adapter auto-join
     fake = {"algorithm": "m.megolm.v1.aes-sha2", "ciphertext": "AwgA", "device_id": "PROBE",
             "sender_key": "probe", "session_id": "probe"}
     api("PUT", f"/_matrix/client/v3/rooms/{room_id}/send/m.room.encrypted/t{time.time_ns()}", token, fake)

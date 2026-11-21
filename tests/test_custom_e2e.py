@@ -1,5 +1,5 @@
 """Live: a person changes their agent's code from their private room, uses it, then goes back.
-Betty's agent is our bridge (Codex/Claude Code); Anna's is Hermes (CUSTOM_OWNER=anna). Needs ./start.sh
+Betty's agent is our agent adapter (Codex/Claude Code); Anna's is Hermes (CUSTOM_OWNER=anna). Needs ./start.sh
 running. Takes a few minutes (a real agent edit). It starts by deleting that person's private copy
 (custom/<owner>): a test install, not someone's real one.
 Run: .venv/bin/python -m tests.test_custom_e2e      or: CUSTOM_OWNER=anna .venv/bin/python -m tests.test_custom_e2e"""

@@ -5,7 +5,7 @@ While a question is open (the agent's latest reply to its owner in that room has
 in "?"; open for OPEN_QUESTION_S, for at most MAX_CANDIDATES messages), every message from the
 OWNER there that doesn't @mention or reply to someone else is offered to the agent as "this may
 answer your question". The agent decides. If it isn't for it, it answers exactly NO_REPLY and the
-bridge posts nothing. A real reply closes the question (or opens a new one if it asks again).
+agent adapter posts nothing. A real reply closes the question (or opens a new one if it asks again).
 Owner-only is unchanged: nobody else's message is ever offered.
 Mixed into bridge.Bridge (owner_id, user_id, open_questions).
 """
