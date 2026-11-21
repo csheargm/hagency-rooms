@@ -11,8 +11,8 @@ from unittest import mock
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-import connect_page
-import console
+from server import connect_page
+from server import console
 
 PUBLIC = "https://rooms.example.org"
 JS = connect_page.STATIC / "connect.js"
@@ -75,7 +75,7 @@ class Routes(unittest.IsolatedAsyncioTestCase):
     def test_every_entry_point_still_imports(self):
         """connect_page and console use each other: whichever is imported first, nothing breaks."""
         for first in ("console", "connect_page", "remote_agent", "panel"):
-            out = subprocess.run([sys.executable, "-c", f"import {first}; import console; console.routes(None, None)"],
+            out = subprocess.run([sys.executable, "-c", f"from server import {first}; from server import console; console.routes(None, None)"],
                                  capture_output=True, text=True, timeout=60, cwd=connect_page.ROOT)
             self.assertEqual(out.returncode, 0, f"import {first}: {out.stderr[-500:]}")
 

@@ -9,13 +9,13 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-import agent_kinds
-import pm_kinds
-import console
-import panel
-import registry
-import registry_removal
-import remote_agent
+from common import agent_kinds
+from common import pm_kinds
+from server import console
+from server import panel
+from common import registry
+from server import registry_removal
+from server import remote_agent
 from tests import test_more_agents_flows as flows
 from tests.test_more_agents_flows import CX, text
 

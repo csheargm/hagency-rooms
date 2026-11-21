@@ -6,9 +6,9 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("HAGENCY_AGENT", "anna-agent")
-import github  # noqa: E402
-import mcp_context  # noqa: E402
-import room_context  # noqa: E402
+from common import github  # noqa: E402
+from mcp_tools import mcp_context  # noqa: E402
+from adapters.agents import room_context  # noqa: E402
 
 
 def fake_api(events, status=None, sender=room_context.PM_ID):

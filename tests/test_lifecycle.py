@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import lifecycle
+from common import lifecycle
 
 
 class FakeClient:

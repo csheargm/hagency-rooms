@@ -7,8 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import panel
-import registry
+from server import panel
+from common import registry
 from tests import ROOT
 
 S = "bridge.localhost"

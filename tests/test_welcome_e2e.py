@@ -22,8 +22,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-import local_signup
-from setup_accounts import HS, SERVER_NAME
+from common import local_signup
+from common.setup_accounts import HS, SERVER_NAME
 from tests.test_e2e import api, check, send, wait_reply
 from tests import ROOT
 

@@ -6,9 +6,9 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-import bridge
-import loop
-import voice
+from adapters.agents import bridge
+from server import loop
+from common import voice
 
 PM, ANNA, BETTY, BETTY_AGENT = "@pm:x", "@anna:x", "@betty:x", "@betty-agent:x"
 

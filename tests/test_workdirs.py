@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import hermes_profile
-import workdirs
+from adapters.agents import hermes_profile
+from adapters.agents import workdirs
 
 ROOM = "!gkon9:bridge.localhost"
 CODEX_ID, CLAUDE_ID = "0123abcd-codex", "4567efab-claude"

@@ -4,10 +4,10 @@ import time
 import unittest
 from unittest import mock
 
-import github
-import room_state
-import loop_progress
-from loop import Loop
+from common import github
+from common import room_state
+from server import loop_progress
+from server.loop import Loop
 
 AGENT = "@b-agent:x"
 
@@ -26,7 +26,7 @@ class Watchdog(unittest.TestCase):
         self.lp.say = mock.AsyncMock()
         self.lp.open_issues = {}
         self.lp.boards, self.lp.save_boards = {}, lambda: None
-        owners = mock.patch("ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
+        owners = mock.patch("server.ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
         owners.start()
         self.addCleanup(owners.stop)
         self.lp._seen = {}                            # nobody known offline
@@ -170,7 +170,7 @@ class AllDone(unittest.TestCase):
 class FastPoll(unittest.TestCase):
     def test_waiting_on_github_checks_every_few_seconds(self):
         """the owner: 30 seconds feels long once the automation runs."""
-        import loop
+        from server import loop
         lp = Loop.__new__(Loop)
         lp.room_repos = {}
         lp.busy, lp.state, ticks = set(), {"7": {"room": "!r", "repo": "your-name/hagency-hello", "stage": "approved"}}, []
@@ -192,7 +192,7 @@ class FastPoll(unittest.TestCase):
 class Kick(unittest.TestCase):
     def test_kick_runs_a_tick_now_instead_of_at_the_next_poll(self):
         """Seen live: after the owner's ✅ nothing visible happened for up to 30s."""
-        import loop
+        from server import loop
         lp = Loop.__new__(Loop)
         lp.room_repos = {}
         lp.busy, lp.state, ticks = set(), {}, []

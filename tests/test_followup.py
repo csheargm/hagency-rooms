@@ -9,9 +9,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import bridge
-import bridge_followup
-import workdirs
+from adapters.agents import bridge
+from adapters.agents import bridge_followup
+from adapters.agents import workdirs
 
 S = "bridge.localhost"
 ANNA, BETTY, AGENT = f"@anna:{S}", f"@betty:{S}", f"@anna-agent:{S}"

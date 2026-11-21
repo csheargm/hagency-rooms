@@ -8,10 +8,10 @@ from types import SimpleNamespace
 
 from nio import RoomGetStateEventResponse, RoomPutStateResponse, RoomSendResponse
 
-import project_rooms
-import room_state
-import status_board
-from status_board import Boards, render
+from server import project_rooms
+from common import room_state
+from server import status_board
+from server.status_board import Boards, render
 
 NOW = 1_000_000.0
 A = "@anna-hermes-agent:bridge.localhost"

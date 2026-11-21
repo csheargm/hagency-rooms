@@ -9,11 +9,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import console
-import pm_rename
-import registry
-import setup_accounts
-from loop import Loop
+from server import console
+from server import pm_rename
+from common import paths, registry
+from common import setup_accounts
+from server.loop import Loop
 from tests.test_remove_agent import BETTY, CX, PEOPLE, PM, use_registry
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,7 +46,7 @@ class Rename(unittest.TestCase):
         def admin_session():
             self.sessions += 1                    # one admin sign-in per rename (GPT re-check)
             yield admin_call
-        p = mock.patch("local_signup.admin_session", admin_session)
+        p = mock.patch("common.local_signup.admin_session", admin_session)
         p.start()
         self.addCleanup(p.stop)
 
@@ -141,10 +141,10 @@ class Rename(unittest.TestCase):
         """Only @pm's own name is ever set at start (setup_accounts), and only this module and that one
         write display names at all: no bridge, connect script or set-up names an agent."""
         self.assertEqual(set(setup_accounts.DISPLAY_NAMES), {"pm"})
-        writers = sorted(str(p.relative_to(ROOT)) for p in [*ROOT.glob("*.py"), *ROOT.glob("*.sh"), *ROOT.glob("*.ps1"),
+        writers = sorted(str(p.relative_to(ROOT)) for p in [*ROOT.glob("*.py"), *(p for d in paths.CODE_DIRS for p in (ROOT / d).rglob("*.py")), *ROOT.glob("*.sh"), *ROOT.glob("*.ps1"),
                                                               *ROOT.glob("static/*.js")]
                          if re.search(r"/displayname|\"displayname\":", p.read_text(encoding="utf-8")))
-        self.assertEqual(writers, ["pm_rename.py", "setup_accounts.py"])
+        self.assertEqual(writers, ["common/setup_accounts.py", "server/pm_rename.py"])
 
 
 if __name__ == "__main__":

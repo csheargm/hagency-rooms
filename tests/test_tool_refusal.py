@@ -1,7 +1,7 @@
 """The ⚠️ line under an agent's reply when a tool was refused: everyday words, the how-to on a docs page."""
 import unittest
 
-import tool_refusal
+from adapters.agents import tool_refusal
 from tests import ROOT
 
 

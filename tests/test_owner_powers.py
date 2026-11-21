@@ -9,10 +9,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import agents
-import bridge
-import tool_refusal
-import workdirs
+from adapters.agents import agents
+from adapters.agents import bridge
+from adapters.agents import tool_refusal
+from adapters.agents import workdirs
 from tests import ROOT
 
 CHAT = "--dangerously-skip-permissions; rm -rf ~ $(whoami)"     # chat text that must never reach argv
@@ -222,7 +222,7 @@ class LockedSessions(unittest.TestCase):
 
     def test_a_locked_turns_output_is_left_exactly_as_the_cli_gave_it(self):
         """A review's final VERDICT line (tasks.parse_verdict) must stay the last line."""
-        import tasks
+        from adapters.agents import tasks
         text, _ = self.turn(Path(tempfile.mkdtemp()), False,
                             {"result": "ok\nVERDICT: APPROVE", "permission_denials": [{"tool_name": "Bash"}]})
         self.assertEqual(tasks.parse_verdict(text), "APPROVE")
@@ -241,7 +241,7 @@ class LockedSessions(unittest.TestCase):
 
 class SecretSafe(unittest.TestCase):
     def test_a_whole_private_key_is_cut_not_just_its_header(self):
-        from redact import secret_safe
+        from common.redact import secret_safe
         pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk\n-----END OPENSSH PRIVATE KEY-----"
         self.assertEqual(secret_safe(f"here: {pem} done"), "here: <redacted> done")
         self.assertEqual(secret_safe("plain words, sk-short, AKIA"), "plain words, sk-short, AKIA")
@@ -252,7 +252,7 @@ class SecretSafe(unittest.TestCase):
 class LockedCallers(unittest.TestCase):
     def test_task_brain_and_code_change_turns_never_ask_for_owner_powers(self):
         """Loop builds/reviews/plans (tasks.py), @pm's brain and code changes run on untrusted text."""
-        for name in ("tasks.py", "pm_brain.py", "bridge_custom.py"):
+        for name in ("adapters/agents/tasks.py", "server/pm_brain.py", "adapters/agents/bridge_custom.py"):
             src = (ROOT / name).read_text()
             self.assertIn("run_turn(", src, name)
             self.assertNotIn("owner=", src, name)

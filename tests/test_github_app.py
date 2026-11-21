@@ -12,9 +12,9 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-import github
-import github_app
-import github_setup
+from common import github
+from common import github_app
+from server import github_setup
 from tests.fake_github_api import FakeGitHub
 
 APP_ID = "424242"
@@ -45,7 +45,7 @@ class AppCase(unittest.TestCase):
             p = mock.patch.object(github_app, name, value)
             p.start()
             self.addCleanup(p.stop)
-        p = mock.patch("github.ALLOWED_REPOS", frozenset({REPO, OTHER}))
+        p = mock.patch("common.github.ALLOWED_REPOS", frozenset({REPO, OTHER}))
         p.start()
         self.addCleanup(p.stop)
         self.fake.installations[REPO.lower()] = 7
@@ -195,7 +195,7 @@ class Fallback(unittest.TestCase):
     def test_unconfigured_reads_use_the_hosts_gh(self):
         with mock.patch.object(github_app, "APP_ID", ""), \
                 mock.patch.object(github, "run", mock.AsyncMock(return_value='[{"number": 1}]')) as run, \
-                mock.patch("github_app_reads.run_json", mock.AsyncMock()) as app:
+                mock.patch("common.github_app_reads.run_json", mock.AsyncMock()) as app:
             out = asyncio.run(github.run_json(["issue", "list", "-R", REPO, "--json", "number"]))
             self.assertTrue(asyncio.run(github_app.installed(REPO)))       # nothing to install
         self.assertEqual(out, [{"number": 1}])

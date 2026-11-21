@@ -9,10 +9,10 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-import console
-import fed_dns
-import fed_https
-import fed_openid
+from server import console
+from server import fed_dns
+from server import fed_https
+from server import fed_openid
 
 TOKEN = "s3cr3t-openid-token"
 ALICE = "@alice:matrix.org"

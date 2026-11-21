@@ -10,9 +10,9 @@ from unittest import mock
 
 from nio import RoomInviteResponse
 
-import ownership
-import registry
-from loop import Loop
+from server import ownership
+from common import registry
+from server.loop import Loop
 
 S = "bridge.localhost"
 ANNA, BETTY, CARL = f"@anna:{S}", f"@betty:{S}", f"@carl:{S}"
@@ -133,7 +133,7 @@ class FollowMe(Registry):
         self.assertEqual(self.invited, [])
 
     def test_changing_my_own_setting_in_words(self):
-        import pm_brain
+        from server import pm_brain
         self.lp.generation, self.lp.busy, self.lp.boards = {}, set(), {}
         with mock.patch.object(pm_brain, "BRAIN", "off"):
             ev = SimpleNamespace(sender=BETTY, body="@pm always bring my agent",

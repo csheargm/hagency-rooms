@@ -9,8 +9,8 @@ import subprocess
 import tempfile
 import unittest
 
-import panel
-import pm_github
+from server import panel
+from server import pm_github
 
 NODE = shutil.which("node")
 # The page runs signed in (a session from before), against a server that answers each view in turn.

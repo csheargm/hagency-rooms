@@ -12,13 +12,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import agent_kinds
-import console
-import console_personal
-import panel
-import pm_settings
-import registry
-from loop import Loop
+from common import agent_kinds
+from server import console
+from server import console_personal
+from server import panel
+from server import pm_settings
+from common import registry
+from server.loop import Loop
 
 S = "bridge.localhost"
 PM, ANNA, BETTY = f"@pm:{S}", f"@anna:{S}", f"@betty:{S}"
@@ -73,7 +73,7 @@ class MyHagency(unittest.TestCase):
         must not become a project panel then."""
         self.lp.boards, self.lp.board_file = {}, Path(tempfile.mkdtemp()) / "b.json"
         with mock.patch.object(panel, "add_to_room", mock.AsyncMock(return_value=True)), \
-                mock.patch("room_state.is_moderator", mock.AsyncMock(return_value=True)):
+                mock.patch("common.room_state.is_moderator", mock.AsyncMock(return_value=True)):
             asyncio.run(self.lp.ensure_panel("!dm"))
         self.lp.dm_rooms[ANNA] = "!newer"
         self.lp.client.rooms["!dm"].users[BETTY] = 0
@@ -92,7 +92,7 @@ class MyHagency(unittest.TestCase):
             added.append(rid)
             return True
         with mock.patch.object(panel, "add_to_room", add), \
-                mock.patch("room_state.is_moderator", mock.AsyncMock(return_value=True)):
+                mock.patch("common.room_state.is_moderator", mock.AsyncMock(return_value=True)):
             for rid in ("!dm", "!old", "!dm"):
                 asyncio.run(self.lp.ensure_panel(rid))
         self.assertEqual(added, ["!dm"])                                     # never the older chat; once

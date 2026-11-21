@@ -5,8 +5,8 @@ Run: .venv/bin/python -m unittest tests.test_welcome_words"""
 import unittest
 from pathlib import Path
 
-import agent_kinds
-import pm_first
+from common import agent_kinds
+from server import pm_first
 from tests import test_welcome as welcome
 
 HOME = Path(__file__).resolve().parent.parent / "deploy" / "element_page" / "home.html"

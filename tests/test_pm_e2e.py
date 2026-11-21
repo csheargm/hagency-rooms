@@ -13,8 +13,8 @@ import time
 import urllib.parse
 from pathlib import Path
 
-import github
-from setup_accounts import SERVER_NAME, load_env, login
+from common import github
+from common.setup_accounts import SERVER_NAME, load_env, login
 from tests.test_e2e import api, check, send, test_room
 from tests.test_loop_e2e import make_fake_github, wait_for
 from tests import ROOT

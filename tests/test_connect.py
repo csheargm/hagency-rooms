@@ -10,11 +10,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import bridge_config
-import connect
-import hermes_profile
-import registry
-import supervise
+from common import bridge_config
+from client import connect
+from adapters.agents import hermes_profile
+from common import registry
+from client import supervise
 from tests import ROOT
 
 CREDS = {"homeserver": "https://matrix.example.org", "user_id": "@newbie1-agent:example.org",
@@ -42,7 +42,7 @@ class Config(unittest.TestCase):
             bridge_config.load_credentials("/nonexistent/credentials.json")
 
     def test_a_bridge_started_with_the_file_uses_its_server_and_password(self):
-        code = ("import bridge, bridge_config as c; "
+        code = ("from adapters.agents import bridge; from common import bridge_config as c; "
                 "print(c.HOMESERVER, c.SERVER_NAME, bridge.Bridge('newbie1', 'codex').owner_id, c.agent_password('newbie1-agent'))")
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
                              cwd=ROOT, env={**os.environ, "HAGENCY_CREDENTIALS": write(CREDS)}).stdout
@@ -123,7 +123,7 @@ class ServerLeavesItAlone(unittest.TestCase):
     def test_people_who_signed_up_themselves_stay_out_of_setup(self):
         reg = Path(tempfile.mkdtemp()) / "agents.json"
         reg.write_text(json.dumps({"anna": {}, "newbie1": {"agent": "remote"}}))
-        code = "import setup_accounts as s; print(' '.join(s.USERS))"
+        code = "from common import setup_accounts as s; print(' '.join(s.USERS))"
         out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
                              cwd=ROOT, env={**os.environ, "HAGENCY_AGENTS": str(reg)}).stdout
         self.assertEqual(out.split(), ["anna", "anna-agent", "pm"])

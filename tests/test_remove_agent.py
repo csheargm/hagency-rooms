@@ -8,14 +8,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import agent_removal
-import console
-import matrix_calls
-import registry
-import registry_removal
-import remote_agent
-import setup_accounts
-from loop import Loop
+from server import agent_removal
+from server import console
+from common import matrix_calls
+from common import registry
+from server import registry_removal
+from server import remote_agent
+from common import setup_accounts
+from server.loop import Loop
 
 S = "bridge.localhost"
 CX, BETTY, PM = f"@cx:{S}", f"@betty:{S}", f"@pm:{S}"

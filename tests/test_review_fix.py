@@ -15,19 +15,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import agents
-import github
-import loop_progress
-import tasks
+from adapters.agents import agents
+from common import github
+from server import loop_progress
+from adapters.agents import tasks
 from tests import test_loop_e2e
-from loop import Loop
+from server.loop import Loop
 
 B, R = "@b-agent:x", "@r-agent:x"
 
 
 class Rounds(unittest.TestCase):
     def setUp(self):
-        owners = mock.patch("ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
+        owners = mock.patch("server.ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
         owners.start()
         self.addCleanup(owners.stop)
         self.lp = Loop.__new__(Loop)

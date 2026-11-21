@@ -2,7 +2,7 @@
 import unittest
 from types import SimpleNamespace
 
-from bridge import Bridge
+from adapters.agents.bridge import Bridge
 
 ANNA, BETTY, MALLORY = "@anna:bridge.localhost", "@betty:bridge.localhost", "@mallory:bridge.localhost"
 AGENT, OTHER_AGENT = "@anna-agent:bridge.localhost", "@betty-agent:bridge.localhost"

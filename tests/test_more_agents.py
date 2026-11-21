@@ -10,14 +10,14 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import bridge_config
-import connect
-import identity
-import pairing
-import registry
-import remote_agent
-import remote_people
-from setup_accounts import AccountError
+from common import bridge_config
+from client import connect
+from common import identity
+from server import pairing
+from common import registry
+from server import remote_agent
+from server import remote_people
+from common.setup_accounts import AccountError
 from tests import ROOT
 
 S = "bridge.localhost"

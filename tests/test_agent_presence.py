@@ -10,16 +10,16 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import agent_removal
-import agent_service
-import connect
-import matrix_calls
-import pm_presence
-import registry
-import remote_agent
-import setup_accounts
-from loop import Loop
-from saved_dict import SavedDict
+from server import agent_removal
+from client import agent_service
+from client import connect
+from common import matrix_calls
+from server import pm_presence
+from common import registry
+from server import remote_agent
+from common import setup_accounts
+from server.loop import Loop
+from common.saved_dict import SavedDict
 
 S = "bridge.localhost"
 NEW, PM, AGENT = f"@newbie1:{S}", f"@pm:{S}", "newbie1-agent"
@@ -108,7 +108,7 @@ class WindowsTask(unittest.TestCase):
                 (home / "agent.pid").write_text("101\n")
 
     def test_one_name_for_the_task_everywhere(self):
-        import connect_win
+        from client import connect_win
         self.assertEqual(connect_win.task_name({"user_id": f"@{AGENT}:m.org"}), agent_service.windows_task(AGENT))
 
 

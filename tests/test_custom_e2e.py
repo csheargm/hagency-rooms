@@ -10,9 +10,9 @@ import subprocess
 import time
 from pathlib import Path
 
-import customize
-import registry
-from setup_accounts import SERVER_NAME, load_env, login
+from common import customize
+from common import registry
+from common.setup_accounts import SERVER_NAME, load_env, login
 from tests.test_e2e import api, check, send
 
 OWNER = os.environ.get("CUSTOM_OWNER", "betty")

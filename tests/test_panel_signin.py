@@ -9,8 +9,8 @@ import subprocess
 import tempfile
 import unittest
 
-import panel
-import project_rooms
+from server import panel
+from server import project_rooms
 
 # A stand-in for Element and the browser: the page's script runs unchanged; timers fire when told.
 HARNESS = r"""

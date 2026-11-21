@@ -9,12 +9,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import matrix_calls
-import pm_welcome
-import registry
-import remote_agent
-import room_state
-from loop import Loop
+from common import matrix_calls
+from server import pm_welcome
+from common import registry
+from server import remote_agent
+from common import room_state
+from server.loop import Loop
 
 S = "bridge.localhost"
 NEW, ANNA, PM = f"@newbie1:{S}", f"@anna:{S}", f"@pm:{S}"

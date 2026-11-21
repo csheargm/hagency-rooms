@@ -9,12 +9,12 @@ from unittest import mock
 
 os.environ.setdefault("HAGENCY_AGENT", "anna-hermes-agent")
 os.environ.setdefault("HAGENCY_ROOM", "!r:bridge.localhost")
-import bridge  # noqa: E402
-import customize  # noqa: E402
-import hermes_profile  # noqa: E402
-import mcp_core as core  # noqa: E402
-import mcp_custom  # noqa: E402
-import supervise  # noqa: E402
+from adapters.agents import bridge  # noqa: E402
+from common import customize  # noqa: E402
+from adapters.agents import hermes_profile  # noqa: E402
+from mcp_tools import mcp_core as core  # noqa: E402
+from mcp_tools import mcp_custom  # noqa: E402
+from client import supervise  # noqa: E402
 
 ANNA = "@anna:bridge.localhost"
 PRIVATE, SHARED = "!dm:bridge.localhost", "!lounge:bridge.localhost"

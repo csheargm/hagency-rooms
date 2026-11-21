@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import hermes_profile
-import registry
-import supervise
-import workdirs
+from adapters.agents import hermes_profile
+from common import registry
+from client import supervise
+from adapters.agents import workdirs
 
 
 class Supervisor(unittest.TestCase):
@@ -125,7 +125,7 @@ class HermesProfile(unittest.TestCase):
         import asyncio
         import os
         os.environ.setdefault("HAGENCY_AGENT", "anna-agent")     # mcp_core needs it at import
-        import mcp_web
+        from mcp_tools import mcp_web
         _, _, pcfg, lcfg = self.both()
         self.assertIn(f"{hermes_profile.LOOP_ONLY_ENV}: '1'", lcfg)
         self.assertNotIn(hermes_profile.LOOP_ONLY_ENV, pcfg)
@@ -162,7 +162,7 @@ class HermesProfile(unittest.TestCase):
     def test_set_repos_points_the_mcp_server_at_this_runs_repos(self):
         """Seen live: Hermes's MCP server didn't get LOOP_REPO and opened issues in the default repo.
         Now also the allowed repos (HAGENCY_REPOS), and only checked owner/name values reach the YAML."""
-        import github
+        from common import github
         cfg = self.profile / "config.yaml"
         for allowed in ({"me/project-a"}, {"me/project-b", "me/c", "x'\n  evil: 1"}):
             with mock.patch.object(github, "REPO", sorted(allowed)[0]), \

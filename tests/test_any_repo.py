@@ -5,11 +5,11 @@ required, and HAGENCY_REPOS, when set, still restricts. Each refusal names the o
 import asyncio
 from unittest import mock
 
-import github
-import github_app
-import github_link
-import repo_refusals
-import room_state
+from common import github
+from common import github_app
+from server import github_link
+from server import repo_refusals
+from common import room_state
 from tests.test_github_app_flows import ANNA
 from tests.test_github_link import ANNA_ID, BindCase
 
@@ -69,7 +69,7 @@ class AnyRepo(BindCase):
 
     def test_an_agents_process_reads_what_pm_bound(self):
         """An agent's process (no App settings, no list) reads @pm's binding through room_context."""
-        import room_context
+        from adapters.agents import room_context
         event = {"sender": room_context.PM_ID, "content": room_state.content("off", ANY)}
         with mock.patch.object(github_app, "APP_ID", ""), mock.patch.object(room_context, "api", return_value=event):
             self.assertEqual(room_context.room_repo("tok", "!r"), ANY)

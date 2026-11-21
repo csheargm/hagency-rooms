@@ -8,7 +8,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from setup_accounts import HS, SERVER_NAME, TEST_ROOM_ALIAS, ensure_room, load_env, login
+from common.setup_accounts import HS, SERVER_NAME, TEST_ROOM_ALIAS, ensure_room, load_env, login
 
 REPLY_TIMEOUT_S = 300
 

@@ -5,9 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import github
-import tasks
-from bridge import Bridge
+from common import github
+from adapters.agents import tasks
+from adapters.agents.bridge import Bridge
 
 ANNA, BETTY = "@anna:bridge.localhost", "@betty:bridge.localhost"
 AGENT, BOT = "@anna-agent:bridge.localhost", f"@{github.PM_BOT}:bridge.localhost"
@@ -121,10 +121,10 @@ class TaskRules(unittest.TestCase):
 
 class LoopResults(unittest.TestCase):
     def setUp(self):
-        owners = mock.patch("ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
+        owners = mock.patch("server.ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
         owners.start()
         self.addCleanup(owners.stop)
-        import loop
+        from server import loop
         self.lp = loop.Loop.__new__(loop.Loop)
         self.lp.room_repos = {"!r": "your-name/hagency-hello"}
         self.lp.level = mock.AsyncMock(return_value="autonomous")   # dispatch checks the mode
@@ -165,7 +165,7 @@ class LoopResults(unittest.TestCase):
         self.assertEqual(self.deliver("@b-agent:x", {"kind": "build", "issue": 7, "error": "x"}), "reviewing")
 
     def test_stale_events_dropped(self):
-        from lifecycle import is_stale
+        from common.lifecycle import is_stale
         self.assertTrue(is_stale(SimpleNamespace(server_timestamp=1_000), 100_000))
         self.assertFalse(is_stale(SimpleNamespace(server_timestamp=99_000), 100_000))
 
@@ -173,7 +173,7 @@ class LoopResults(unittest.TestCase):
 class AlreadyDone(unittest.TestCase):
     """An issue the builder found nothing to change for: a second agent must confirm before closing."""
     def setUp(self):
-        import loop
+        from server import loop
         self.lp = loop.Loop.__new__(loop.Loop)
         self.lp.room_repos = {"!r": "your-name/hagency-hello"}
         self.lp.level = mock.AsyncMock(return_value="autonomous")   # dispatch checks the mode
@@ -182,7 +182,7 @@ class AlreadyDone(unittest.TestCase):
         self.lp.say = mock.AsyncMock()
         self.lp.agents_in = lambda room: ["@b-agent:x", "@r-agent:x"]
         self.item = self.lp.state["7"]
-        owners = mock.patch("ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
+        owners = mock.patch("server.ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
         owners.start()
         self.addCleanup(owners.stop)
         self.lp._seen = {}                            # nobody known offline

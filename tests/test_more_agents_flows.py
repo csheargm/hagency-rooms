@@ -10,15 +10,15 @@ from unittest import mock
 
 from nio import RoomInviteResponse
 
-import agent_removal
-import console
-import matrix_calls
-import pm_agents
-import pm_presence
-import registry
-import remote_agent
-import room_state
-from loop import Loop
+from server import agent_removal
+from server import console
+from common import matrix_calls
+from server import pm_agents
+from server import pm_presence
+from common import registry
+from server import remote_agent
+from common import room_state
+from server.loop import Loop
 
 S = "bridge.localhost"
 CX, BETTY, PM = f"@cx:{S}", f"@betty:{S}", f"@pm:{S}"
@@ -246,7 +246,7 @@ class FollowAndConsole(Base):
         self.lp._seen = {"cx-codex-agent": {"online": True}}
         with mock.patch.object(room_state, "repo_of", mock.AsyncMock(return_value=None)), \
                 mock.patch.object(room_state, "discussion_of", mock.AsyncMock(return_value=False)), \
-                mock.patch("project_rooms.visibility", mock.AsyncMock(return_value="private")), \
+                mock.patch("server.project_rooms.visibility", mock.AsyncMock(return_value="private")), \
                 mock.patch.object(room_state, "is_moderator", mock.AsyncMock(return_value=False)):
             v = asyncio.run(console.view(self.lp, "!r", CX))
         mine = {a["name"]: a for a in v["agents"]}

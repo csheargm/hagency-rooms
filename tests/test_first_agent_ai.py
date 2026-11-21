@@ -9,12 +9,12 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-import console
-import console_agents
-import pm_first
-import pm_kinds
-import registry
-import remote_agent
+from server import console
+from server import console_agents
+from server import pm_first
+from common import pm_kinds
+from common import registry
+from server import remote_agent
 from tests import test_kind_flow as kind_flow
 from tests import test_panel_cards as cards
 from tests.test_more_agents_flows import S, text

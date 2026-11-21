@@ -10,8 +10,8 @@ import subprocess
 import tempfile
 import unittest
 
-import console
-import panel
+from server import console
+from server import panel
 
 NODE = shutil.which("node")
 ELEMENT = "https://element.example"

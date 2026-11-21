@@ -8,11 +8,11 @@ from unittest import mock
 
 from nio import RoomInviteError, RoomInviteResponse, RoomKickResponse
 
-import matrix_calls
-import pm_joining
-import pm_lobby
-import pm_welcome
-import project_rooms
+from common import matrix_calls
+from server import pm_joining
+from server import pm_lobby
+from server import pm_welcome
+from server import project_rooms
 from tests.test_projects import ANNA, BETTY, PM, REPO, S, Base, project
 
 NEW = f"@newbie1:{S}"

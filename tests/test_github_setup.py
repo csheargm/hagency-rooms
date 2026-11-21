@@ -3,8 +3,8 @@ import asyncio
 import unittest
 from unittest import mock
 
-import github_setup
-from github_setup import evaluate
+from server import github_setup
+from server.github_setup import evaluate
 
 GATED = [{"type": "pull_request", "parameters": {"required_approving_review_count": 1}}]
 OK = {"anna-agent": {"login": "a", "push": True}, "betty-agent": {"login": "b", "push": True}}

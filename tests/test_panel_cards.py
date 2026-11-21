@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import unittest
 
-import panel
+from server import panel
 
 NODE = shutil.which("node")
 

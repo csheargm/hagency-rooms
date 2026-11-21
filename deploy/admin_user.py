@@ -16,9 +16,9 @@ import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))      # /app: @pm's own modules
-import local_signup  # noqa: E402
-import setup_accounts  # noqa: E402
-from bridge_config import SERVER_NAME  # noqa: E402
+from common import local_signup  # noqa: E402
+from common import setup_accounts  # noqa: E402
+from common.bridge_config import SERVER_NAME  # noqa: E402
 
 NAME_RE = re.compile(r"^[a-z0-9]{2,24}$")
 MIN_PASSWORD = 12

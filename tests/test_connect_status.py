@@ -13,12 +13,12 @@ from unittest import mock
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-import agent_kinds
-import connect_page
-import connect_status
-import pairing
-import registry
-import remote_agent
+from common import agent_kinds
+from server import connect_page
+from server import connect_status
+from server import pairing
+from common import registry
+from server import remote_agent
 
 JS = connect_page.STATIC / "connect.js"
 NODE = shutil.which("node")

@@ -9,15 +9,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import console
-import github_app
-import github_link
-import pm_github
-import pm_settings
-import repo_refusals
-import project_rooms
-import room_state
-from loop import Loop
+from server import console
+from common import github_app
+from server import github_link
+from server import pm_github
+from server import pm_settings
+from server import repo_refusals
+from server import project_rooms
+from common import room_state
+from server.loop import Loop
 from tests.test_github_app import OTHER, REPO, AppCase
 from tests.test_github_app_flows import ANNA, PM, BindingSetup
 
@@ -233,7 +233,7 @@ class BindCase(BindingSetup):
     def setUp(self):
         super().setUp()
         links = Path(tempfile.mkdtemp()) / "github-links.json"
-        for target, value in (("pm_settings.may_write", REAL_MAY_WRITE), ("github_link.link_of", REAL_LINK_OF)):
+        for target, value in (("server.pm_settings.may_write", REAL_MAY_WRITE), ("server.github_link.link_of", REAL_LINK_OF)):
             p = mock.patch(target, value)
             p.start()
             self.addCleanup(p.stop)

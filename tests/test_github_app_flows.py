@@ -7,13 +7,13 @@ from unittest import mock
 
 from nio import RoomPutStateResponse
 
-import github
-import github_app
-import pm_brain
-import pm_settings
-import repo_refusals
-import room_state
-from loop import Loop
+from common import github
+from common import github_app
+from server import pm_brain
+from server import pm_settings
+from server import repo_refusals
+from common import room_state
+from server.loop import Loop
 from tests.test_github_app import OTHER, REPO, AppCase, issue
 
 PM, ANNA = "@pm:bridge.localhost", "@anna:bridge.localhost"
@@ -99,8 +99,8 @@ class BindingSetup(AppCase):
             p = mock.patch.object(target, name, value)
             p.start()
             self.addCleanup(p.stop)
-        for target, value in (("pm_settings.may_write", lambda user, repo: asyncio.sleep(0, True)),
-                              ("github_link.link_of", lambda user: {"login": "anna", "id": 1})):   # connected
+        for target, value in (("server.pm_settings.may_write", lambda user, repo: asyncio.sleep(0, True)),
+                              ("server.github_link.link_of", lambda user: {"login": "anna", "id": 1})):   # connected
             p = mock.patch(target, value)
             p.start()
             self.addCleanup(p.stop)
@@ -118,7 +118,7 @@ class BindingSetup(AppCase):
             self.repo = room_state.repo_in(content)
             return RoomPutStateResponse("$s", room_id)
         lp.say, lp.client = say, SimpleNamespace(room_put_state=put_state, rooms={})
-        v = mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=False))   # pm_projects.py
+        v = mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=False))   # pm_projects.py
         v.start()
         self.addCleanup(v.stop)
         for name, fn in (("is_moderator", lambda c, r, u: asyncio.sleep(0, u == ANNA)),
@@ -184,7 +184,7 @@ class Binding(BindingSetup):
             return True
 
         async def flow():
-            with mock.patch("pm_settings.may_write", may_write):
+            with mock.patch("server.pm_settings.may_write", may_write):
                 await self.lp.set_repo(self.room, ANNA, OTHER)
                 _, waiting = self.lp.install_watches["!r"]
                 slow["on"] = True

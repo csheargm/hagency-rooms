@@ -9,11 +9,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import bridge_config
-import hermes_local
-import hermes_profile
-import supervise
-import workdirs
+from common import bridge_config
+from client import hermes_local
+from adapters.agents import hermes_profile
+from client import supervise
+from adapters.agents import workdirs
 
 CREDS = {"homeserver": "https://matrix.example.org", "user_id": "@newbie1-agent:example.org",
          "password": "s3cret-pw", "owner": "newbie1", "agent": "hermes"}

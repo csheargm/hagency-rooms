@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import agents
-import cli_path
-import connect
+from adapters.agents import agents
+from adapters.agents import cli_path
+from client import connect
 
 # npm's cmd-shim output, as `npm i -g @openai/codex` writes it (its last line is what matters).
 CODEX_SHIM = r'''@ECHO off

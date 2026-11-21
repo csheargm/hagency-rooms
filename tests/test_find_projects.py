@@ -8,8 +8,8 @@ from unittest import mock
 
 from nio import RoomInviteResponse, RoomKickResponse
 
-import pm_find
-import project_rooms
+from server import pm_find
+from server import project_rooms
 from tests.test_projects import ANNA, PM, S, Base, project
 
 NEW = f"@newbie1:{S}"
@@ -40,7 +40,7 @@ class FindAndAsk(Base):
             self.members[(rid, ANNA)], self.mods[rid] = "join", {ANNA}
         self.lp.addressed_text = lambda event, room=None: event.body
         self.lp.client.room_invite = mock.AsyncMock(return_value=RoomInviteResponse())
-        p = mock.patch("project_rooms.repo_is_private", lambda repo: asyncio.sleep(0, repo == "a/secret-one"))
+        p = mock.patch("server.project_rooms.repo_is_private", lambda repo: asyncio.sleep(0, repo == "a/secret-one"))
         p.start()
         self.addCleanup(p.stop)
 
