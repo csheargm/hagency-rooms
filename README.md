@@ -90,6 +90,11 @@ for http://localhost:8649/#/register.
 
 ## Developers
 
+Code lives by where it runs (docs/adr/0011-repo-layout.md): `server/` (@pm, console, panel),
+`client/` (connect and the background service on people's computers), `adapters/agents/` (the agent
+adapter that links an AI to the rooms), `common/` (shared), `mcp_tools/`. The `*.py` files at the root
+are launchers under the names installed agents and the docs use (`python bridge.py`, `connect.py`…).
+
 | What | Where |
 |---|---|
 | Synapse homeserver | http://localhost:8648 (server name `bridge.localhost`, Docker, 127.0.0.1 only) |

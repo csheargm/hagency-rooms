@@ -9,13 +9,13 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-import github_app
-import github_link
-import panel
-import pm_github
-import pm_settings
-import repo_refusals
-import room_state
+from common import github_app
+from server import github_link
+from server import panel
+from server import pm_github
+from server import pm_settings
+from server import repo_refusals
+from common import room_state
 from tests.test_github_app import OTHER, REPO
 from tests.test_github_app_flows import PM
 from tests.test_github_link import ANNA, ANNA_ID, BindCase, LinkCase, message

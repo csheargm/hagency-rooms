@@ -13,10 +13,10 @@ import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))      # /app: @pm's own modules
-import setup_accounts  # noqa: E402
-from bridge_config import ROOT, SERVER_NAME  # noqa: E402
-from github import PM_BOT  # noqa: E402
-from setup_accounts import api  # noqa: E402
+from common import setup_accounts  # noqa: E402
+from common.bridge_config import ROOT, SERVER_NAME  # noqa: E402
+from common.github import PM_BOT  # noqa: E402
+from common.setup_accounts import api  # noqa: E402
 
 ROOM_FILE = ROOT / "data" / "alerts.json"
 

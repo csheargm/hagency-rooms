@@ -9,9 +9,9 @@ from unittest import mock
 
 os.environ.setdefault("HAGENCY_AGENT", "anna-hermes-agent")
 os.environ.setdefault("HAGENCY_ROOM", "!r:bridge.localhost")
-import bridge  # noqa: E402
-import mcp_core as core  # noqa: E402
-import mcp_web  # noqa: E402
+from adapters.agents import bridge  # noqa: E402
+from mcp_tools import mcp_core as core  # noqa: E402
+from mcp_tools import mcp_web  # noqa: E402
 
 
 class PlainAnswer(unittest.TestCase):

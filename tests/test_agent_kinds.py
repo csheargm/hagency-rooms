@@ -12,11 +12,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import agent_kinds
-import agents
-import codex_provider
-import ollama_local
-import owner_cli
+from common import agent_kinds
+from adapters.agents import agents
+from adapters.agents import codex_provider
+from client import ollama_local
+from adapters.agents import owner_cli
 from tests import ROOT
 
 KEY = "sk-test-0123456789abcdef"

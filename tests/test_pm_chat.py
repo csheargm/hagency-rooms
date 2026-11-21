@@ -8,11 +8,11 @@ from unittest import mock
 
 from nio import RoomGetStateResponse, RoomPutStateResponse
 
-import github
-import intents
-import pm_brain
-import room_state
-from loop import Loop
+from common import github
+from common import intents
+from server import pm_brain
+from common import room_state
+from server.loop import Loop
 
 ANNA, BETTY = "@anna:bridge.localhost", "@betty:bridge.localhost"     # anna owns the room
 PM = f"@{github.PM_BOT}:bridge.localhost"
@@ -91,7 +91,7 @@ class Talk(unittest.TestCase):
 
     def test_go_back_to_the_official_bridge(self):
         """Through @pm (official code), so it works even when Betty's own version is broken."""
-        with mock.patch("customize.go_back", return_value=True) as back:
+        with mock.patch("common.customize.go_back", return_value=True) as back:
             self.tell(BETTY, "@pm go back to the official bridge")
         back.assert_called_once_with("betty")
         self.assertIn("going back to the official version", self.said[-1])

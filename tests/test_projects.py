@@ -10,12 +10,12 @@ from unittest import mock
 
 from nio import RoomGetStateResponse, RoomPutStateResponse
 
-import github
-import pm_projects
-import project_rooms
-import registry
-import room_state
-from loop import Loop
+from common import github
+from server import pm_projects
+from server import project_rooms
+from common import registry
+from common import room_state
+from server.loop import Loop
 
 S = "bridge.localhost"
 PM, ANNA, BETTY = f"@pm:{S}", f"@anna:{S}", f"@betty:{S}"
@@ -94,9 +94,9 @@ class RoomPerRepo(Base):
         self.a, self.b = project("!a", "Alpha"), project("!b", "Beta")
         self.lp.client.rooms = {"!a": self.a, "!b": self.b}
         self.bind("!a")
-        for target, value in (("pm_settings.may_write", mock.AsyncMock(return_value=True)),
-                              ("github_app.installed", mock.AsyncMock(return_value=True)),
-                              ("project_rooms.repo_is_private", mock.AsyncMock(return_value=True))):
+        for target, value in (("server.pm_settings.may_write", mock.AsyncMock(return_value=True)),
+                              ("common.github_app.installed", mock.AsyncMock(return_value=True)),
+                              ("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True))):
             q = mock.patch(target, value)
             q.start()
             self.addCleanup(q.stop)
@@ -227,7 +227,7 @@ class VisibilitySetup(Base):
         self.room = project("!a", "Alpha")
         self.lp.client.rooms = {"!a": self.room}
         self.members[("!a", ANNA)], self.members[("!a", BETTY)], self.mods["!a"] = "join", "join", {ANNA}
-        self.private = mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=False))
+        self.private = mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=False))
         self.private.start()
         self.addCleanup(self.private.stop)
 
@@ -245,7 +245,7 @@ class Visibility(VisibilitySetup):
     def test_only_moderators_and_never_open_on_a_private_repo(self):
         self.assertIn("Only the room owner", run(self.lp.set_visibility(self.room, BETTY, "open")))
         self.bind("!a")
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             self.assertEqual(run(self.lp.set_visibility(self.room, ANNA, "open")), project_rooms.NOT_OPEN)
             self.assertTrue(run(self.lp.set_visibility(self.room, ANNA, "listed")).startswith("This room is now listed"))
         self.assertNotIn("public", json.dumps(self.state["!a"]["m.room.join_rules"][0]))
@@ -253,7 +253,7 @@ class Visibility(VisibilitySetup):
     def test_an_open_room_is_closed_before_a_private_repo_is_bound(self):
         """GPT review: by its real join rule (not my record), and no bind if closing fails."""
         self.state["!a"] = {"m.room.join_rules": ({"join_rule": "public"}, ANNA)}   # set by hand in Element
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             refused, note = run(self.lp.close_for_private("!a", REPO))
             self.assertIsNone(refused)
             self.assertIn("now listed instead of open", note)
@@ -312,7 +312,7 @@ class Visibility(VisibilitySetup):
     def test_a_private_repos_room_never_has_public_history(self):
         self.bind("!a")
         self.state["!a"]["m.room.history_visibility"] = ({"history_visibility": "world_readable"}, ANNA)
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             run(self.lp.set_visibility(self.room, ANNA, "listed"))
             self.assertEqual(self.state["!a"]["m.room.history_visibility"][0], {"history_visibility": "shared"})
             self.state["!a"]["m.room.history_visibility"] = ({"history_visibility": "world_readable"}, ANNA)
@@ -321,9 +321,9 @@ class Visibility(VisibilitySetup):
 
     def test_unreadable_repos_count_as_private(self):
         self.private.stop()
-        with mock.patch("github.run_json", mock.AsyncMock(side_effect=github.GitHubError("no"))):
+        with mock.patch("common.github.run_json", mock.AsyncMock(side_effect=github.GitHubError("no"))):
             self.assertTrue(run(project_rooms.repo_is_private(REPO)))
-        with mock.patch("github.run_json", mock.AsyncMock(return_value={"private": False})):
+        with mock.patch("common.github.run_json", mock.AsyncMock(return_value={"private": False})):
             self.assertFalse(run(project_rooms.repo_is_private(REPO)))
         self.private.start()
 
@@ -333,7 +333,7 @@ class MakeAndFind(Base):
         self.lp.client.room_create = mock.AsyncMock(return_value=SimpleNamespace(room_id="!new"))
         origin = project("!o", "Lobby")
         self.lp.addressed_text = lambda event, room=None: event.body
-        with mock.patch("panel.add_to_room", mock.AsyncMock(return_value=True)) as panel:
+        with mock.patch("server.panel.add_to_room", mock.AsyncMock(return_value=True)) as panel:
             ok = run(self.lp.on_project_text(origin, SimpleNamespace(sender=ANNA, body="make me a project room called Rocket")))
         self.assertTrue(ok)
         kw = self.lp.client.room_create.call_args.kwargs
@@ -351,7 +351,7 @@ class MakeAndFind(Base):
         self.lp.addressed_text = lambda event, room=None: event.body
         registry.PATH.write_text(json.dumps({"anna": {"agent": "hermes"}, "betty": {"agent": registry.REMOTE}}))
         self.lp._seen = {}
-        with mock.patch("panel.add_to_room", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.panel.add_to_room", mock.AsyncMock(return_value=True)):
             for who in (ANNA, BETTY):
                 run(self.lp.on_project_text(project("!o", "Lobby"), SimpleNamespace(sender=who, body="make me a project room")))
             self.lp._seen = {registry.agents_of(BETTY)[0]["localpart"]: {"ever": True}}
@@ -368,14 +368,14 @@ class MakeAndFind(Base):
 
 class Panel(VisibilitySetup):
     def test_the_panel_switch_goes_through_the_same_checks_and_says_it_in_the_room(self):
-        import console
+        from server import console
         self.lp.is_person = lambda room, user: True
         self.assertTrue(run(console.act(self.lp, "!a", ANNA, "visibility", "listed")).startswith("This room is now listed"))
         self.assertEqual(self.said[-1][0], "!a")
         self.assertIn("Only the room owner", run(console.act(self.lp, "!a", BETTY, "visibility", "open")))
 
     def test_the_panel_shows_where_a_discussion_rooms_repo_is_run(self):
-        import console
+        from server import console
         self.lp.client.rooms["!b"] = project("!b", "Beta")
         self.bind("!b", runs_in="!a")
         shown = run(console.runs_in(self.lp, "!b", ANNA))

@@ -11,15 +11,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import agent_removal
-import github_link
-import ownership
-import pairing
-import panel
-import registry
-import registry_removal
-import remote_agent
-import remote_people
+from server import agent_removal
+from server import github_link
+from server import ownership
+from server import pairing
+from server import panel
+from common import registry
+from server import registry_removal
+from server import remote_agent
+from server import remote_people
 from tests.test_github_link import ANNA, ANNA_ID
 from tests.test_github_link_more import BindRaceCase
 from tests.test_github_app import OTHER

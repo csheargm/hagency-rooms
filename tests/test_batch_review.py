@@ -13,14 +13,14 @@ from unittest import mock
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-import agent_kinds
-import connect_page
-import connect_status
-import pairing
-import project_rooms
-import pm_unbind
-import registry
-import remote_agent
+from common import agent_kinds
+from server import connect_page
+from server import connect_status
+from server import pairing
+from server import project_rooms
+from server import pm_unbind
+from common import registry
+from server import remote_agent
 from tests import test_remove_agent as removal
 from tests import test_remove_repo as repos
 from tests import test_more_agents_flows as flows
@@ -117,11 +117,11 @@ class RemoveRepoEdges(repos.Setup):
         self.assertIn(f"**{repos.REPO}**", self.ask(self.b, binding))      # the ✅ question, not "no repo"
 
     def test_a_private_repos_room_never_becomes_open_after(self):
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             self.assertEqual(asyncio.run(self.lp.remove_repo(self.a, repos.ANNA, repos.REPO)), pm_unbind.DONE)
         self.assertEqual(self.state["!a"][project_rooms.PRIVATE_PAST_EVENT][0], {"private": True})
         with mock.patch.object(project_rooms, "apply", mock.AsyncMock(return_value=None)) as applied, \
-                mock.patch("room_address.follow", mock.AsyncMock(return_value="")):
+                mock.patch("server.room_address.follow", mock.AsyncMock(return_value="")):
             self.assertEqual(asyncio.run(self.lp.set_visibility(self.a, repos.ANNA, "open")), project_rooms.NOT_OPEN_PAST)
             applied.assert_not_called()
             self.assertIn("listed", asyncio.run(self.lp.set_visibility(self.a, repos.ANNA, "listed")))   # still allowed
@@ -155,7 +155,7 @@ class Pages(unittest.TestCase):
         self.assertTrue(mac.endswith("ABCDE-FGHJK --agent hermes"))
 
     def test_the_panel_hint_names_what_pm_resends_by(self):
-        import panel
+        from server import panel
         import re
         esc = re.search(r"^const esc = .*$", panel.PAGE, re.M).group(0)
         source = "\n".join([esc, "const cap = t => t;", panel.SCRIPTS["panel-agents.js"].read_text()])
@@ -172,7 +172,7 @@ class SwitchFromPrivate(repos.Setup):
     def test_switching_from_a_private_repo_keeps_the_room_from_opening(self):
         """GPT review (any repo): the marker was set on removal only, not when another repo replaced it."""
         private = mock.AsyncMock(side_effect=lambda r: r == repos.REPO)
-        with mock.patch("project_rooms.repo_is_private", private):
+        with mock.patch("server.project_rooms.repo_is_private", private):
             self.assertIn("now works on **a/public-one**", asyncio.run(self.lp.bind("!a", "a/public-one")))
             self.assertEqual(self.state["!a"][project_rooms.PRIVATE_PAST_EVENT][0], {"private": True})
             self.assertTrue(asyncio.run(project_rooms.had_private_repo(self.lp.client, "!a")))

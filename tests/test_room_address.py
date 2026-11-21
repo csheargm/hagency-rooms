@@ -8,8 +8,8 @@ import urllib.parse
 from types import SimpleNamespace
 from unittest import mock
 
-import project_rooms
-import room_address
+from server import project_rooms
+from server import room_address
 from tests.test_projects import ANNA, PM, S, Base, project
 
 
@@ -46,7 +46,7 @@ class Address(Base):
                     return SimpleNamespace(status=404)
             return SimpleNamespace(status=200)
         self.lp.client.send = send
-        self.private = mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=False))
+        self.private = mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=False))
         self.private.start()
         self.addCleanup(self.private.stop)
 
@@ -74,7 +74,7 @@ class Address(Base):
     def test_a_private_repos_name_is_never_in_the_address(self):
         self.room.display_name = "Secret One tracker"
         self.bind("!a", "a/secret-one")
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             answer = run(self.lp.set_visibility(self.room, ANNA, "listed"))
         self.assertIn(f"#project:{S}", answer)
         self.assertNotIn("secret", json.dumps(self.aliases))
@@ -135,7 +135,7 @@ class Address(Base):
         async def refuse_delete(method, path, body=None, headers=None, timeout=None):
             return reply(403, {}) if method == "DELETE" else await self.lp_send(method, path, body, headers, timeout)
         self.lp_send, self.lp.client.send = self.lp.client.send, refuse_delete
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             refused, _ = run(self.lp.close_for_private("!a", "a/secret-one"))
         self.assertIn("I haven't set the repo", refused)
 
@@ -144,7 +144,7 @@ class Address(Base):
         self.room.display_name = "secret-one"
         run(self.lp.set_visibility(self.room, ANNA, "listed"))
         self.assertEqual(self.canonical(), f"#secret-one:{S}")
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             self.assertEqual(run(self.lp.close_for_private("!a", "a/secret-one")), (None, ""))
         self.assertEqual(self.canonical(), f"#project:{S}")
         self.assertNotIn("secret", json.dumps(self.aliases))
@@ -183,7 +183,7 @@ class Address(Base):
             if room_id == "!z":
                 raise OSError("connection reset")
             return await real(client, room_id, strict)
-        with mock.patch("project_rooms.visibility", visibility), self.assertLogs("loop", "ERROR"):
+        with mock.patch("server.project_rooms.visibility", visibility), self.assertLogs("loop", "ERROR"):
             run(self.lp.give_addresses())
         self.assertEqual(self.canonical(), f"#final-project:{S}")
 
@@ -191,7 +191,7 @@ class Address(Base):
         self.room.display_name = "Secret One tracker"
         self.bind("!a", "a/secret-one")
         self.listed_before()
-        with mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=True)):
             run(self.lp.give_addresses())
         self.assertEqual(self.canonical(), f"#project:{S}")
         self.assertNotIn("secret", json.dumps(self.aliases))

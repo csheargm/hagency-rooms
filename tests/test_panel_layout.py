@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 from nio import RoomPutStateResponse
 
-import panel
-import project_rooms
-from loop import Loop
+from server import panel
+from server import project_rooms
+from server.loop import Loop
 
 PM = "@pm:bridge.localhost"
 WIDGET = {"type": "m.custom", "url": panel.widget_url(), "name": "Hagency", "id": "hagency"}

@@ -16,17 +16,17 @@ from unittest import mock
 
 from nio import RoomPutStateError, RoomPutStateResponse
 
-import agent_stop
-import bridge
-import bridge_voice
-import console
-import console_personal
-import matrix_calls
-import panel
-import pm_stop
-import registry
-import workdirs
-from loop import Loop
+from adapters.agents import agent_stop
+from adapters.agents import bridge
+from adapters.agents import bridge_voice
+from server import console
+from server import console_personal
+from common import matrix_calls
+from server import panel
+from server import pm_stop
+from common import registry
+from adapters.agents import workdirs
+from server.loop import Loop
 
 S = "bridge.localhost"
 ANNA, AGENT, PM = f"@anna:{S}", f"@anna-agent:{S}", f"@pm:{S}"
@@ -251,7 +251,7 @@ class OwnerStopsAndStartsTheirAgent(unittest.TestCase):
         self.lp.client.rooms = {"!r": room}
         self.lp.is_person = lambda r, u: u == ANNA
         self.lp.private_room = mock.AsyncMock(return_value="!dm")
-        with mock.patch("project_rooms.is_front_door", return_value=False), \
+        with mock.patch("server.project_rooms.is_front_door", return_value=False), \
                 mock.patch.object(console_personal, "refusal", return_value=None):
             self.assertEqual(asyncio.run(console.act(self.lp, "!r", ANNA, "start", "", "anna-agent")), "ok")
         self.lp.set_stopped.assert_awaited_once_with("!dm", ANNA, "anna-agent", False)

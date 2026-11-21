@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import server_admins
-from saved_dict import SavedDict
+from server import server_admins
+from common.saved_dict import SavedDict
 
 
 class Admins(unittest.TestCase):

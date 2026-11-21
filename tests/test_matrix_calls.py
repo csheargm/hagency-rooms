@@ -8,7 +8,7 @@ from unittest import mock
 
 from nio import AsyncClient
 
-import matrix_calls
+from common import matrix_calls
 
 
 class FakeResponse:

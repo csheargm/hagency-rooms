@@ -15,11 +15,11 @@ from unittest import mock
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-import agent_kinds
-import console
-import pairing
-import registry_removal
-import remote_agent
+from common import agent_kinds
+from server import console
+from server import pairing
+from server import registry_removal
+from server import remote_agent
 from tests import test_connect_kinds as on_computer
 from tests import test_more_agents_flows as flows
 from tests.test_more_agents_flows import CX, text
@@ -131,7 +131,7 @@ class ThePanelPicker(KindFlow):
 
     def test_pm_checks_with_the_computers_rules_not_a_copy(self):
         """R3: one list and one set of checks (agent_kinds); @pm accepts exactly what connect.py will."""
-        import pm_kinds
+        from common import pm_kinds
         self.assertFalse({"KINDS", "MODEL_RE", "LOCAL_HOSTS", "URL_MAX"} & set(vars(pm_kinds)))
         self.assertIs(pm_kinds.FIELDS, agent_kinds.OFFER_KEYS)
         for url in ("https://x.example/v1", "http://localhost:1234/v1", "http://example.com/v1", "https://u:p@x.example",

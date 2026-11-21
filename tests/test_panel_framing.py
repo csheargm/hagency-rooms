@@ -12,9 +12,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import bridge_config
-import connect_page
-import panel
+from common import bridge_config
+from server import connect_page
+from server import panel
 from tests.test_panel_signin import HARNESS
 
 ROOT = Path(__file__).resolve().parent.parent

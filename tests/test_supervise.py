@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-import supervise
+from client import supervise
 
 
 class Ownership(unittest.TestCase):

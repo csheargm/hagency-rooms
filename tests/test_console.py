@@ -8,9 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import console
-import registry
-import room_state
+from server import console
+from common import registry
+from common import room_state
 
 S = "bridge.localhost"
 ANNA, BETTY, MALLORY = f"@anna:{S}", f"@betty:{S}", f"@mallory:{S}"
@@ -131,7 +131,7 @@ class Actions(unittest.TestCase):
             p2 = mock.patch.object(room_state, name, fn)
             p2.start()
             self.addCleanup(p2.stop)
-        v = mock.patch("project_rooms.visibility", lambda c, rid: asyncio.sleep(0, "private"))   # pm_projects.py
+        v = mock.patch("server.project_rooms.visibility", lambda c, rid: asyncio.sleep(0, "private"))   # pm_projects.py
         v.start()
         self.addCleanup(v.stop)
 

@@ -8,11 +8,11 @@ from types import SimpleNamespace
 from unittest import mock
 
 os.environ.setdefault("HAGENCY_AGENT", "anna-agent")
-import agents  # noqa: E402
-import intents  # noqa: E402
-import mcp_core as core  # noqa: E402
-import mcp_web  # noqa: E402
-from loop import Loop  # noqa: E402
+from adapters.agents import agents  # noqa: E402
+from common import intents  # noqa: E402
+from mcp_tools import mcp_core as core  # noqa: E402
+from mcp_tools import mcp_web  # noqa: E402
+from server.loop import Loop  # noqa: E402
 
 S = "bridge.localhost"
 ANNA, BETTY, AGENT = f"@anna:{S}", f"@betty:{S}", f"@anna-agent:{S}"
@@ -60,7 +60,7 @@ class WebTools(unittest.TestCase):
             self.assertIn("can't tell which room", asyncio.run(mcp_web.fetch_page("https://example.com"))["error"])
 
     def test_never_this_machine_or_its_network(self):
-        import safe_fetch
+        from common import safe_fetch
         for url in ("http://localhost:8648/_synapse/admin/v1/users", "http://127.0.0.1:8650/data", "http://2130706433/",
                     "http://[::ffff:127.0.0.1]/", "http://[::1]/", "http://192.168.1.1/", "http://224.0.0.1/",
                     "http://169.254.169.254/latest/meta-data", "file:///etc/passwd"):
@@ -70,7 +70,7 @@ class WebTools(unittest.TestCase):
     def test_each_hop_connects_to_the_address_that_was_checked(self):
         """GPT review 8: the check and the connection resolved the name separately (DNS rebinding).
         Now _one_hop resolves once and connects to that exact IP; a redirect hop is resolved anew."""
-        import safe_fetch
+        from common import safe_fetch
         connected = []
 
         class Conn:

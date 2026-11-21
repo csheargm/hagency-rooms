@@ -9,12 +9,12 @@ from unittest import mock
 
 from nio import RoomSendResponse
 
-import console
-import github
-import pm_settings
-import pm_unbind
-import room_context
-import room_state
+from server import console
+from common import github
+from server import pm_settings
+from server import pm_unbind
+from adapters.agents import room_context
+from common import room_state
 from tests.test_projects import ANNA, BETTY, PM, REPO, Base, project, run
 
 SURE = f"sure:{REPO}"                         # the page's second click names the repo it showed
@@ -26,9 +26,9 @@ class Setup(Base):
         self.a, self.b = project("!a", "Alpha"), project("!b", "Beta")
         self.lp.client.rooms = {"!a": self.a, "!b": self.b}
         self.bind("!a")
-        for target, value in (("pm_settings.may_write", mock.AsyncMock(return_value=True)),
-                              ("github_app.installed", mock.AsyncMock(return_value=True)),
-                              ("project_rooms.repo_is_private", mock.AsyncMock(return_value=False))):
+        for target, value in (("server.pm_settings.may_write", mock.AsyncMock(return_value=True)),
+                              ("common.github_app.installed", mock.AsyncMock(return_value=True)),
+                              ("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=False))):
             q = mock.patch(target, value)
             q.start()
             self.addCleanup(q.stop)
@@ -155,7 +155,7 @@ class RemoveRepo(Setup):
 
     def test_a_listed_room_keeps_its_address_rules(self):
         self.state["!a"]["xyz.hagencylabs.visibility"] = ({"visibility": "listed"}, PM)
-        with mock.patch("room_address.follow", mock.AsyncMock(return_value="")) as follow:
+        with mock.patch("server.room_address.follow", mock.AsyncMock(return_value="")) as follow:
             run(console.act(self.lp, "!a", ANNA, "unrepo", SURE))
         follow.assert_awaited_once_with(self.lp.client, "!a", True, "Alpha", None)
 

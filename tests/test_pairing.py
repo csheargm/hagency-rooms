@@ -9,11 +9,11 @@ from unittest import mock
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-import console
-import pairing
-import registry
-import remote_agent
-import setup_accounts
+from server import console
+from server import pairing
+from common import registry
+from server import remote_agent
+from common import setup_accounts
 
 
 def tmp() -> Path:

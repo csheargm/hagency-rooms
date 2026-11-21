@@ -9,10 +9,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import ownership
-import registry
-import routing
-from loop import Loop
+from server import ownership
+from common import registry
+from server import routing
+from server.loop import Loop
 
 S = "bridge.localhost"
 CX, BETTY = f"@cx:{S}", f"@betty:{S}"

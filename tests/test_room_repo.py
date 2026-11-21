@@ -7,20 +7,20 @@ from unittest import mock
 
 from nio import RoomPutStateResponse
 
-import console
-import github_setup
-import intents
-import pm_brain
-import room_state
-from loop import Loop
-from loop_progress import migrate
-from pm_settings import NO_REPO
-import repo_refusals
+from server import console
+from server import github_setup
+from common import intents
+from server import pm_brain
+from common import room_state
+from server.loop import Loop
+from server.loop_progress import migrate
+from server.pm_settings import NO_REPO
+from server import repo_refusals
 
 PM, ANNA, BETTY = "@pm:bridge.localhost", "@anna:bridge.localhost", "@betty:bridge.localhost"
 HELLO = "your-name/hagency-hello"
 _LISTED = frozenset({HELLO, "octocat/other", "a/x", "b/y"})   # an operator list set (HAGENCY_REPOS)
-_allowed = (mock.patch("github.ALLOWED_REPOS", _LISTED), mock.patch("github.OPERATOR_REPOS", _LISTED))
+_allowed = (mock.patch("common.github.ALLOWED_REPOS", _LISTED), mock.patch("common.github.OPERATOR_REPOS", _LISTED))
 
 
 def setUpModule():
@@ -64,7 +64,7 @@ class Parsing(unittest.TestCase):
 
     def test_old_numeric_keys_move_under_their_repo(self):
         old = {"7": {"room": "!r", "stage": "done"}, "x/y#3": {"room": "!s", "repo": "x/y", "stage": "done"}}
-        with mock.patch("github.REPO", HELLO):
+        with mock.patch("common.github.REPO", HELLO):
             new = migrate(old)
         self.assertEqual(set(new), {f"{HELLO}#7", "x/y#3"})
         self.assertEqual(new[f"{HELLO}#7"]["repo"], HELLO)
@@ -82,7 +82,7 @@ class SetRepo(unittest.TestCase):
         self.lp.plans, self.lp.last_plans, self.lp.lock, self.lp.install_watches = {}, {}, asyncio.Lock(), {}
         self.lp.kick = lambda: None
         self.can_write = True                  # the requester's agent's GitHub access to the repo
-        q = mock.patch("pm_settings.may_write", lambda user, repo: asyncio.sleep(0, self.can_write))
+        q = mock.patch("server.pm_settings.may_write", lambda user, repo: asyncio.sleep(0, self.can_write))
         q.start()
         self.addCleanup(q.stop)
         self.lp.level = mock.AsyncMock(return_value="off")
@@ -97,7 +97,7 @@ class SetRepo(unittest.TestCase):
             return RoomPutStateResponse("$s", room_id)
         self.lp.say = say
         self.lp.client = SimpleNamespace(room_put_state=put_state, rooms={})
-        v = mock.patch("project_rooms.repo_is_private", mock.AsyncMock(return_value=False))   # pm_projects.py
+        v = mock.patch("server.project_rooms.repo_is_private", mock.AsyncMock(return_value=False))   # pm_projects.py
         v.start()
         self.addCleanup(v.stop)
         for name, fn in (("is_moderator", lambda c, r, u: asyncio.sleep(0, u == ANNA)),
@@ -168,7 +168,7 @@ class SetRepo(unittest.TestCase):
     def test_without_power_pm_says_how_to_fix_it(self):
         """Seen live: in a room someone made, @pm joined at power 0 and showed a raw M_FORBIDDEN."""
         from nio import RoomPutStateError
-        from pm_settings import NEED_POWER
+        from server.pm_settings import NEED_POWER
 
         async def refused(room_id, kind, content):
             return RoomPutStateError("You don't have permission", "M_FORBIDDEN")
@@ -188,7 +188,7 @@ class SetRepo(unittest.TestCase):
 class Polling(unittest.TestCase):
     def test_one_unreadable_repo_never_stops_the_other_rooms(self):
         """Seen live: rooms left by the e2e tests on a fake repo made every tick fail, for every room."""
-        import github
+        from common import github
         lp = Loop.__new__(Loop)
         lp.room_repos, lp.state, lp.open_issues = {}, {}, {}
         lp.client = SimpleNamespace(rooms={"!a": None, "!b": None})
@@ -218,8 +218,8 @@ class OldRepoWork(unittest.TestCase):
         """None == None must not pass: the MCP claim needs a bound repo."""
         import os
         os.environ.setdefault("HAGENCY_AGENT", "anna-hermes-agent")
-        import mcp_core as core
-        import room_context
+        from mcp_tools import mcp_core as core
+        from adapters.agents import room_context
         t = {"task_id": "T", "kind": "build", "issue": 7, "_room": "!r"}            # no repo in the task either
         with mock.patch.object(core, "task", lambda task_id, kind: t), \
                 mock.patch.object(core, "owner_in", lambda room: True), \
@@ -233,7 +233,7 @@ class OldRepoWork(unittest.TestCase):
 class RemoteUsers(unittest.TestCase):
     def test_a_same_named_user_from_another_server_has_no_access(self):
         """GPT review 11: @anna:elsewhere was checked against our anna's agent."""
-        import pm_settings
+        from server import pm_settings
         with mock.patch.object(pm_settings.github_setup, "identity", mock.AsyncMock(return_value={"push": True})), \
                 mock.patch.object(pm_settings.registry, "owner_of", lambda agent: f"@anna:{pm_settings.registry.SERVER_NAME}"):
             self.assertFalse(asyncio.run(pm_settings.may_write("@anna:elsewhere.org", HELLO)))
@@ -284,7 +284,7 @@ class ConsoleRepo(unittest.TestCase):
 class Allowlist(unittest.TestCase):
     """GPT-style check: a room anyone can create must not become a window into any repo the host's gh sees."""
     def test_only_the_operators_repos(self):
-        import github
+        from common import github
         with mock.patch.object(github, "ALLOWED_REPOS", frozenset({HELLO})), \
                 mock.patch.object(github, "OPERATOR_REPOS", frozenset({HELLO})):
             self.assertEqual(github.allowed_repo("Your-Name/Hagency-Hello"), HELLO)    # GitHub ignores case

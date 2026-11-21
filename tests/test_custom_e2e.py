@@ -10,9 +10,9 @@ import subprocess
 import time
 from pathlib import Path
 
-import customize
-import registry
-from setup_accounts import SERVER_NAME, load_env, login
+from common import customize
+from common import registry
+from common.setup_accounts import SERVER_NAME, load_env, login
 from tests.test_e2e import api, check, send
 
 OWNER = os.environ.get("CUSTOM_OWNER", "betty")
@@ -71,7 +71,7 @@ def main() -> None:
     asked = send(token, room, REQUEST, AGENT)
     offer = wait_for(token, room, asked, "Your version is ready")
     check("the agent offers a changed version", True, offer["content"]["body"].splitlines()[0])
-    check("the official files are untouched", "📝 Transcript" in (customize.ROOT / "pm_voice.py").read_text())
+    check("the official files are untouched", "📝 Transcript" in (customize.ROOT / "server" / "pm_voice.py").read_text())
     if customize.why_not_use(OWNER):    # this computer runs other people's agents too: PR or discard only
         check("no 'Use it myself' on a shared computer", "Using it here isn't possible" in offer["content"]["body"])
         click(token, room, offer["event_id"], "🗑️")

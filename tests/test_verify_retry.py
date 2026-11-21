@@ -11,15 +11,15 @@ from unittest import mock
 
 os.environ.setdefault("HAGENCY_AGENT", "anna-hermes-agent")
 os.environ.setdefault("HAGENCY_ROOM", "!r:bridge.localhost")
-import github  # noqa: E402
-import hagency_mcp as m  # noqa: E402
-import intents  # noqa: E402
-import loop  # noqa: E402
-import mcp_core as core  # noqa: E402
-import mcp_verify  # noqa: E402
-import room_context  # noqa: E402
-import room_state  # noqa: E402
-import tasks  # noqa: E402
+from common import github  # noqa: E402
+from mcp_tools import hagency_mcp as m  # noqa: E402
+from common import intents  # noqa: E402
+from server import loop  # noqa: E402
+from mcp_tools import mcp_core as core  # noqa: E402
+from mcp_tools import mcp_verify  # noqa: E402
+from adapters.agents import room_context  # noqa: E402
+from common import room_state  # noqa: E402
+from adapters.agents import tasks  # noqa: E402
 from tests.test_hagency_mcp import task_event  # noqa: E402
 
 REPO = "your-name/hagency-hello"
@@ -85,7 +85,7 @@ class HermesVerifies(unittest.TestCase):
 
 class Retry(unittest.TestCase):
     def setUp(self):
-        owners = mock.patch("ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
+        owners = mock.patch("server.ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
         owners.start()
         self.addCleanup(owners.stop)
         self.lp = loop.Loop.__new__(loop.Loop)

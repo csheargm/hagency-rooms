@@ -14,11 +14,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import bridge
-import bridge_custom
-import customize
-import registry
-import supervise
+from adapters.agents import bridge
+from adapters.agents import bridge_custom
+from common import customize
+from common import registry
+from client import supervise
 
 BETTY, AGENT, ANNA = "@betty:x", "@betty-agent:x", "@anna:x"
 PASSING = "import unittest\nclass T(unittest.TestCase):\n    def test_ok(self):\n        self.assertTrue(True)\n"
@@ -143,6 +143,13 @@ class PrivateCopy(Sandbox):
             asyncio.run(customize.use("betty", sha))
         with mock.patch.dict("os.environ", {"HAGENCY_CUSTOM_SHARED_OK": "1"}):    # the operator opts in
             self.assertIsNone(customize.why_not_use("betty"))
+
+    def test_moved_code_and_package_init_files_get_the_red_flag(self):
+        """ADR 0011: code now sits in packages. A package's __init__.py runs on every import and
+        common/paths.py says where the repo is, so both are flagged; moved files keep their flag."""
+        changed = ["adapters/agents/bridge.py", "server/__init__.py", "common/paths.py", "bridge.py",
+                   "server/pm_find.py"]
+        self.assertEqual(customize.sensitive(changed), changed[:4])
 
     def test_a_chosen_version_stops_running_when_the_opt_in_is_withdrawn(self):
         """GPT review 20: the shared-computer check ran only when choosing, not at each launch."""

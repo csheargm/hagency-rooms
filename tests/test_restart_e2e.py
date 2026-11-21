@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from tests import test_loop_e2e
-from setup_accounts import SERVER_NAME, load_env, login
+from common.setup_accounts import SERVER_NAME, load_env, login
 from tests.test_e2e import api, check, test_room
 from tests.test_loop_e2e import make_fake_github, say, wait_for
 from tests import ROOT
@@ -50,7 +50,7 @@ def main():
         ts = int(time.time() * 1000)
         say(anna, room_id, "@anna-agent reply with just the word ALPHA")
         time.sleep(2)
-        os.utime(ROOT / "lifecycle.py")                 # "save" a code file
+        os.utime(ROOT / "common" / "lifecycle.py")      # "save" a code file in a package (ADR 0011)
         time.sleep(1.5)
         say(anna, room_id, "@anna-agent reply with just the word BRAVO")
         deadline = time.time() + 300

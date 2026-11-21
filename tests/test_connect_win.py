@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import connect_win
+from client import connect_win
 
 CREDS = {"homeserver": "https://matrix.example.org", "user_id": "@anna-agent:matrix.example.org",
          "password": "s3cret-pw", "owner": "anna", "agent": "claude"}

@@ -3,8 +3,8 @@ for (pm_github.start_github). Run: .venv/bin/python -m unittest tests.test_githu
 import asyncio
 import unittest
 
-import console
-import github_link
+from server import console
+from server import github_link
 from tests.test_github_link import ANNA, ANNA_ID, LinkCase, message
 
 STILL_RE = r"^The GitHub code I sent above still works for 1[45] more minutes: enter it at https://"

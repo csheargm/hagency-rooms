@@ -8,8 +8,8 @@ from unittest import mock
 
 from nio import LoginError, LoginResponse
 
-import lifecycle
-import setup_accounts
+from common import lifecycle
+from common import setup_accounts
 
 LIMITED = {"_status": 429, "errcode": "M_LIMIT_EXCEEDED", "retry_after_ms": 2000}
 

@@ -6,10 +6,10 @@ from unittest import mock
 
 from nio import RoomGetStateResponse
 
-import github
-import room_state
-import planning
-from loop import Loop
+from common import github
+from common import room_state
+from adapters.agents import planning
+from server.loop import Loop
 
 ANNA, BETTY = "@anna:bridge.localhost", "@betty:bridge.localhost"
 ANNA_AGENT, BETTY_AGENT = "@anna-agent:bridge.localhost", "@betty-agent:bridge.localhost"

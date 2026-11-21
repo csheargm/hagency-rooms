@@ -12,10 +12,10 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-import agent_service
-import codex_provider
-import connect
-import connect_kinds
+from client import agent_service
+from adapters.agents import codex_provider
+from client import connect
+from client import connect_kinds
 
 KEY = "sk-live-do-not-leak-42"
 SIGN_IN = {"homeserver": "https://matrix.example.org", "user_id": "@newbie1-agent:example.org",

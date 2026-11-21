@@ -6,10 +6,10 @@ from unittest import mock
 
 os.environ.setdefault("HAGENCY_AGENT", "anna-hermes-agent")
 os.environ.setdefault("HAGENCY_ROOM", "!r:bridge.localhost")
-import github  # noqa: E402
-import hagency_mcp as m  # noqa: E402
-import mcp_core as core  # noqa: E402
-import room_context  # noqa: E402
+from common import github  # noqa: E402
+from mcp_tools import hagency_mcp as m  # noqa: E402
+from mcp_tools import mcp_core as core  # noqa: E402
+from adapters.agents import room_context  # noqa: E402
 
 ME, BOT = core.USER_ID, core.PM_ID
 _patches = [mock.patch.object(core, "owner_in", lambda room: True),   # owner present unless a test says not
@@ -128,7 +128,7 @@ class Trust(unittest.TestCase):
         """GPT review 10: open_issues called planning.file_issues without the repo (TypeError)."""
         self.events([task_event("F", "file_issues", items=[{"title": "x"}], approved_by="anna")])
         filed = mock.AsyncMock(return_value=[11])
-        with mock.patch.object(m.planning if hasattr(m, "planning") else __import__("planning"), "file_issues", filed):
+        with mock.patch.object(m.planning if hasattr(m, "planning") else __import__("adapters.agents.planning", fromlist=["planning"]), "file_issues", filed):
             out = asyncio.run(m.open_issues("F"))
         self.assertEqual(out["done"], "opened #11")
         self.assertEqual(filed.await_args.args[-1], github.REPO)
@@ -145,7 +145,7 @@ class Trust(unittest.TestCase):
 class RoomSafe(unittest.TestCase):
     def test_local_paths_never_reach_the_room(self):
         from pathlib import Path
-        from redact import room_safe
+        from common.redact import room_safe
         text = room_safe(f"git failed: {Path.home()}/work/x and /private/tmp/abc/y: denied")
         self.assertNotIn(str(Path.home()), text)
         self.assertNotIn("/private/tmp", text)

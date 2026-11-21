@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import agents
+from adapters.agents import agents
 
 
 class Argv(unittest.TestCase):

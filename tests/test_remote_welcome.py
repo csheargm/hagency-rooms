@@ -8,10 +8,10 @@ from unittest import mock
 
 from nio import JoinResponse
 
-import identity
-import registry
-import remote_people
-from loop import Loop
+from common import identity
+from common import registry
+from server import remote_people
+from server.loop import Loop
 from tests.test_remote_people import ALICE, EVE, S, use_registry
 
 PM = f"@pm:{S}"

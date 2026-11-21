@@ -20,9 +20,9 @@ import time
 import urllib.parse
 from pathlib import Path
 
-import hermes_profile
+from adapters.agents import hermes_profile
 from tests import test_loop_e2e
-from setup_accounts import (BOTS, SERVER_NAME, add_bot, api, load_env, login, register, save_env)
+from common.setup_accounts import (BOTS, SERVER_NAME, add_bot, api, load_env, login, register, save_env)
 from tests.test_e2e import check, send, wait_reply
 from tests.test_loop_e2e import make_fake_github, say, wait_for
 from tests import ROOT

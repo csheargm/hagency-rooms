@@ -5,13 +5,13 @@ import asyncio
 from types import SimpleNamespace
 from unittest import mock
 
-import agent_removal
-import console
-import github_link
-import registry
-import remote_agent
-import setup_accounts
-import supervise
+from server import agent_removal
+from server import console
+from server import github_link
+from common import registry
+from server import remote_agent
+from common import setup_accounts
+from client import supervise
 from tests.test_github_link import ANNA, ANNA_ID, LinkCase
 from tests.test_more_agents_flows import BETTY, Base, text
 from tests.test_remove_agent import use_registry

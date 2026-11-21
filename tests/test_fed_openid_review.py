@@ -9,10 +9,10 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-import console
-import fed_dns
-import fed_https
-import fed_openid
+from server import console
+from server import fed_dns
+from server import fed_https
+from server import fed_openid
 from tests.test_fed_openid import ALICE, PUBLIC, USERINFO, WELL_KNOWN, World, check
 
 SHORT = 0.4
@@ -26,7 +26,7 @@ class Base(unittest.TestCase):
         fed_https._own_by_name.clear()
         self.addCleanup(fed_https._own.__setitem__, slice(None), [0.0, ()])
         self.addCleanup(fed_https._own_by_name.clear)
-        import setup_accounts                 # this server's name as the tests' World knows it (CI has no .env)
+        from common import setup_accounts                 # this server's name as the tests' World knows it (CI has no .env)
         p = mock.patch.object(setup_accounts, "SERVER_NAME", "bridge.localhost")
         p.start()
         self.addCleanup(p.stop)

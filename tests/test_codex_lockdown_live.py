@@ -7,7 +7,7 @@ import re
 import tempfile
 from pathlib import Path
 
-import agents
+from adapters.agents import agents
 from tests.test_e2e import check
 
 FORBIDDEN = re.compile(r"mcp__|gmail|drive|calendar|outlook|notion|computer|browser|web__|cua_|node_repl", re.I)

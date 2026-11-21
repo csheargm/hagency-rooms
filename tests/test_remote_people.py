@@ -9,14 +9,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import bridge_config
-import connect
-import identity
-import registry
-import remote_agent
-import remote_people
-import setup_accounts
-from bridge import Bridge
+from common import bridge_config
+from client import connect
+from common import identity
+from common import registry
+from server import remote_agent
+from server import remote_people
+from common import setup_accounts
+from adapters.agents.bridge import Bridge
 
 S = "bridge.localhost"
 ALICE, EVE, ANNA = "@alice:matrix.org", "@alice:evil.org", f"@anna:{S}"
