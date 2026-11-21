@@ -24,6 +24,7 @@ from nio import AsyncClient, LoginResponse, SyncError, SyncResponse
 HANDOFF_DIR = Path(os.environ.get("HANDOFF_DIR", Path(__file__).parent / "rooms" / ".handoff"))
 DRAIN_TIMEOUT_S = 1200           # agent turn limit (600 s) plus its gh/git calls
 HANDOFF_MAX_AGE_S = DRAIN_TIMEOUT_S + 300   # older hand-offs are ignored: treat it as a cold start
+CLOCK_SKEW_MS = 5_000            # tolerance when dropping events from before startup
 SYNC_SLACK_MS = 60_000           # events since the token are at most one long-poll older than it
 
 log = logging.getLogger("lifecycle")
@@ -164,3 +165,8 @@ async def serve(client: AsyncClient, name: str, point: SyncPoint, busy: set[asyn
         log.info("%s finishing %d running task(s) before restart", name, len(busy))
         await asyncio.wait(busy, timeout=DRAIN_TIMEOUT_S)
     await client.close()
+
+
+def is_stale(event, started_ms: int) -> bool:
+    """An event from before this process started (a replay after a restart or a first sync)."""
+    return event.server_timestamp < started_ms - CLOCK_SKEW_MS

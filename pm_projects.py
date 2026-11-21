@@ -24,7 +24,7 @@ import project_rooms
 import registry
 import room_address
 import room_state
-from bridge import ROOT
+from bridge_config import ROOT
 from pm_find import FIND_RE, Finding
 from pm_joining import ASK, ASKED, Joining
 from pm_unbind import UNREPO_RE, RepoRemoval

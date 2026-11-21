@@ -21,7 +21,7 @@ import connect_page
 import pm_first
 import registry
 import remote_agent
-from bridge import ROOT
+from bridge_config import ROOT
 from pm_address import unaddressed
 from pm_rename import Renaming
 from redact import room_safe

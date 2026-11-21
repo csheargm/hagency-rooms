@@ -28,12 +28,11 @@ import room_state
 import tasks
 import workdirs
 
-from bridge_config import HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password, read_env  # noqa: F401 (loop.py reads read_env)
+from bridge_config import HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password
 TYPING_REFRESH_S = 20       # re-send typing before the 30s server timeout lapses
 TYPING_TIMEOUT_MS = 30_000
 MAX_REPLY_CHARS = 30_000
 MAX_CONCURRENT_TURNS = 3     # CLI processes per bridge across all rooms
-CLOCK_SKEW_MS = 5_000        # tolerance when dropping events from before startup
 
 log = logging.getLogger("bridge")
 
@@ -98,7 +97,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
                         "Please use an unencrypted room.")
 
     async def on_message(self, room: MatrixRoom, event: RoomMessageText) -> None:
-        if is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
+        if lifecycle.is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
             return   # pre-start replays, or handled by the previous process before a restart
         task = event.source.get("content", {}).get(github.TASK_KEY)
         if isinstance(task, dict):
@@ -273,10 +272,6 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
 def step_key(task: dict) -> tuple:
     """A loop step's identity across resends (each resend has a new task_id)."""
     return (str(task.get("repo")), task.get("kind"), str(task.get("issue")), str(task.get("pr")))
-
-
-def is_stale(event, started_ms: int) -> bool:
-    return event.server_timestamp < started_ms - CLOCK_SKEW_MS
 
 
 def main() -> None:

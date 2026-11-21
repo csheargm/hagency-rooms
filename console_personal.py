@@ -33,7 +33,7 @@ def is_dm(loop, room) -> bool:
 def had_panel(loop) -> dict:
     """room → person: every chat My Hagency was put in (on disk: kept when @pm makes a newer chat)."""
     if "_personal_chats" not in loop.__dict__:
-        from bridge import ROOT
+        from bridge_config import ROOT
         from saved_dict import SavedDict
         loop._personal_chats = SavedDict(ROOT / "data" / "personal-chats.json")
     return loop._personal_chats

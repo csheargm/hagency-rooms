@@ -13,7 +13,7 @@ from nio import MatrixRoom, RoomMessageAudio
 
 import intents
 import voice
-from bridge import is_stale
+from lifecycle import is_stale
 
 log = logging.getLogger("loop")
 NAMED_PM = re.compile(r"^\W*((hey|hi|hello|ok(ay)?)\W+)?(p\.?\s?m\.?|product manager)(?=[\s,.:;!?]|$)\W*", re.I)

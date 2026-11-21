@@ -18,7 +18,7 @@ import time
 from nio import MatrixRoom, ReactionEvent, RoomInviteResponse, RoomKickResponse
 
 import room_state
-from bridge import ROOT
+from bridge_config import ROOT
 from project_rooms import plain
 from saved_dict import SavedDict
 

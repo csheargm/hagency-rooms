@@ -14,7 +14,8 @@ import ownership
 import pm_settings
 import registry
 import room_state
-from bridge import SERVER_NAME, is_stale
+from bridge_config import SERVER_NAME
+from lifecycle import is_stale
 from pm_chat import CONFIRM_S
 
 log = logging.getLogger("loop")

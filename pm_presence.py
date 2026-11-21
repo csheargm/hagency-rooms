@@ -19,7 +19,7 @@ from nio import MatrixRoom, ReactionEvent
 import matrix_calls
 import registry
 import remote_agent
-from bridge import ROOT, SERVER_NAME
+from bridge_config import ROOT, SERVER_NAME
 from pm_remove import Removal
 from pm_stop import StopStart
 from saved_dict import SavedDict

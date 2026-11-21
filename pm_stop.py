@@ -14,7 +14,7 @@ from nio import RoomPutStateResponse
 import matrix_calls
 import registry
 from agent_stop import STOP_TYPE, switch_key
-from bridge import SERVER_NAME
+from bridge_config import SERVER_NAME
 from local_signup import WELCOME_ALIAS
 
 log = logging.getLogger("loop")

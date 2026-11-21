@@ -21,7 +21,7 @@ import urllib.request
 
 import github
 import github_app
-from bridge import ROOT
+from bridge_config import ROOT
 from saved_dict import SavedDict
 
 log = logging.getLogger("loop")

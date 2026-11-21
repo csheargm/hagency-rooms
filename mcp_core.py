@@ -14,7 +14,7 @@ import github
 import registry
 import room_context
 import tasks
-from bridge import ROOT, SERVER_NAME
+from bridge_config import ROOT, SERVER_NAME
 from redact import room_safe
 from bridge_config import agent_password
 from setup_accounts import api, login

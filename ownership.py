@@ -4,7 +4,7 @@ a DIFFERENT person than the builder. The mapping comes from registry.py (onboard
 from nio import MatrixRoom
 
 import registry
-from bridge import SERVER_NAME
+from bridge_config import SERVER_NAME
 
 
 def split(user_id: str) -> tuple[str, str]:
