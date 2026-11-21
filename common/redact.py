@@ -3,6 +3,7 @@ CLIs often include absolute paths (user names, folder layout). Everything posted
 or a tool's output goes through room_safe() first; the full text stays in the local log.
 An agent's own reply goes through secret_safe(): it runs with its owner's full CLI (it can read
 their files), so anything shaped like a credential, and the bridge's own token, is cut out."""
+import html
 import re
 from pathlib import Path
 
@@ -26,3 +27,9 @@ def secret_safe(text: object, *secrets: str) -> str:
     for secret in secrets:
         out = out.replace(secret, REDACTED) if secret else out
     return CREDENTIAL_RE.sub(REDACTED, out)
+
+
+def markup_safe(text: object) -> str:
+    """Issue titles and reasons come from issue authors and agents: never let them become markup
+    (the status board and @pm's messages are rendered as HTML in Element and in the side panel)."""
+    return html.escape(" ".join(str(text).split()), quote=False).replace("[", "&#91;").replace("*", "&#42;")

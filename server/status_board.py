@@ -7,7 +7,6 @@ edits the message only when the text changed, so idle rooms aren't flooded with 
 
 Mixed into loop.Loop (which supplies client, state, level, open_issues and STATE_FILE's folder).
 """
-import html
 import json
 import logging
 import os
@@ -18,7 +17,8 @@ import markdown
 from nio import RoomGetStateEventResponse, RoomSendResponse
 
 from common import github
-from server.loop_progress import num
+from common.redact import markup_safe as safe
+from server.pm_paused import num
 from server import console_personal
 from server import panel
 from server import pm_settings
@@ -32,12 +32,6 @@ STEP_WORDS = {"building": "building", "reviewing": "reviewing", "fixing": "fixin
               "ready": "ready — a person merges", "merging": "merging", "merge_sent": "merging",
               "verifying": "checking it's already done", "confirmed_done": "confirmed already done",
               "close_ready": "already done — a person closes", "closing": "closing", "close_sent": "closing"}
-
-
-def safe(text: object) -> str:
-    """Issue titles and reasons come from issue authors and agents: never let them become markup
-    (the board is rendered as HTML in Element and in the side panel)."""
-    return html.escape(" ".join(str(text).split()), quote=False).replace("[", "&#91;").replace("*", "&#42;")
 
 
 def ago(seconds: float) -> str:
@@ -69,8 +63,10 @@ def render(items: dict, level: str, queued: list[dict], now: float, repo: str = 
                for k, v in sorted(recent, key=lambda kv: num(kv[0])) if v["stage"] == "stopped"]
     if done:
         lines += ["", "**Done (last 24 h)**", "", *done]
-    if stopped:
-        lines += ["", "**Needs a person**", "", *stopped]
+    if stopped:                       # screen test: "needs a person", but not what a person can do
+        first = min(num(k) for k, v in recent if v["stage"] == "stopped")
+        lines += ["", "**Needs a person**", "", *stopped, "", f"To go on: say **@pm retry #{first}** to try again "
+                  "(make the issue clearer on GitHub first if it was unclear), or do it yourself and close it."]
     return "\n".join(lines)
 
 

@@ -11,6 +11,8 @@ from nio import MatrixRoom
 from adapters.agents import agents
 from common import github
 from common import room_state
+from common.redact import markup_safe as safe
+from server.pm_paused import next_steps, num  # noqa: F401 - num: other modules import it from here
 
 log = logging.getLogger("loop")
 
@@ -26,17 +28,6 @@ STEP_TIMEOUT_S = float(os.environ.get("LOOP_STEP_TIMEOUT_S", agents.TURN_TIMEOUT
 GITHUB_WAIT_S = float(os.environ.get("LOOP_GITHUB_WAIT_S", 900))
 MAX_SENDS = 2                    # first send + one resend, then a person takes over
 MAX_FIX_ROUNDS = 2               # times a builder revises its PR after "changes requested"
-
-
-def num(key: str) -> int:
-    """The issue number in a loop-state key ("owner/name#7" → 7)."""
-    return int(str(key).rsplit("#", 1)[-1])
-
-
-def next_steps(n: int) -> str:
-    """What a person can do about a paused issue, said every time one pauses."""
-    return (f"To go on, say **@pm retry #{n}**, or handle #{n} yourself on GitHub "
-            "(close it if it's already done).")
 
 
 def issue_key(repo: str, n: int) -> str:
@@ -189,8 +180,14 @@ class Progress:
     async def stop(self, room_id: str, key: str, item: dict, why: str) -> bool:
         item.update(stage="stopped", why=why)
         self.save()
-        await self.say(room_id, f"⏸ #{num(key)} is paused: {why}. {next_steps(num(key))}")
+        await self.say(room_id, f"⏸ #{num(key)} is paused: {safe(why).rstrip('.')}.\n\n{next_steps(num(key), item.get('agent'))}")
         return True
+
+    async def paused_here(self, rid: str) -> tuple[str | None, list[str]]:
+        """The room's repo, and its issues paused after an agent couldn't finish them (stage "stopped")."""
+        repo = self.room_repos.get(rid) or await room_state.repo_of(self.client, rid)
+        return repo, sorted((k for k, v in self.state.items() if v["room"] == rid and v.get("repo") == repo
+                             and v["stage"] == "stopped"), key=num)
 
     async def retry(self, room: MatrixRoom, sender: str, n: int | None) -> None:
         """"@pm retry #9": a paused issue goes back in the queue (owner or maintainer)."""
@@ -199,9 +196,7 @@ class Progress:
             await self.say(rid, "Only the room's owner or a maintainer can restart paused work.")
             return
         async with self.lock:                   # never between a poll and its results
-            repo = self.room_repos.get(rid) or await room_state.repo_of(self.client, rid)
-            paused = sorted((k for k, v in self.state.items() if v["room"] == rid and v.get("repo") == repo
-                             and v["stage"] == "stopped"), key=num)
+            repo, paused = await self.paused_here(rid)
             key = paused[0] if n is None and len(paused) == 1 else (issue_key(repo, n) if n and repo else None)
             if key not in paused:
                 listed = ", ".join(f"#{num(k)}" for k in paused)
@@ -209,14 +204,21 @@ class Progress:
                                if paused and n is None else
                                "Nothing is paused here." if not paused else f"#{n} isn't paused. Paused here: {listed}.")
                 return
-            pr = self.state[key].get("pr")
-            if pr and await self.pr_open(pr, repo):  # a fresh build would race it: one PR per issue
+            if pr := await self.requeue(key, repo):
                 await self.say(rid, f"PR #{pr} for #{num(key)} is still open. Merge or close it on GitHub, "
                                     f"then say \"@pm retry #{num(key)}\" again.")
                 return
-            del self.state[key]
-            self.save()
         await self.say(rid, f"OK, #{num(key)} goes back in the queue; I'll pick it up within a minute.")
+
+    async def requeue(self, key: str, repo: str) -> int | None:
+        """A paused issue back in the queue (call under self.lock), unless its PR is still open: a fresh
+        build would race it (one PR per issue). Returns that PR's number, else None."""
+        pr = self.state[key].get("pr")
+        if pr and await self.pr_open(pr, repo):
+            return pr
+        del self.state[key]
+        self.save()
+        return None
 
     async def pr_open(self, pr: int, repo: str) -> bool:
         try:

@@ -27,6 +27,7 @@ from server import panel
 from common.redact import room_safe
 from common import room_state
 from server.loop_progress import GITHUB_STAGES, Progress, migrate, num
+from server.pm_paused import failure  # TODO(R4): loop.py is over 300 lines; split the result handling (on_result) out
 from server.pm_chat import Chat
 from server.pm_settings import Settings
 from server.pm_follow import Follow
@@ -108,10 +109,10 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
 
     async def say(self, room_id: str, body: str, mention: str | None = None, task: dict | None = None,
                   plain: bool = False, reply_to: str | None = None) -> str:
-        if task is not None:          # the one thing every agent surely reads; bridges use the task field
+        source = github.linkify(body, (task or {}).get("repo") or self.room_repos.get(room_id))   # what people see
+        if task is not None:          # agents read the plain body (bridges use the task field); people never see it
             body += " — use your hagency tools: call next_task"
         content = {"msgtype": "m.notice" if task is None else "m.text", "body": body}
-        source = github.linkify(body, (task or {}).get("repo") or self.room_repos.get(room_id))
         if mention:
             content["m.mentions"] = {"user_ids": [mention]}
             source = source.replace(mention, f"[{mention.split(':')[0]}](https://matrix.to/#/{mention})")  # a pill
@@ -197,7 +198,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
                 kind in CHECKER_KINDS and sender not in routing.checkers_for([sender], item["builder"], ownership.owner_id)):
             return   # only the agent the step was given to, and a checker only of ANOTHER person's work
         if result.get("error"):
-            await self.stop(room.room_id, key, item, f"{sender.split(':')[0][1:]} couldn't {kind} it")
+            await self.stop(room.room_id, key, item, failure(sender.split(":")[0][1:], kind, result["error"]))
         elif kind == "build" and result.get("already_done"):
             item["stage"] = "verifying"     # the builder's "nothing to do" needs a second agent's check
             if await self.pick_reviewer(room, item, key, f"verify #{num(key)} is already done"):
