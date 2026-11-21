@@ -27,10 +27,10 @@ import cli_path
 import codex_provider
 import lifecycle
 import owner_cli
+import tool_refusal
 from workdirs import SESSION_FILE, SESSION_ID_RE
 
 TURN_TIMEOUT_S = 600
-MAX_DENIED_SHOWN = 8
 TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 
@@ -131,24 +131,7 @@ def _parse_claude(stdout: str) -> AgentResult:
 def _denied_tools(data: dict) -> tuple[str, ...]:
     """The names (never the inputs: they can hold paths or secrets) of tools Claude Code refused."""
     names = [d.get("tool_name") for d in data.get("permission_denials") or [] if isinstance(d, dict)]
-    return tuple(dict.fromkeys(n for n in names if isinstance(n, str) and TOOL_NAME_RE.match(n)))
-
-
-def denial_note(denied: tuple[str, ...]) -> str:
-    """Said plainly in the reply: which setting blocked these (web, edit and shell tools are allowed,
-    so only the owner's deny rules can; anything else needs an allow rule). Codex says so itself."""
-    if not denied:
-        return ""
-    ours = [d for d in denied if d in owner_cli.CLAUDE_OWNER_TOOLS]
-    other = [d for d in denied if d not in owner_cli.CLAUDE_OWNER_TOOLS][:MAX_DENIED_SHOWN]
-    why = []
-    if ours:
-        why.append(f"{', '.join(ours)}: blocked by a deny rule in your Claude Code settings "
-                   '("permissions": {"deny": [...]} in ~/.claude/settings.json or a project/managed settings file)')
-    if other:
-        why.append(f"{', '.join(other)}: not allowed for chat turns; to allow it, add it to "
-                   '"permissions": {"allow": [...]} in ~/.claude/settings.json')
-    return "\n\n⚠️ Refused (it can't ask you for approval from a chat room): " + "; ".join(why) + "."
+    return tuple(dict.fromkeys(n for n in names if isinstance(n, str) and TOOL_NAME_RE.fullmatch(n)))   # GPT review: "Bash\n" passed match()
 
 
 def _provider_argv(kind: str):
@@ -210,7 +193,7 @@ async def run_turn(backend: str, workdir: Path, prompt: str, write: bool = False
         raise AgentError(f"{backend} exited {proc.returncode}: {codex_provider.scrub(' | '.join(tail), extra)[:400]}")
 
     result = parse_fn(stdout)
-    note = denial_note(result.denied) if owner else ""   # task output (VERDICT, plan JSON) stays as is
+    note = tool_refusal.note(result.denied) if owner else ""   # task output (VERDICT, plan JSON) stays as is
     if not result.text.strip() and not note:
         raise AgentError(f"{backend} returned an empty reply")
     if not fresh and result.session_id and result.session_id != session_id:

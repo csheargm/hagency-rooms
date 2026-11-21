@@ -11,6 +11,7 @@ from unittest import mock
 
 import agents
 import bridge
+import tool_refusal
 import workdirs
 from tests import ROOT
 
@@ -128,21 +129,25 @@ class OwnerTurn(unittest.TestCase):
     def test_denied_tools_are_said_plainly_by_name_only(self):
         denials = [{"tool_name": "WebSearch", "tool_input": {"query": "ghp_secretsecret"}},
                    {"tool_name": "Bash", "tool_input": {"command": "cat ~/.ssh/id_rsa"}},
-                   {"tool_name": "WebSearch"}, {"tool_name": "bad name;rm"}, "junk"]
+                   {"tool_name": "WebSearch"}, {"tool_name": "bad name;rm"}, {"tool_name": "Bash\nrm -rf"},
+                   {"tool_name": "Edit\n"}, "junk"]
         text, _, _ = self.run_claude({"result": "I couldn't search.", "session_id": "abcdef12-1",
                                       "permission_denials": denials})
         self.assertTrue(text.startswith("I couldn't search."))
-        self.assertIn("WebSearch, Bash: blocked by a deny rule in your Claude Code settings", text)
-        for leaked in ("ghp_", "id_rsa", "bad name"):
+        self.assertIn("I wasn't allowed to use web search or the command line: a setting on your computer blocks it.", text)
+        self.assertNotIn("file editing", text)              # "Edit\n" isn't a tool name (GPT review)
+        for leaked in ("ghp_", "id_rsa", "bad name", "rm -rf"):
             self.assertNotIn(leaked, text)
 
     def test_a_tool_outside_the_allowed_set_says_how_to_allow_it(self):
         text, _, _ = self.run_claude({"result": "no", "permission_denials": [{"tool_name": "mcp__x__y"}]})
-        self.assertIn('mcp__x__y: not allowed for chat turns; to allow it, add it to "permissions": {"allow"', text)
+        self.assertIn("I wasn't allowed to use x from this chat: it needs your OK first", text)
+        self.assertIn(tool_refusal.HOW_TO_URL, text)
+        self.assertNotIn("settings.json", text)                  # the how-to is on the docs page
 
     def test_only_denials_is_a_reply_not_an_empty_failure(self):
         text, _, _ = self.run_claude({"result": "", "permission_denials": [{"tool_name": "WebFetch"}]})
-        self.assertIn("WebFetch", text)
+        self.assertIn("web pages", text)
 
     def test_empty_reply_is_still_a_failure(self):
         with self.assertRaises(agents.AgentError):

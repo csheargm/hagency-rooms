@@ -191,7 +191,8 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
         has_files = bool(repo) and await room_context.refresh_project(
             f"{self.owner}-agent", repo, workdir / "projects" / room_context.repo_dir(repo))
         prompt = (f"You are {self.owner_name}'s personal AI agent ({self.user_id}) in the Matrix chat room "
-                  f"\"{room.display_name}\". Reply in chat style, concisely, as plain markdown.\n\n"
+                  f"\"{room.display_name}\". Reply in chat style, concisely, as plain markdown, in everyday words.\n"
+                  "If a tool was refused, say so in one sentence, without tool or setting names.\n\n"
                   + room_context.describe(snap)
                   + ("\nThe project's files (default branch) are in ./projects/" + room_context.repo_dir(repo) + ": read them when the question is "
                      "about what the project contains or does.\n" if has_files else "")
