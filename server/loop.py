@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 
 import markdown
-from nio import (AsyncClient, RoomMessageAudio, InviteMemberEvent, LoginResponse, MatrixRoom, ReactionEvent, RoomMemberEvent,
+from nio import (AsyncClient, RoomMessageAudio, LoginResponse, MatrixRoom, ReactionEvent, RoomMemberEvent,
                  RoomMessageText, RoomSendResponse)
 
 from common import github
@@ -247,7 +247,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
         resp = await lifecycle.login(self.client, read_env()["PW_PM"], device_name="pm")   # waits out a 429
         if not isinstance(resp, LoginResponse):
             raise SystemExit(f"pm login failed: {resp}")
-        self.client.add_event_callback(self.on_invite, InviteMemberEvent)   # pending invites too (pm_follow.py)
+        self.listen_early()   # pending invites too (pm_follow.py), agents' AI reports (pm_kind_reports.py)
         await lifecycle.first_sync(
             self.client, github.PM_BOT, self.sync_point,
             lambda: (self.client.add_event_callback(self.on_message, RoomMessageText),

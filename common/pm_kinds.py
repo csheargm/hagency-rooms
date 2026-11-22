@@ -21,6 +21,7 @@ SAID = {"codex": "codex", "claude": "claude", "claude code": "claude", "hermes":
 KEY_RE = re.compile(r"\b(sk|rk|pk|gsk|xai|hf|or|nvapi)[-_][A-Za-z0-9_-]{12,}|\bbearer\s+\S{12,}", re.I)
 NO_KEYS = ("That looks like an API key: never type one here, in any chat. You enter it on your own computer "
            "when you connect the agent, and it stays there. (If it was a real key, revoke it with its provider.)")
+NOT_REPORTED = "AI: not reported yet"         # My agents, until the agent's computer says (kind_report.py)
 HOW = ("Say which AI it runs, for example \"add another agent called pi using claude\", \"... using ollama "
        "llama3.2\" or \"... using remote https://openrouter.ai/api/v1 openai/gpt-4o\" (codex, claude, hermes, "
        "ollama [model], remote <base URL> <model>).")
@@ -127,3 +128,4 @@ def describe(agent: dict) -> str:
         host = urllib.parse.urlsplit(agent.get("base_url") or "").hostname or "?"
         return f"Remote: {agent.get('model') or '?'} at {host}"
     return name(kind) + (f": {agent['model']}" if agent.get("model") else "")
+

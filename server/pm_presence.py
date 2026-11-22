@@ -20,6 +20,7 @@ from common import matrix_calls
 from common import registry
 from server import remote_agent
 from common.bridge_config import ROOT, SERVER_NAME
+from server.pm_kind_reports import KindReports
 from server.pm_remove import Removal
 from server.pm_stop import StopStart
 from common.saved_dict import SavedDict
@@ -38,7 +39,7 @@ DISCONNECTED_MORE = ("Disconnected: {agent} can't sign in from its computer any 
                      "🔁 below for a new code and its Connect page.")
 
 
-class Presence(Removal, StopStart):     # pm_remove.py: Remove, forgetting deactivated accounts; pm_stop.py
+class Presence(Removal, StopStart, KindReports):   # pm_remove.py: Remove, forgetting deactivated accounts; pm_stop.py; pm_kind_reports.py
     def seen(self) -> dict:
         """agent localpart → {"online", "since", "ever", "alerted", "offer", "owner"}, on disk."""
         if "_seen" not in self.__dict__:

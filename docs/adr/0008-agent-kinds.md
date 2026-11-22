@@ -41,6 +41,33 @@ carry, besides `homeserver`, `user_id`, `password`, `owner` and `label`:
 - `connect.py` saves the kind as `"agent"`, plus `"model"` and `"base_url"`, in `credentials.json`
   (mode 600). The bridge runs `bridge.py <owner> --agent <kind>`.
 
+### The agent reports its kind to @pm (`kind_report.py`, `pm_kind_reports.py`)
+An agent added with "AI: the one on my computer" has no `agent_kind` at @pm, so "My agents" showed
+no AI even though its computer ran, say, Claude Code. Now the computer tells @pm what it runs.
+- **When:** each time the agent adapter (`bridge.py`, also Hermes's buttons-only one) signs in on the
+  person's computer. connect.py starts it, so a first connect, re-running the connect line (no code
+  needed: connect.sh also updates the app) and an ordinary restart all report.
+- **What:** one Matrix to-device message, type `xyz.hagencylabs.agent.kind`, to `@pm` (all its devices),
+  with `{"agent_kind", "model"?, "base_url"?}` built from `credentials.json`'s `"agent"`, `"model"`
+  (ollama, remote) and `"base_url"` (remote). Nothing else is read from that file: **never an API key**.
+- **Why to-device, not an HTTP endpoint or presence:** Synapse sets the sender, so only the agent's own
+  sign-in can report for itself, with no new authentication. It is private, unlike presence's
+  `status_msg`, which everyone sharing a room sees (a remote service's address is the person's business).
+  It waits for @pm's fixed device (`PM_BOT`) while @pm restarts; @pm listens before its first sync.
+  A credentials file names the homeserver, not the console, so an HTTP report would need a new saved address.
+- **@pm's checks:** the sender must be one of this server's agents recorded as `"agent": "remote"`; only
+  that agent's own entry changes. The report is refused whole when it has any field but `OFFER_KEYS`
+  (an `api_key`), a non-string or key-like value (`pm_kinds.looks_like_key`), or a kind, model or
+  address `pm_kinds.choice` refuses (the `KINDS`, `MODEL_RE` and base_url rules above). A refused
+  report's content is never logged.
+- **Stored:** in the same `agent_kind` / `model` / `base_url` fields the picker writes (no second store),
+  every field each time, so a switch from Ollama to Claude Code drops the old model. What the computer
+  runs wins over what was picked, as `--agent` does on the computer.
+- **Not known yet:** "My agents" shows `pm_kinds.NOT_REPORTED` ("AI: not reported yet") for an agent on
+  a person's computer with no kind; a server-run agent shows no badge, as before.
+- **Older installs:** an agent whose app predates this reports nothing until its connect line is run
+  again (that updates the app); after that, every start reports.
+
 ### How each kind runs
 - **codex, claude:** unchanged.
 - **ollama** and **remote** run through the **Codex CLI with another model provider**
