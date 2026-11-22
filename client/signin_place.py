@@ -11,6 +11,7 @@ import json
 import os
 import plistlib
 import shlex
+from xml.parsers.expat import ExpatError
 from pathlib import Path
 
 from client import agent_service
@@ -68,19 +69,23 @@ def _refuse(where: Path) -> SystemExit:
 def place(home: Path, folder: Path, fresh: dict) -> Path:
     """The file a new pairing `fresh` is saved in. `folder` is where it belongs (connect.agent_dir):
     ~/.hagency for a first agent. If another agent's sign-in is there, its own folder
-    ~/.hagency/<its name>/ instead (where an earlier pairing may already have put it)."""
+    ~/.hagency/<its name>/ instead (where an earlier pairing may already have put it). An agent of
+    the same name from another server is refused: both would get one service name, so the first
+    one's would be replaced (GPT review)."""
+    own = home / agent_name(fresh) / FILE
+    for there in (home / FILE, own):
+        saved = read_saved(there)
+        if agent_name(saved) == agent_name(fresh) and not same_agent(saved, fresh):
+            raise _refuse(there)
     path = folder / FILE
     if folder != home:                        # a further agent: always its own folder
         if not _free_for(path, fresh):
             raise _refuse(path)
         return path
-    own = home / agent_name(fresh) / FILE
     if same_agent(read_saved(own), fresh):
         return own                            # moved aside before: it stays there
     if _free_for(path, fresh):
         return path
-    if agent_name(read_saved(path)) == agent_name(fresh):   # same name, another server: one service name
-        raise _refuse(path)                   # for both, so the first one's would be replaced (GPT review)
     if not _free_for(own, fresh):
         raise _refuse(own)
     return own
@@ -146,6 +151,6 @@ def stranded(home: Path, skip: str = "", user_home: Path | None = None) -> list[
         try:
             if agent != skip and _replaced(path, how, first, creds, default):
                 found.append(agent)
-        except (OSError, ValueError):     # unreadable (bad XML or quoting too): not ours to judge, and
+        except (OSError, ValueError, ExpatError):   # unreadable (bad XML, quoting): not ours to judge, and
             continue                          # the migration just before this names the files it couldn't read
     return found

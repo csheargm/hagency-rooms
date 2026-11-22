@@ -101,6 +101,22 @@ class SameComputer(unittest.TestCase):
         self.assertEqual(install.args[4], self.home / "credentials.json")
         self.assertFalse((self.home / "cx-agent").exists())
 
+    def test_the_same_name_is_refused_wherever_the_first_one_is_kept(self):
+        connect.save(self.home / "cx-agent" / "credentials.json", A)          # kept aside, ~/.hagency free
+        other = {**A, "user_id": "@cx-agent:other.example", "homeserver": "https://other.example"}
+        with self.assertRaises(SystemExit):
+            signin_place.place(self.home, self.home, other)
+        self.assertEqual(self.saved("cx-agent")["user_id"], A["user_id"])
+
+    def test_a_broken_service_file_doesnt_stop_the_pairing(self):
+        self.run_connect("CODE-A")
+        path = agent_service.service_file("launchd", "zz-agent", self.user_home)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<?xml version='1.0'?><plist><dict><key>Label</key>")
+        install, _, failed = self.run_connect("CODE-B", answer=B)
+        self.assertIsNone(failed)
+        self.assertEqual(install.args[3], B_NAME)
+
     def test_repairing_an_agent_kept_aside_replaces_it_there(self):
         self.run_connect("CODE-A")
         self.run_connect("CODE-B", answer=B)
