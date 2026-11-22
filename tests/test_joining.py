@@ -167,7 +167,7 @@ class LobbyGreeting(Base):
         self.lobby = project("!l", "Lobby")
         self.lobby.canonical_alias = project_rooms.LOBBY_ALIAS
 
-    def test_one_line_once_ever_with_a_button_only_they_can_use(self):
+    def test_one_line_once_ever_with_a_button_that_answers_anyone(self):   # others: tests/test_lobby_clicks.py
         run(self.lp.on_welcome_member(self.lobby, member(NEW, "join", "leave")))
         run(self.lp.on_welcome_member(self.lobby, member(NEW, "join", "leave")))
         self.assertEqual(len(self.said), 1)
@@ -175,7 +175,6 @@ class LobbyGreeting(Base):
         self.assertIn("Click 👍 below to get your agent", self.said[0][1])
         self.assertEqual(self.buttons, [("!l", "$e1", "👍")])
         self.assertTrue(run(self.lp.on_lobby_reaction(self.lobby, click(NEW, "👍", "$e1"))))
-        self.assertFalse(run(self.lp.on_lobby_reaction(self.lobby, click(BETTY, "👍", "$e1"))))
         run(self.lp.on_lobby_reaction(self.lobby, click(NEW, "👍", "$e1")))
         self.lp.offer_again.assert_awaited_once_with(self.lobby, NEW)                       # once
 
