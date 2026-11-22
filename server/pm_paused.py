@@ -122,7 +122,7 @@ async def requeue(loop, key: str, item: dict, repo: str) -> str | None:
 def still_open(n: int, pr: int | None) -> str:
     """Why "@pm retry #N" left #N paused."""
     if pr is None:
-        return (f"I couldn't reach GitHub to check whether #{n} already has an open PR, so it stays paused. "
+        return (f"GitHub couldn't tell me whether #{n} already has an open PR, so it stays paused. "
                 f"Say \"@pm retry #{n}\" again in a minute.")
     return f"PR #{pr} for #{n} is still open. Merge or close it on GitHub, then say \"@pm retry #{n}\" again."
 
@@ -175,6 +175,6 @@ async def retry_all(loop, rid: str) -> str:
     for k, pr in held.items():
         parts.append(f"#{num(k)} stays paused: its PR #{pr} may still be open. Merge or close it on GitHub, "
                      f"then say \"@pm retry #{num(k)}\"." if pr else
-                     f"#{num(k)} stays paused: I couldn't reach GitHub to check for its open PR. Say "
+                     f"#{num(k)} stays paused: GitHub couldn't tell me whether it has an open PR. Say "
                      f"\"@pm retry #{num(k)}\" in a minute.")
     return "\n\n" + " ".join(parts) if parts else ""

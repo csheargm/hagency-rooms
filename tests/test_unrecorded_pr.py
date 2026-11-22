@@ -87,14 +87,14 @@ class UnrecordedPR(unittest.TestCase):
     def test_github_unreachable_means_no_retry_on_either_path(self):
         with self.github(github.GitHubError("gh pr list failed: timeout")):
             said = self.retry(9)
-            self.assertIn("I couldn't reach GitHub to check whether #9 already has an open PR, so it stays paused", said)
+            self.assertIn("GitHub couldn't tell me whether #9 already has an open PR, so it stays paused", said)
             said = asyncio.run(pm_paused.retry_all(self.lp, "!r"))
-        self.assertIn("#7 stays paused: I couldn't reach GitHub to check for its open PR", said)
+        self.assertIn("#7 stays paused: GitHub couldn't tell me whether it has an open PR", said)
         self.assertEqual(2, len(self.lp.state))
 
     def test_a_strange_answer_counts_as_unreachable(self):
         with self.github({"message": "rate limited"}):
-            self.assertIn("I couldn't reach GitHub", self.retry(9))
+            self.assertIn("GitHub couldn't tell me", self.retry(9))
         self.assertIn(issue_key(REPO, 9), self.lp.state)
 
     def test_the_recorded_pr_still_comes_first(self):
@@ -106,7 +106,7 @@ class UnrecordedPR(unittest.TestCase):
     def test_a_full_list_cant_tell(self):
         """GPT review: the issue's PR may be past the last one listed, so not finding it proves nothing."""
         with self.github([pr(n, f"agent/cx-agent/issue-{1000 + n}") for n in range(pm_paused.MAX_OPEN_PRS)]):
-            self.assertIn("I couldn't reach GitHub", self.retry(9))
+            self.assertIn("GitHub couldn't tell me", self.retry(9))
         self.assertIn(issue_key(REPO, 9), self.lp.state)
 
     def test_github_is_asked_outside_the_lock(self):
