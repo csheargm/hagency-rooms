@@ -45,3 +45,12 @@ must stay as strict as before: by the owner's full ID.
   for the same name again (or removed). @pm also forgets people whose every account here is
   deactivated (Synapse's own list, read every 6 hours; nothing is forgotten if it can't be read).
 - A disconnect is recorded per agent; a code issued before it never yields the new password.
+- **Where sign-ins live** (client/signin_place.py): a computer's first agent keeps its sign-in,
+  log and service in `~/.hagency/` (`credentials.json`, `logs/`), a further one in
+  `~/.hagency/<its name>/`, its service pointing there with `HAGENCY_CREDENTIALS`. Two people may
+  pair on the same computer and user account: a pairing whose agent isn't the one already in
+  `~/.hagency/credentials.json` (another account, or another person) goes to its own folder in the
+  same way, and is reached again with `--name <its name>`. Re-pairing the same agent replaces its
+  own file. Before this, the second pairing replaced the first agent's file (seen live); connect.py
+  now names each first agent whose service reads that file but whose sign-in in it is someone
+  else's, and tells its person to ask @pm for a new code, which pairs into its own folder.

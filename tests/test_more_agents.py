@@ -230,7 +230,7 @@ class SignIn(unittest.TestCase):
         home = Path("/h/.hagency")
         self.assertEqual(connect.agent_dir(home, got), home / "cx-codex-agent")
         self.assertEqual(connect.agent_dir(home, {**got, "label": None}), home)
-        self.assertEqual(connect.name_arg(got), "--name cx-codex-agent ")
+        self.assertEqual(connect.name_arg(home, home / "cx-codex-agent" / "credentials.json"), "--name cx-codex-agent ")
         resp.__enter__.return_value.read.return_value = json.dumps({**creds, "label": "laptop"}).encode()
         with mock.patch.object(connect.urllib.request, "urlopen", return_value=resp), self.assertRaises(SystemExit):
             connect.redeem("https://c.example", "CODE")                                  # another agent's name: refused
