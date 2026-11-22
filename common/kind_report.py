@@ -2,15 +2,17 @@
 
 Each time the agent adapter (bridge.py) signs in on a person's computer, it sends @pm one Matrix
 to-device message of type EVENT_TYPE with what its credentials.json says it runs: {"agent_kind",
-"model"?, "base_url"?}, agent_kinds' connect-info names. Never an API key: only these fields are read
-from the file, and @pm refuses a report that has any other field, a key-like value, or a value
-agent_kinds' rules refuse (server/pm_kind_reports.py records it).
+"model"?, "host"?} (pm_kinds.REPORT_KEYS; a remote service's host only, never its whole address).
+Never an API key: only these fields are read from the file, and @pm refuses a report that has any
+other field, a key-like value, or a value agent_kinds' rules refuse (pm_kinds.reported;
+server/pm_kind_reports.py records it).
 Why to-device: Synapse sets the sender, so only the agent's own sign-in can report for it. It is
 private (presence's status_msg is seen by everyone sharing a room), and it waits for @pm's fixed
 device (PM_BOT) while @pm restarts. No console address is needed (a credentials file has none).
 """
 import asyncio
 import logging
+import urllib.parse
 import uuid
 
 from aiohttp import ClientError
@@ -20,11 +22,13 @@ from common import agent_kinds
 from common import pm_kinds
 
 EVENT_TYPE = "xyz.hagencylabs.agent.kind"
+SEND_TIMEOUT_S = 15
 log = logging.getLogger("bridge")
 
 
 def from_credentials(creds: dict) -> dict | None:
-    """The report for this computer's credentials.json ("agent", plus its kind's "model" / "base_url"), or
+    """The report for this computer's credentials.json: its "agent", plus "model" for ollama / remote and
+    for remote only the service's host (never its whole address: a path may hold a token; GPT review).
     None when the file names no kind or a value @pm would refuse. Nothing else is ever read from it."""
     kind = creds.get("agent")
     if kind not in agent_kinds.KINDS:
@@ -32,23 +36,9 @@ def from_credentials(creds: dict) -> dict | None:
     report = {"agent_kind": kind}
     if kind in agent_kinds.MODEL_KINDS and creds.get("model"):
         report["model"] = creds["model"]
-    if kind == "remote" and creds.get("base_url"):
-        report["base_url"] = creds["base_url"]
-    return report if parse(report) is not None else None
-
-
-def parse(content: object) -> dict | None:
-    """A report as @pm records it ({agent_kind, model?, base_url?}: pm_kinds.choice), or None: not a
-    dict, a field other than agent_kinds.OFFER_KEYS (an api_key), a non-string or key-like value, or a
-    kind, model or address agent_kinds refuses."""
-    if not isinstance(content, dict) or not set(content) <= set(agent_kinds.OFFER_KEYS):
-        return None
-    if not all(isinstance(v, str) for v in content.values()) or any(pm_kinds.looks_like_key(v) for v in content.values()):
-        return None
-    if content.get("agent_kind") not in agent_kinds.KINDS:
-        return None
-    picked = pm_kinds.choice(content["agent_kind"], content.get("model", ""), content.get("base_url", ""))
-    return picked if isinstance(picked, dict) else None
+    if kind == "remote" and agent_kinds.valid_base_url(creds.get("base_url")):
+        report["host"] = urllib.parse.urlsplit(creds["base_url"]).hostname
+    return report if pm_kinds.reported(report) is not None else None
 
 
 async def send(client: AsyncClient, pm_id: str, creds: dict) -> bool:
@@ -57,7 +47,8 @@ async def send(client: AsyncClient, pm_id: str, creds: dict) -> bool:
     if report is None:
         return False
     try:
-        resp = await client.to_device(ToDeviceMessage(EVENT_TYPE, pm_id, "*", report), uuid.uuid4().hex)
+        resp = await asyncio.wait_for(client.to_device(ToDeviceMessage(EVENT_TYPE, pm_id, "*", report), uuid.uuid4().hex),
+                                      SEND_TIMEOUT_S)   # nio retries a 429 or timeout without end: never hold up the start
     except (OSError, asyncio.TimeoutError, ClientError) as e:
         resp = e
     if isinstance(resp, ToDeviceResponse):

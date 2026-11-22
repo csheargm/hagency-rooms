@@ -29,6 +29,7 @@ REMOTE = "remote"                    # their agent runs on their own computer (c
 FIRST_LABEL = "main"                 # what the first agent is called when its person never named it
 MORE = "more"                        # a person's further agents, in their line
 FIRST_GONE = "first_removed"         # their first agent was removed for good: only named ones from now on
+REPORTED = "reported"                # the AI its computer says it runs (pm_kind_reports.py)
 PER_PERSON_DEFAULT = 3
 LOCALPART_RE = re.compile(r"[a-z0-9._=-]{1,120}")   # a recorded agent account name (Matrix localpart characters)
 LOCK = threading.RLock()             # @pm's read-modify-writes of this file (its loop and set-up threads)
@@ -171,9 +172,11 @@ def _agents(person: str, info: dict) -> list[dict]:
 
 
 def _picked(entry: dict) -> dict:
-    """The AI a further agent runs (pm_kinds.py), as recorded; a damaged record: none."""
+    """The AI an agent runs (pm_kinds.py), as picked, and as its computer reported it ("reported":
+    pm_kind_reports.py, shown only, never offered back); a damaged record: none."""
     found = pm_kinds.choice(*(entry.get(k) if isinstance(entry.get(k), str) else "" for k in pm_kinds.FIELDS))
-    return found if isinstance(found, dict) else {}
+    said = pm_kinds.reported(entry.get(REPORTED))
+    return {**(found if isinstance(found, dict) else {}), **({REPORTED: said} if said else {})}
 
 
 def name_of(agent: dict) -> str:

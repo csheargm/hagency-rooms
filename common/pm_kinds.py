@@ -119,13 +119,46 @@ def from_panel(value: str) -> tuple[str, dict | str | None]:
     return text["name"].strip(), choice(text["agent_kind"], text["model"].strip(), text["base_url"].strip())
 
 
+REPORT_KEYS = ("agent_kind", "model", "host")   # what an agent's computer reports (kind_report.py); never a key
+
+
+def host_url(host: str) -> str:
+    return "https://" + (f"[{host}]" if ":" in host else host)   # an IPv6 address in brackets
+
+
+def valid_host(host: object) -> bool:
+    """A bare host name (or IP) as agent_kinds.valid_base_url takes it: no scheme, port, user, path or query."""
+    if not (isinstance(host, str) and host):
+        return False
+    return agent_kinds.valid_base_url(host_url(host)) and urllib.parse.urlsplit(host_url(host)).hostname == host.lower()
+
+
+def reported(content: object) -> dict | None:
+    """What an agent's computer says it runs, as @pm keeps it ({agent_kind, model?, host?}), or None: not a
+    dict, a field other than REPORT_KEYS (an api_key), a non-string or key-like value, or a kind, model or
+    host that choice / agent_kinds refuse. An Ollama model is from that computer's installed list, so only a
+    remote model is checked for looking like a key (GPT review: long local names such as Qwen3CoderNextInstruct)."""
+    if not isinstance(content, dict) or not set(content) <= set(REPORT_KEYS) or not all(isinstance(v, str) for v in content.values()):
+        return None
+    kind, model, host = (content.get(k, "") for k in REPORT_KEYS)
+    if kind not in agent_kinds.KINDS or (host and not valid_host(host)) or looks_like_key(host):
+        return None
+    if kind == "remote" and looks_like_key(model):
+        return None
+    picked = choice(kind, model, host_url(host) if host else "")
+    if not isinstance(picked, dict):
+        return None
+    return {"agent_kind": kind, **({"model": model} if model else {}), **({"host": host.lower()} if host else {})}
+
+
 def describe(agent: dict) -> str:
-    """What My agents shows: "Claude Code", "Local model (Ollama): llama3.2", "Remote: openai/gpt-4o at openrouter.ai"."""
-    kind = agent.get("agent_kind")
+    """What My agents shows: "Claude Code", "Local model (Ollama): llama3.2", "Remote: openai/gpt-4o at openrouter.ai".
+    What its computer reported (agent["reported"]: reported()) wins over what was picked for it."""
+    shown = agent.get("reported") or agent
+    kind = shown.get("agent_kind")
     if kind not in agent_kinds.KINDS:
         return ""
     if kind == "remote":
-        host = urllib.parse.urlsplit(agent.get("base_url") or "").hostname or "?"
-        return f"Remote: {agent.get('model') or '?'} at {host}"
-    return name(kind) + (f": {agent['model']}" if agent.get("model") else "")
-
+        host = shown.get("host") or urllib.parse.urlsplit(shown.get("base_url") or "").hostname or "?"
+        return f"Remote: {shown.get('model') or '?'} at {host}"
+    return name(kind) + (f": {shown['model']}" if shown.get("model") else "")

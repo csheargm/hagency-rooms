@@ -46,23 +46,29 @@ An agent added with "AI: the one on my computer" has no `agent_kind` at @pm, so 
 no AI even though its computer ran, say, Claude Code. Now the computer tells @pm what it runs.
 - **When:** each time the agent adapter (`bridge.py`, also Hermes's buttons-only one) signs in on the
   person's computer. connect.py starts it, so a first connect, re-running the connect line (no code
-  needed: connect.sh also updates the app) and an ordinary restart all report.
+  needed: connect.sh also updates the app) and an ordinary restart all report. The send has a
+  15-second deadline and never stops the agent from starting.
 - **What:** one Matrix to-device message, type `xyz.hagencylabs.agent.kind`, to `@pm` (all its devices),
-  with `{"agent_kind", "model"?, "base_url"?}` built from `credentials.json`'s `"agent"`, `"model"`
-  (ollama, remote) and `"base_url"` (remote). Nothing else is read from that file: **never an API key**.
+  with `{"agent_kind", "model"?, "host"?}` (`pm_kinds.REPORT_KEYS`) built from `credentials.json`'s
+  `"agent"`, `"model"` (ollama, remote) and, for remote, only the **host** of `"base_url"`: a path may
+  hold a token, and the card shows only the host. Nothing else is read from that file:
+  **never an API key**.
 - **Why to-device, not an HTTP endpoint or presence:** Synapse sets the sender, so only the agent's own
   sign-in can report for itself, with no new authentication. It is private, unlike presence's
-  `status_msg`, which everyone sharing a room sees (a remote service's address is the person's business).
-  It waits for @pm's fixed device (`PM_BOT`) while @pm restarts; @pm listens before its first sync.
-  A credentials file names the homeserver, not the console, so an HTTP report would need a new saved address.
-- **@pm's checks:** the sender must be one of this server's agents recorded as `"agent": "remote"`; only
-  that agent's own entry changes. The report is refused whole when it has any field but `OFFER_KEYS`
-  (an `api_key`), a non-string or key-like value (`pm_kinds.looks_like_key`), or a kind, model or
-  address `pm_kinds.choice` refuses (the `KINDS`, `MODEL_RE` and base_url rules above). A refused
-  report's content is never logged.
-- **Stored:** in the same `agent_kind` / `model` / `base_url` fields the picker writes (no second store),
-  every field each time, so a switch from Ollama to Claude Code drops the old model. What the computer
-  runs wins over what was picked, as `--agent` does on the computer.
+  `status_msg`, which everyone sharing a room sees. It waits for @pm's fixed device (`PM_BOT`) while
+  @pm restarts; @pm listens before its first sync. A credentials file names the homeserver, not the
+  console, so an HTTP report would need a new saved address on every computer.
+- **@pm's checks (`pm_kinds.reported`):** the sender must be one of this server's agents recorded as
+  `"agent": "remote"`; only that agent's own entry changes. The report is refused whole when it has
+  any field but `REPORT_KEYS` (an `api_key`), a non-string or key-like value (`pm_kinds.looks_like_key`;
+  for a model only when remote, since an Ollama model comes from the computer's installed list), a host
+  with a scheme, port, user, path or query, or a kind, model or host that `pm_kinds.choice` refuses
+  (the `KINDS`, `MODEL_RE` and base_url rules above). A refused report's content is never logged.
+- **Stored:** as `"reported"` on that agent's own entry in agents.json (`registry.REPORTED`), whole each
+  time, so a switch from Ollama to Claude Code drops the old model. `pm_kinds.describe` shows it over
+  what was picked. It is **display only**: a new code still offers the picked `agent_kind` / `model` /
+  `base_url` (the computer keeps its own settings anyway), and Stop / Start still go by the picked
+  kind, so a sign-in claiming "hermes" can't hide them (GPT review).
 - **Not known yet:** "My agents" shows `pm_kinds.NOT_REPORTED` ("AI: not reported yet") for an agent on
   a person's computer with no kind; a server-run agent shows no badge, as before.
 - **Older installs:** an agent whose app predates this reports nothing until its connect line is run

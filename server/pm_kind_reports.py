@@ -2,9 +2,10 @@
 (common/kind_report.py: a to-device message each time its adapter signs in; docs/adr/0008-agent-kinds.md).
 
 Only the sender's own entry changes: Synapse sets the sender, so one account can never set another
-agent's kind, and a person's own account isn't an agent. The report lands in the same agent_kind /
-model / base_url fields the picker writes (registry, agent_kinds.OFFER_KEYS): what the computer
-really runs wins over what was picked, as connect.py's --agent does. Mixed into loop.Loop (via
+agent's kind, and a person's own account isn't an agent. It is kept on that agent's entry as
+"reported" (registry.REPORTED): My agents shows it over what was picked (pm_kinds.describe), but it
+is never offered back to a computer with a new code and never decides what @pm allows (Stop and Start
+read the picked kind: GPT review, a sign-in can't talk its way out of them). Mixed into loop.Loop (via
 pm_presence.Presence): listen_early registers it before @pm's first sync, so a report sent while
 @pm was away isn't lost.
 """
@@ -12,8 +13,8 @@ import logging
 
 from nio import InviteMemberEvent, UnknownToDeviceEvent
 
-from common import agent_kinds
 from common import kind_report
+from common import pm_kinds
 from common import registry
 from common.bridge_config import SERVER_NAME
 
@@ -32,15 +33,14 @@ def record(sender: str, content: object) -> bool:
     if found is None or found["localpart"] != agent or found["agent"] != registry.REMOTE:
         log.info("ignored an AI report from %s: not an agent on a person's computer", sender)
         return False
-    picked = kind_report.parse(content)
-    if picked is None:                        # never logged: a refused report may hold what looked like a key
+    said = pm_kinds.reported(content)
+    if said is None:                        # never logged: a refused report may hold what looked like a key
         log.warning("ignored %s's AI report: it isn't one this server takes", sender)
         return False
-    fields = {k: picked.get(k, "") for k in agent_kinds.OFFER_KEYS}   # every field: an old model can't linger
-    if all((found.get(k) or "") == v for k, v in fields.items()):
-        return False
-    registry.update(owner, None if found["first"] else agent, **fields)
-    log.info("%s runs %s (its own report)", sender, picked["agent_kind"])
+    if found.get(registry.REPORTED) == said:
+        return False                          # every start reports: unchanged, nothing written
+    registry.update(owner, None if found["first"] else agent, **{registry.REPORTED: said})   # whole: an old model goes
+    log.info("%s runs %s (its own report)", sender, said["agent_kind"])
     return True
 
 

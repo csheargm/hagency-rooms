@@ -27,12 +27,14 @@ CX_CREDS = {"homeserver": "https://matrix.example", "user_id": CXA, "password": 
 
 class FakeClient:
     """The agent adapter's nio client: what it sends to @pm, as Synapse would deliver it."""
-    def __init__(self, user_id, fail=None):
-        self.user_id, self.fail, self.sent = user_id, fail, []
+    def __init__(self, user_id, fail=None, hang=False):
+        self.user_id, self.fail, self.hang, self.sent = user_id, fail, hang, []
 
     async def to_device(self, message, tx_id=None):
         if self.fail:
             raise self.fail
+        if self.hang:                         # nio retrying a 429 without end
+            await asyncio.sleep(3600)
         self.sent.append(message)
         return ToDeviceResponse(message)
 
@@ -70,39 +72,56 @@ class Reports(flows.Base):
         self.assertEqual(client.sent[0].content, {"agent_kind": "claude"})   # nothing else from the file
         self.assertNotIn("the-sign-in-password", json.dumps(client.sent[0].content))
         self.assertEqual(self.card()["cx-agent"], "Claude Code")
+        before = registry.PATH.stat().st_mtime_ns
         self.start_agent(CX_CREDS)                                         # every start: no change, no write
-        self.assertEqual(registry.find(CX, None)["agent_kind"], "claude")
+        self.assertEqual(registry.PATH.stat().st_mtime_ns, before)
+        self.assertEqual(registry.find(CX, None)["reported"], {"agent_kind": "claude"})
 
     def test_ollama_and_remote_show_as_describe_does(self):
         registry.add_agent(CX, "codex")
         self.start_agent({**CX_CREDS, "agent": "ollama", "model": "llama3.2", "base_url": OPENROUTER})   # stray URL: not sent
-        self.start_agent({**CX_CREDS, "user_id": CXC, "label": "codex", "agent": "remote", "model": "openai/gpt-4o",
-                          "base_url": OPENROUTER + "/"}, sender=CXC)
+        sent = self.start_agent({**CX_CREDS, "user_id": CXC, "label": "codex", "agent": "remote", "model": "openai/gpt-4o",
+                                 "base_url": "https://OpenRouter.ai/secret-path/api/v1"}, sender=CXC).sent[0].content
+        self.assertEqual(sent, {"agent_kind": "remote", "model": "openai/gpt-4o", "host": "openrouter.ai"})   # never the path
         self.assertEqual(self.card(), {"cx-agent": "Ollama (a model on your computer): llama3.2",
                                        "cx-codex-agent": "Remote: openai/gpt-4o at openrouter.ai"})
-        self.assertEqual(registry.find(CX, "codex")["base_url"], OPENROUTER)
+        self.assertNotIn("secret-path", registry.PATH.read_text())
+        self.start_agent({**CX_CREDS, "agent": "ollama", "model": "Qwen3CoderNextInstruct"})   # a long local name (GPT review)
+        self.assertEqual(self.card()["cx-agent"], "Ollama (a model on your computer): Qwen3CoderNextInstruct")
 
-    def test_what_runs_wins_over_what_was_picked_and_old_settings_go(self):
+    def test_what_runs_is_shown_but_the_pick_and_the_controls_stay_ats(self):
         registry.update(CX, None, agent_kind="ollama", model="llama3.2")
-        self.start_agent(CX_CREDS)
+        self.start_agent({**CX_CREDS, "agent": "ollama", "model": "qwen3:8b"})
+        self.start_agent(CX_CREDS)                                         # switched to Claude Code: the old model goes
         found = registry.find(CX, None)
-        self.assertEqual((found["agent_kind"], found.get("model") or ""), ("claude", ""))
+        self.assertEqual(found["reported"], {"agent_kind": "claude"})
+        self.assertEqual(self.card()["cx-agent"], "Claude Code")
+        self.assertEqual((found["agent_kind"], found["model"]), ("ollama", "llama3.2"))   # a new code still offers the pick
+        self.start_agent({**CX_CREDS, "agent": "hermes"})                  # a sign-in claiming Hermes (GPT review):
+        loop = SimpleNamespace(agent_online=lambda a: None, ever_connected=lambda a: True)
+        mine = console.my_agents(loop, SimpleNamespace(users={}, invited_users={}), "!r", CX)
+        self.assertEqual((mine[0]["runs"], mine[0]["hermes"]), ("Hermes", False))   # shown; Stop / Start stay
 
     def test_invalid_kind_model_or_address_is_refused(self):
         for bad in ({"agent_kind": "gpt5"}, {}, {"agent_kind": "ollama", "model": "bad model"},
                     {"agent_kind": "ollama", "model": "../../etc"}, {"agent_kind": "claude", "model": "x"},
-                    {"agent_kind": "remote", "model": "m", "base_url": "http://plain.example/v1"},
-                    {"agent_kind": "remote", "model": "m", "base_url": "https://u:p@x.example/v1"},
-                    {"agent_kind": "remote", "model": "m"}, {"agent_kind": "codex", "base_url": OPENROUTER},
+                    {"agent_kind": "remote", "model": "m", "base_url": OPENROUTER},   # the whole address: never taken
+                    {"agent_kind": "remote", "model": "m", "host": "u:p@x.example"},
+                    {"agent_kind": "remote", "model": "m", "host": "x.example/v1"},
+                    {"agent_kind": "remote", "model": "m", "host": "x.example:8443"},
+                    {"agent_kind": "remote", "model": "m", "host": "x.example?a=1"}, {"agent_kind": "remote", "model": "m", "host": "a b"},
+                    {"agent_kind": "remote", "model": "m"}, {"agent_kind": "codex", "host": "openrouter.ai"},
                     {"agent_kind": ["claude"]}, "claude", None):
-            self.report(CXA, bad)
+            with self.assertLogs("loop", "WARNING"):
+                self.report(CXA, bad)
             self.assertEqual(self.card()["cx-agent"], pm_kinds.NOT_REPORTED, bad)
-            self.assertIsNone(kind_report.parse(bad), bad)
+            self.assertIsNone(pm_kinds.reported(bad), bad)
+        self.assertEqual(pm_kinds.reported({"agent_kind": "remote", "model": "m", "host": "::1"})["host"], "::1")
 
     def test_no_key_is_ever_accepted_or_stored(self):
-        for keyed in ({"agent_kind": "remote", "model": "m", "base_url": OPENROUTER, "api_key": KEY},
-                      {"agent_kind": "claude", "key": KEY}, {"agent_kind": "remote", "model": KEY, "base_url": OPENROUTER},
-                      {"agent_kind": "remote", "model": "m", "base_url": f"https://x.example/{KEY}/v1"}):
+        for keyed in ({"agent_kind": "remote", "model": "m", "host": "openrouter.ai", "api_key": KEY},
+                      {"agent_kind": "claude", "key": KEY}, {"agent_kind": "remote", "model": KEY, "host": "openrouter.ai"},
+                      {"agent_kind": "remote", "model": "m", "host": f"{KEY}.example"}):
             with self.assertLogs("loop", "WARNING") as logs:
                 self.report(CXA, keyed)
             self.assertNotIn(KEY, "\n".join(logs.output))
@@ -110,13 +129,13 @@ class Reports(flows.Base):
         self.assertEqual(self.card()["cx-agent"], pm_kinds.NOT_REPORTED)
         sent = kind_report.from_credentials({**CX_CREDS, "agent": "remote", "model": "m", "base_url": OPENROUTER,
                                              "api_key": KEY, "HAGENCY_REMOTE_API_KEY": KEY})
-        self.assertEqual(sent, {"agent_kind": "remote", "model": "m", "base_url": OPENROUTER})   # only the three fields
+        self.assertEqual(sent, {"agent_kind": "remote", "model": "m", "host": "openrouter.ai"})   # only these fields
 
     def test_another_account_cant_set_someone_elses_agent(self):
         for sender in (BA, CX, PM, f"@cx-agent:evil.example", "@cx-agent", "cx-agent", None):
             self.report(sender, {"agent_kind": "codex"})
         self.assertEqual(self.card()["cx-agent"], pm_kinds.NOT_REPORTED)
-        self.assertEqual(registry.find(flows.BETTY, None)["agent_kind"], "codex")   # Betty's agent: only its own entry
+        self.assertEqual(registry.find(flows.BETTY, None)["reported"], {"agent_kind": "codex"})   # Betty's agent: its own entry
 
     def test_not_reported_yet_only_for_agents_on_a_persons_computer(self):
         registry.update(CX, None, agent="server")
@@ -128,6 +147,8 @@ class Reports(flows.Base):
         self.assertFalse(asyncio.run(kind_report.send(FakeClient(CXA), PM, {})))   # a server-run adapter: no file
         with self.assertLogs("bridge", "WARNING"):
             self.assertFalse(asyncio.run(kind_report.send(FakeClient(CXA, fail=OSError("down")), PM, CX_CREDS)))
+        with mock.patch.object(kind_report, "SEND_TIMEOUT_S", 0.01), self.assertLogs("bridge", "WARNING"):   # GPT review:
+            self.assertFalse(asyncio.run(kind_report.send(FakeClient(CXA, hang=True), PM, CX_CREDS)))   # never holds up the start
 
     def test_pm_listens_before_its_first_sync(self):
         seen = []
