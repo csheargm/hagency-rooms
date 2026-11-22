@@ -6,6 +6,7 @@ never asked for, typed or stored here: the person enters it on their own compute
 The kinds, their names and the model / address checks are agent_kinds.py's (one place, R3): this
 module only reads what people say or click into that contract.
 """
+import ipaddress
 import json
 import re
 import urllib.parse
@@ -120,15 +121,26 @@ def from_panel(value: str) -> tuple[str, dict | str | None]:
 
 
 REPORT_KEYS = ("agent_kind", "model", "host")   # what an agent's computer reports (kind_report.py); never a key
+LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+HOST_RE = re.compile(rf"(?=.{{1,253}}$){LABEL}(?:\.{LABEL})*")   # a DNS name: letters, digits, inner "-", dots
 
 
 def host_url(host: str) -> str:
     return "https://" + (f"[{host}]" if ":" in host else host)   # an IPv6 address in brackets
 
 
+def is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return "%" not in host                    # no IPv6 zone ("fe80::1%en0")
+
+
 def valid_host(host: object) -> bool:
-    """A bare host name (or IP) as agent_kinds.valid_base_url takes it: no scheme, port, user, path or query."""
-    if not (isinstance(host, str) and host):
+    """A DNS name or an IP address that agent_kinds.valid_base_url takes: no scheme, port, user, path,
+    query or escapes ("a%20b.example": GPT re-check)."""
+    if not (isinstance(host, str) and (HOST_RE.fullmatch(host) or is_ip(host))):
         return False
     return agent_kinds.valid_base_url(host_url(host)) and urllib.parse.urlsplit(host_url(host)).hostname == host.lower()
 
@@ -136,14 +148,14 @@ def valid_host(host: object) -> bool:
 def reported(content: object) -> dict | None:
     """What an agent's computer says it runs, as @pm keeps it ({agent_kind, model?, host?}), or None: not a
     dict, a field other than REPORT_KEYS (an api_key), a non-string or key-like value, or a kind, model or
-    host that choice / agent_kinds refuse. An Ollama model is from that computer's installed list, so only a
-    remote model is checked for looking like a key (GPT review: long local names such as Qwen3CoderNextInstruct)."""
+    host that choice / agent_kinds refuse. An Ollama model is from that computer's installed list, so it is checked
+    only for a known key prefix, not for a long token (GPT review: local names such as Qwen3CoderNextInstruct)."""
     if not isinstance(content, dict) or not set(content) <= set(REPORT_KEYS) or not all(isinstance(v, str) for v in content.values()):
         return None
     kind, model, host = (content.get(k, "") for k in REPORT_KEYS)
     if kind not in agent_kinds.KINDS or (host and not valid_host(host)) or looks_like_key(host):
         return None
-    if kind == "remote" and looks_like_key(model):
+    if looks_like_key(model) if kind == "remote" else KEY_RE.search(model):   # a known key prefix, any kind (GPT re-check)
         return None
     picked = choice(kind, model, host_url(host) if host else "")
     if not isinstance(picked, dict):

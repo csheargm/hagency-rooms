@@ -110,6 +110,8 @@ class Reports(flows.Base):
                     {"agent_kind": "remote", "model": "m", "host": "x.example/v1"},
                     {"agent_kind": "remote", "model": "m", "host": "x.example:8443"},
                     {"agent_kind": "remote", "model": "m", "host": "x.example?a=1"}, {"agent_kind": "remote", "model": "m", "host": "a b"},
+                    {"agent_kind": "remote", "model": "m", "host": "a%20b.example"}, {"agent_kind": "remote", "model": "m", "host": "-x.example"},
+                    {"agent_kind": "remote", "model": "m", "host": "fe80::1%en0"},
                     {"agent_kind": "remote", "model": "m"}, {"agent_kind": "codex", "host": "openrouter.ai"},
                     {"agent_kind": ["claude"]}, "claude", None):
             with self.assertLogs("loop", "WARNING"):
@@ -121,7 +123,8 @@ class Reports(flows.Base):
     def test_no_key_is_ever_accepted_or_stored(self):
         for keyed in ({"agent_kind": "remote", "model": "m", "host": "openrouter.ai", "api_key": KEY},
                       {"agent_kind": "claude", "key": KEY}, {"agent_kind": "remote", "model": KEY, "host": "openrouter.ai"},
-                      {"agent_kind": "remote", "model": "m", "host": f"{KEY}.example"}):
+                      {"agent_kind": "remote", "model": "m", "host": f"{KEY}.example"},
+                      {"agent_kind": "ollama", "model": KEY}):   # a known key prefix, even as a local model (GPT re-check)
             with self.assertLogs("loop", "WARNING") as logs:
                 self.report(CXA, keyed)
             self.assertNotIn(KEY, "\n".join(logs.output))
