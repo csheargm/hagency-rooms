@@ -49,16 +49,21 @@ def same_agent(saved: dict, fresh: dict) -> bool:
 
 
 def _free_for(path: Path, fresh: dict) -> bool:
-    """Nothing there (or a damaged file), or this same agent's own sign-in. A file that is there but
-    can't be read counts as someone's (GPT review: os.replace would still overwrite it)."""
+    """Nothing there (or a damaged file), or this same agent's own sign-in."""
+    saved = read_saved(path)
+    return not saved.get("user_id") or same_agent(saved, fresh)
+
+
+def _unreadable(path: Path) -> bool:
+    """There, but can't be read: whose it is can't be told, so it is never replaced (GPT review:
+    read_saved gives {} and os.replace would still overwrite it)."""
     try:
         path.read_bytes()
     except FileNotFoundError:
-        return True
-    except OSError:
         return False
-    saved = read_saved(path)
-    return not saved.get("user_id") or same_agent(saved, fresh)
+    except OSError:
+        return True
+    return False
 
 
 def _refuse(where: Path) -> SystemExit:
@@ -75,7 +80,7 @@ def place(home: Path, folder: Path, fresh: dict) -> Path:
     own = home / agent_name(fresh) / FILE
     for there in (home / FILE, own):
         saved = read_saved(there)
-        if agent_name(saved) == agent_name(fresh) and not same_agent(saved, fresh):
+        if _unreadable(there) or (agent_name(saved) == agent_name(fresh) and not same_agent(saved, fresh)):
             raise _refuse(there)
     path = folder / FILE
     if folder != home:                        # a further agent: always its own folder
@@ -86,9 +91,7 @@ def place(home: Path, folder: Path, fresh: dict) -> Path:
         return own                            # moved aside before: it stays there
     if _free_for(path, fresh):
         return path
-    if not _free_for(own, fresh):
-        raise _refuse(own)
-    return own
+    return own                                # free: the check above found no other agent there
 
 
 def kept_aside(home: Path, path: Path) -> bool:
@@ -105,7 +108,12 @@ def _service(path: Path, how: str) -> tuple[str | None, list[str]]:
     """(its HAGENCY_CREDENTIALS or None, its command line), from a launchd plist or systemd unit."""
     if how == "launchd":
         job = plistlib.loads(path.read_bytes())
-        return job.get("EnvironmentVariables", {}).get("HAGENCY_CREDENTIALS"), list(job.get("ProgramArguments", []))
+        env = job.get("EnvironmentVariables", {}) if isinstance(job, dict) else None
+        argv = job.get("ProgramArguments", []) if isinstance(job, dict) else None
+        words = [*argv, *env.values()] if isinstance(env, dict) and isinstance(argv, list) else [None]
+        if not all(isinstance(w, str) for w in words):
+            raise ValueError(f"{path.name} isn't shaped like a service file")   # skipped by stranded()
+        return env.get("HAGENCY_CREDENTIALS"), argv
     env, argv = None, []
     for line in path.read_text().splitlines():
         key, _, value = line.partition("=")

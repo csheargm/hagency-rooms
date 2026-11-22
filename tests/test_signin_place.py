@@ -6,6 +6,7 @@ the service manager are stood in for; every sign-in here is made up.
 Run: .venv/bin/python -m unittest tests.test_signin_place"""
 import io
 import json
+import plistlib
 import sys
 import tempfile
 import unittest
@@ -112,10 +113,13 @@ class SameComputer(unittest.TestCase):
         self.run_connect("CODE-A")
         path = agent_service.service_file("launchd", "zz-agent", self.user_home)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("<?xml version='1.0'?><plist><dict><key>Label</key>")
-        install, _, failed = self.run_connect("CODE-B", answer=B)
-        self.assertIsNone(failed)
-        self.assertEqual(install.args[3], B_NAME)
+        for broken in ("<?xml version='1.0'?><plist><dict><key>Label</key>",
+                       plistlib.dumps(["not", "a", "dict"]).decode(),
+                       plistlib.dumps({"EnvironmentVariables": "x", "ProgramArguments": []}).decode()):
+            path.write_text(broken)
+            install, _, failed = self.run_connect("CODE-B", answer=B)
+            self.assertIsNone(failed)
+            self.assertEqual(install.args[3], B_NAME)
 
     def test_repairing_an_agent_kept_aside_replaces_it_there(self):
         self.run_connect("CODE-A")
@@ -174,9 +178,9 @@ class SameComputer(unittest.TestCase):
                 return real(path, *a, **k)
             return read
         with mock.patch.object(Path, "read_bytes", unreadable(Path.read_bytes)), \
-                mock.patch.object(Path, "read_text", unreadable(Path.read_text)):
-            got = signin_place.place(self.home, self.home, B)
-        self.assertEqual(got, self.home / B_NAME / "credentials.json")
+                mock.patch.object(Path, "read_text", unreadable(Path.read_text)), self.assertRaises(SystemExit) as e:
+            signin_place.place(self.home, self.home, B)
+        self.assertIn("nothing was replaced", str(e.exception))
 
     def test_the_same_name_from_another_server_is_refused_not_given_the_same_service(self):
         self.run_connect("CODE-A")
