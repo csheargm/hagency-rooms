@@ -52,6 +52,9 @@ FAIL_CLOSED = {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", 
                "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
                "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
 COMPOSE_UNSAFE = re.compile(r"""['"`$\\\s]""")
+# TODO(split): give Docker Compose its own env file with only its validated settings (bootstrap.sh,
+# deploy.sh, invite.sh), so no sign-up value can ever stop a deploy (GPT re-check; its own session, R8).
+KEY_RE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")   # a .env name; anything else is a malformed line
 SECRETS = {"POSTGRES_PASSWORD"}               # filled with a random value when empty
 PRIVATE = SECRETS | {"SMTP_USER", "SMTP_PASS",   # never printed (`get` refuses them)
                      "HAGENCY_GOOGLE_CLIENT_SECRET", "HAGENCY_GITHUB_CLIENT_SECRET"}
@@ -68,8 +71,8 @@ def read() -> dict:
     for number, line in enumerate(ENV.read_text().splitlines(), 1):
         if line.strip() and not line.lstrip().startswith("#"):
             key, sep, value = line.partition("=")
-            if not sep:                       # the line number only: a pasted secret is never echoed (GPT review)
-                raise SystemExit(f"✗ .env line {number}: not NAME=value")
+            if not sep or not KEY_RE.fullmatch(key.strip()):   # the line number only: a pasted secret
+                raise SystemExit(f"✗ .env line {number}: not NAME=value")   # is never echoed (GPT review)
             values[key.strip()] = value.strip()
     return values
 

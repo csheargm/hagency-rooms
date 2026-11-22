@@ -122,10 +122,11 @@ class StaysClosed(unittest.TestCase):
     def test_malformed_lines_are_reported_by_number_only(self):
         with tempfile.TemporaryDirectory() as d:
             env = Path(d) / ".env"
-            env.write_text("ROOMS_DOMAIN=rooms.example.org\nmy-pasted-secret-value\n")
-            with mock.patch.object(envfile, "ENV", env), self.assertRaises(SystemExit) as stop:
-                envfile.read()
-        self.assertEqual(str(stop.exception), "✗ .env line 2: not NAME=value")
+            for bad in ("my-pasted-secret-value", "smtp pass=hunter2=x", "SMTP_PASS hunter2=x"):
+                env.write_text(f"ROOMS_DOMAIN=rooms.example.org\n{bad}\n")
+                with mock.patch.object(envfile, "ENV", env), self.assertRaises(SystemExit) as stop:
+                    envfile.read()
+                self.assertEqual(str(stop.exception), "✗ .env line 2: not NAME=value")
 
     def test_signup_mode_for_the_health_check(self):
         for e, want in ((BASE, "token"), (OPEN, "open"), ({**OPEN, "HAGENCY_OPEN_SIGNUP": "0"}, "token")):
