@@ -206,31 +206,39 @@ def _moved(text: str, app: Path, how: str) -> str:
 def migrate(app: Path, run=subprocess.run, home: Path | None = None) -> list[str]:
     """Rewrite this installation's background services (every agent's, further ones too) that still
     run a launcher from the root, and load them again; the names of those rewritten. Windows: none
-    here (connect.ps1 moves its task). A service manager that refuses raises RuntimeError, with that
-    file put back as it was, so the next connect run tries it again (GPT review)."""
+    here (connect.ps1 moves its task). If anything fails, every file not yet loaded again is put back
+    as it was, so the next connect run tries it again (GPT review), and RuntimeError says why."""
     how = kind()
     if how not in ("launchd", "systemd"):
         return []
     folder = service_file(how, "x", home).parent
     pattern = f"{LABEL}.*.plist" if how == "launchd" else "hagency-agent-*.service"
-    done = {}
-    for path in sorted(folder.glob(pattern)):
-        text = path.read_text()
-        new = _moved(text, app, how)
-        if new == text:
-            continue
-        _write(path, new)
-        done[path] = text
-        if how == "launchd":                  # launchd keeps the loaded arguments: load the file again
-            run(["launchctl", "bootout", f"gui/{os.getuid()}/{path.stem}"], capture_output=True)
-            r = run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(path)], capture_output=True, text=True)
-            if r.returncode != 0:
-                _write(path, text)
-                raise RuntimeError(f"launchd wouldn't load {path.name} again: {(r.stderr or r.stdout or '').strip()[:200]}")
-    if done and how == "systemd":             # systemd reads ExecStart at the next start
-        r = run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True)
-        if r.returncode != 0:
-            for path, text in done.items():
-                _write(path, text)
-            raise RuntimeError(f"systemd wouldn't reload: {(r.stderr or r.stdout or '').strip()[:200]}")
-    return [path.name for path in done]
+    done, pending = [], {}                    # pending: rewritten, not yet loaded again
+    try:
+        for path in sorted(folder.glob(pattern)):
+            text = path.read_text()
+            new = _moved(text, app, how)
+            if new == text:
+                continue
+            pending[path] = text
+            _write(path, new)
+            if how == "launchd":              # launchd keeps the loaded arguments: load the file again
+                run(["launchctl", "bootout", f"gui/{os.getuid()}/{path.stem}"], capture_output=True)
+                _loaded(run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(path)], capture_output=True, text=True),
+                        f"launchd wouldn't load {path.name} again")
+                pending.pop(path)
+                done.append(path.name)
+        if pending:                           # systemd reads ExecStart at the next start
+            _loaded(run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True), "systemd wouldn't reload")
+            done += [path.name for path in pending]
+            pending = {}
+    except (OSError, RuntimeError) as e:
+        for path, text in pending.items():
+            _write(path, text)
+        raise RuntimeError(str(e)) from e
+    return done
+
+
+def _loaded(r, what: str) -> None:
+    if r.returncode != 0:
+        raise RuntimeError(f"{what}: {(r.stderr or r.stdout or '').strip()[:200]}")

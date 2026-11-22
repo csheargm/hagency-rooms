@@ -57,6 +57,7 @@ def setup() -> bool:
                 return True
         except OSError:
             time.sleep(1)                 # still starting
+    CONFIG.write_text(old)                # unconfirmed: the next `setup` applies and checks it again
     raise SystemExit("Synapse didn't come back within 60 s: docker compose -f local/docker-compose.yml logs synapse")
 
 

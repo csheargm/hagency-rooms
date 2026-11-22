@@ -109,6 +109,21 @@ class Migrate(unittest.TestCase):
         self.assertEqual(unit.read_text(), old)
         self.assertEqual(self.migrate("systemd", Recorder()), [unit.name])
 
+    def test_a_manager_that_cannot_even_start_puts_every_file_back(self):
+        """GPT review: an OSError (not an exit code) must not leave rewritten files behind."""
+        olds = {a: old_service("systemd", APP, "codex", a) for a in ("anna-agent", "cx-codex-agent")}
+        units = {a: self.place("systemd", a, text) for a, text in olds.items()}
+        def broken(*_a, **_k):
+            raise FileNotFoundError("systemctl")
+        with self.assertRaisesRegex(RuntimeError, "systemctl"):
+            self.migrate("systemd", broken)
+        self.assertEqual({a: u.read_text() for a, u in units.items()}, olds)
+        self.place("launchd", "anna-agent", old_service("launchd", APP, "codex", "anna-agent"))
+        with self.assertRaisesRegex(RuntimeError, "systemctl"):
+            self.migrate("launchd", broken)
+        self.assertEqual(agent_service.service_file("launchd", "anna-agent", self.home).read_text(),
+                         old_service("launchd", APP, "codex", "anna-agent"))
+
     def test_windows_and_no_service_manager_have_nothing_to_rewrite(self):
         for how in (agent_service.WINDOWS, None):
             run = Recorder()
@@ -133,7 +148,8 @@ class WindowsKeeper(unittest.TestCase):
         """GPT review: a failed pairing starts the stopped task again; it must not name the removed root keeper."""
         ps1 = (ROOT / "client" / "connect.ps1").read_text()
         body = ps1[ps1.index("function Move-OldKeepers"):ps1.index("function Install-Venv")]
-        self.assertIn("Set-ScheduledTask -TaskName $task.TaskName -Action $actions", body)
+        self.assertIn("Set-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath -Action $moved", body)
+        self.assertIn("-match $old", body)                              # without regard to case, as Test-Ours
         self.assertIn("$link.Save()", body)
         flow = ps1[ps1.index("    Stop-OldAgent\n"):]
         self.assertLess(flow.index("Install-App"), flow.index("Move-OldKeepers"))

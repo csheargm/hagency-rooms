@@ -129,17 +129,20 @@ function Install-App {
 function Move-OldKeepers {
     # Right after the update: a task or shortcut Stop-OldAgent stopped may still run the root keeper,
     # which the update just removed (docs/adr/0012-launchers-in-bin.md). Point it at bin\ before
-    # anything can fail, so the catch below starts a keeper that exists. TODO(remove after 2027-02-01).
-    $old = '"{0}"' -f (Join-Path $App 'connect_win.py')
-    $new = '"{0}"' -f (Join-Path $App 'bin\connect_win.py')
+    # anything can fail, so the catch below starts a keeper that exists. Matched without regard to
+    # case, as Test-Ours does. Our tasks have one action, the exec one Register-Agent made.
+    # TODO(remove after 2027-02-01).
+    $old = [regex]::Escape(('"{0}"' -f (Join-Path $App 'connect_win.py')))
+    $new = ('"{0}"' -f (Join-Path $App 'bin\connect_win.py')).Replace('$', '$$')
     foreach ($task in $state.Stopped) {
-        if (-not @($task.Actions | Where-Object { $_.Arguments -and $_.Arguments.Contains($old) }).Count) { continue }
-        $actions = @($task.Actions | ForEach-Object {
-            New-ScheduledTaskAction -Execute $_.Execute -Argument ([string]$_.Arguments).Replace($old, $new) -WorkingDirectory $_.WorkingDirectory })
-        Set-ScheduledTask -TaskName $task.TaskName -Action $actions | Out-Null
+        $actions = @($task.Actions)
+        if (-not @($actions | Where-Object { [string]$_.Arguments -match $old }).Count) { continue }
+        $moved = @($actions | ForEach-Object {
+            New-ScheduledTaskAction -Execute $_.Execute -Argument ([string]$_.Arguments -replace $old, $new) -WorkingDirectory $_.WorkingDirectory })
+        Set-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath -Action $moved | Out-Null
     }
     foreach ($link in $state.Relaunch) {
-        if ($link.Arguments.Contains($old)) { $link.Arguments = $link.Arguments.Replace($old, $new); $link.Save() }
+        if ($link.Arguments -match $old) { $link.Arguments = $link.Arguments -replace $old, $new; $link.Save() }
     }
 }
 
@@ -270,7 +273,7 @@ try {
     Write-Host "x $($_.Exception.Message)" -ForegroundColor Red
     $back = 0                                    # a failed rerun (expired code, no network): the old agent comes back
     foreach ($task in $state.Stopped) {
-        try { Start-ScheduledTask -TaskName $task.TaskName -ErrorAction Stop; $back++ } catch { }   # gone: counted below
+        try { Start-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath -ErrorAction Stop; $back++ } catch { }   # gone: counted below
     }
     foreach ($link in $state.Relaunch) {
         try {
