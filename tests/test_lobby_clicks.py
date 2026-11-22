@@ -76,8 +76,7 @@ class OthersGreeting(Base):
 
     def test_a_transport_error_doesnt_use_up_the_click(self):   # GPT review
         self.lp.private_room = mock.AsyncMock(side_effect=[ClientError("down"), f"!dm-{ANNA}"])
-        with self.assertRaises(ClientError):  # loop.on_reaction_event's business, as for every handler
-            self.react(ANNA)
+        self.assertTrue(self.react(ANNA))     # caught here: it never ends my sync loop (GPT review)
         self.react(ANNA)
         self.assertEqual([w for w, _ in self.said], [f"!dm-{ANNA}"])
 

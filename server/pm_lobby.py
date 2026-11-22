@@ -154,8 +154,8 @@ class Lobby:
         try:
             if await self.answer_others_click(room, person):
                 answered.add(once)            # only once it went out (GPT review): a failed one may be retried
-        except RuntimeError as e:             # loop.SendError
-            log.error("couldn't answer %s's 👍: %s", person, e)
+        except (RuntimeError, OSError, asyncio.TimeoutError, ClientError) as e:   # SendError, or Matrix unreachable:
+            log.error("couldn't answer %s's 👍: %s", person, e)   # never the sync loop's end; they can click again
         finally:
             clicking.discard(person)
         return True
