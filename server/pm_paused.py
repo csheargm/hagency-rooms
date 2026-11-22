@@ -18,7 +18,7 @@ from common import github
 from common.redact import room_safe, secret_safe
 
 MAX_REASON = 200      # characters of an agent's own error kept in the pause reason
-MAX_OPEN_PRS = 1000   # open PRs read in one look (the GitHub App read's own ceiling)
+MAX_OPEN_PRS = 1000   # open PRs read in one look (the GitHub App read's own ceiling); a full list can't tell
 AGENT_BRANCH = re.compile(r"agent/[^/]+/issue-([1-9][0-9]*)")   # adapters/agents/tasks.py names it so
 
 
@@ -56,6 +56,8 @@ async def agent_prs(repo: str) -> dict[int, int]:
                                  "number,headRefName,isCrossRepository", "--limit", str(MAX_OPEN_PRS)])
     if not isinstance(prs, list):
         raise github.GitHubError("GitHub's list of open PRs wasn't a list")
+    if len(prs) >= MAX_OPEN_PRS:     # GPT review: the issue's PR may be past the end, so absent proves nothing
+        raise github.GitHubError(f"{repo} has {MAX_OPEN_PRS} or more open PRs")
     found: dict[int, int] = {}
     for pr in prs:
         m = AGENT_BRANCH.fullmatch(str(pr.get("headRefName") or "")) if isinstance(pr, dict) else None
@@ -78,6 +80,21 @@ async def open_prs(loop, items: dict[str, dict], repo: str) -> dict[str, int | N
         elif found is None or num(k) in found:
             held[k] = None if found is None else found[num(k)]
     return held
+
+
+async def requeue(loop, key: str, item: dict, repo: str) -> str | None:
+    """"@pm retry #N": the paused issue back in the queue, unless it has an open PR (open_prs). Returns why
+    it stays, else None. GitHub is asked outside the loop's lock (GPT review: a long list of PRs would hold
+    up every room), then the pause is re-checked under it, as in retry_all."""
+    held = await open_prs(loop, {key: item}, repo)
+    if key in held:
+        return still_open(num(key), held[key])
+    async with loop.lock:                          # never between a poll and its results
+        if loop.state.get(key) is not item or item["stage"] != "stopped":
+            return f"#{num(key)} isn't paused anymore (it changed meanwhile), so I left it as it is."
+        del loop.state[key]
+        loop.save()
+    return None
 
 
 def still_open(n: int, pr: int | None) -> str:

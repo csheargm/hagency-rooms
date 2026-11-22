@@ -98,6 +98,28 @@ class UnrecordedPR(unittest.TestCase):
         with self.github([pr(21, "agent/cx-agent/issue-9")]):
             self.assertIn("PR #14 for #9 is still open", self.retry(9))
 
+    def test_a_full_list_cant_tell(self):
+        """GPT review: the issue's PR may be past the last one listed, so not finding it proves nothing."""
+        with self.github([pr(n, f"agent/cx-agent/issue-{1000 + n}") for n in range(pm_paused.MAX_OPEN_PRS)]):
+            self.assertIn("I couldn't reach GitHub", self.retry(9))
+        self.assertIn(issue_key(REPO, 9), self.lp.state)
+
+    def test_github_is_asked_outside_the_lock(self):
+        """GPT review: a retry's GitHub calls held up every room while they waited."""
+        async def answer(args, agent=None):
+            self.assertFalse(self.lp.lock.locked())
+            return []
+        with mock.patch.object(github, "run_json", mock.AsyncMock(side_effect=answer)):
+            self.assertIn("back in the queue", self.retry(9))
+
+    def test_a_pause_that_changed_meanwhile_is_left_alone(self):
+        async def answer(args, agent=None):
+            self.lp.state[issue_key(REPO, 9)]["stage"] = "building"      # the loop moved it meanwhile
+            return []
+        with mock.patch.object(github, "run_json", mock.AsyncMock(side_effect=answer)):
+            self.assertIn("isn't paused anymore", self.retry(9))
+        self.assertEqual("building", self.lp.state[issue_key(REPO, 9)]["stage"])
+
 
 class ListedThroughTheApp(AppCase):
     """The public server reads GitHub through the App: "gh pr list" has the same shape there."""
