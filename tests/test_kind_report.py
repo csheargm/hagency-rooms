@@ -160,6 +160,8 @@ class Reports(flows.Base):
         remover[0].join()
         self.assertIsNone(registry.find(CX, "codex"))
         self.assertFalse(pm_kind_reports.record(CXC, {"agent_kind": "codex"}))       # removed: ignored
+        with mock.patch.object(registry, "save", side_effect=OSError("disk full")), self.assertLogs("loop", "ERROR"):
+            self.report(CXA, {"agent_kind": "claude"})                              # logged; @pm's sync goes on
 
     def test_not_reported_yet_only_for_agents_on_a_persons_computer(self):
         registry.update(CX, None, agent="server")

@@ -52,5 +52,9 @@ class KindReports:
         self.client.add_to_device_callback(self.on_kind_report, UnknownToDeviceEvent)
 
     async def on_kind_report(self, event: UnknownToDeviceEvent) -> None:
-        if event.type == kind_report.EVENT_TYPE:
+        if event.type != kind_report.EVENT_TYPE:
+            return
+        try:
             record(event.sender, event.source.get("content"))
+        except OSError as e:                  # agents.json unwritable: only the badge waits (the next start reports
+            log.error("couldn't record %s's AI report: %s", event.sender, e)   # again); never stops @pm's sync
