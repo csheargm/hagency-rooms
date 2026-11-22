@@ -150,13 +150,11 @@ class Lobby:
         clicking = self.__dict__.setdefault("_lobby_clicking", set())
         if once in answered or person in clicking:
             return True
-        answered.add(once)
-        clicking.add(person)
+        clicking.add(person)                  # in flight: a second click now is no second answer
         try:
-            if not await self.answer_others_click(room, person):
-                answered.discard(once)        # nothing went out: another click may retry
-        except RuntimeError as e:             # loop.SendError: another click may retry
-            answered.discard(once)
+            if await self.answer_others_click(room, person):
+                answered.add(once)            # only once it went out (GPT review): a failed one may be retried
+        except RuntimeError as e:             # loop.SendError
             log.error("couldn't answer %s's 👍: %s", person, e)
         finally:
             clicking.discard(person)
@@ -165,8 +163,9 @@ class Lobby:
     async def answer_others_click(self, room: MatrixRoom, person: str) -> bool:
         """A newcomer gets my offer, as from their own greeting (or where it is, if it went out already);
         someone with an agent hears that they're set up: privately, as their agents' names are theirs."""
-        agents = registry.agents_of(person)
-        if self.is_newcomer(person) or not self.may_have_agent(person) or not agents:   # offer_again says why not
+        agents = registry.agents_of(person)   # a bring-your-own agent that never connected: not set up yet
+        unfinished = (registry.load().get(person) or {}).get("agent") == registry.REMOTE and not self.has_connected_agent(person)
+        if self.is_newcomer(person) or not self.may_have_agent(person) or not agents or unfinished:   # as offer_again
             if (self.lobby_greeted().get(person) or {}).get("done"):   # their own offer went out once, ever
                 await self.point_to_offer(room.room_id, person)        # pm_welcome.py
                 return True

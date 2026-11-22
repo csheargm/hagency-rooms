@@ -5,6 +5,9 @@ import asyncio
 from types import SimpleNamespace
 from unittest import mock
 
+from aiohttp import ClientError
+
+from common import registry
 from server import pm_lobby
 from server import project_rooms
 from tests.test_projects import ANNA, BETTY, PM, S, Base, project
@@ -26,6 +29,7 @@ class OthersGreeting(Base):
         self.lp.offer_again = mock.AsyncMock(return_value=True)
         self.lobby = project("!l", "Lobby")
         self.lobby.canonical_alias = project_rooms.LOBBY_ALIAS
+        self.lp.has_connected_agent = lambda who: True
         self.lp._lobby_greeted = {NEW: {"room": "!l", "event": "$greet"}}   # my greeting for newbie1
 
     def react(self, who, key="👍", to="$greet", room=None):
@@ -69,6 +73,20 @@ class OthersGreeting(Base):
         self.react(ANNA)
         self.react(ANNA)
         self.assertEqual(self.lp.say.await_count, 2)
+
+    def test_a_transport_error_doesnt_use_up_the_click(self):   # GPT review
+        self.lp.private_room = mock.AsyncMock(side_effect=[ClientError("down"), f"!dm-{ANNA}"])
+        with self.assertRaises(ClientError):  # loop.on_reaction_event's business, as for every handler
+            self.react(ANNA)
+        self.react(ANNA)
+        self.assertEqual([w for w, _ in self.said], [f"!dm-{ANNA}"])
+
+    def test_a_bring_your_own_agent_that_never_connected_gets_the_offer_again(self):   # GPT review
+        registry.PATH.write_text('{"anna": {"agent": "%s"}}' % registry.REMOTE)
+        self.lp.has_connected_agent = lambda who: False
+        self.react(ANNA)
+        self.lp.offer_again.assert_awaited_once_with(self.lobby, ANNA)
+        self.assertEqual(self.said, [])
 
     def test_a_newcomer_clicking_someone_elses_greeting_gets_the_offer(self):
         self.assertTrue(self.react(BETTY))                                 # betty: no agent, never greeted
