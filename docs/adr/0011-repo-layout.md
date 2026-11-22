@@ -1,7 +1,8 @@
 # 0011: Repo layout by where code runs
 
 ## Status
-Accepted, 2026-11-21.
+Accepted, 2026-11-21. The launchers' place changed in ADR 0012: they are in `bin/`, with a
+migration for installed services, and the root keeps only what must be there.
 
 ## Context
 About 100 Python modules sat at the repo root, with nothing to show which run on the server, which on
@@ -22,7 +23,7 @@ adapters/agents/   the agent adapter: chat loop, rules, per-room turns, @pm task
 adapters/channels/ (later) chat-app adapters
 common/            Matrix calls, registry, room state, GitHub API, settings, paths
 mcp_tools/         the agents' MCP tools (not "mcp": that is the MCP library's name)
-<root>/*.py        launchers only, under the old names
+<root>/*.py        launchers only, under the old names (since ADR 0012: bin/*.py)
 ```
 - **Real packages**, imported by full name (`from common import registry`). A launcher shares its
   name with the code it starts (`bridge.py` → `adapters/agents/bridge.py`), so flat module names on

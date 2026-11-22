@@ -1,5 +1,5 @@
 """End-to-end: a newcomer signs up, @pm welcomes them, they bring their own agent and talk to it.
-Needs the stack running (./start.sh) after `python local_signup.py setup`. Run: .venv/bin/python -m tests.test_welcome_e2e
+Needs the stack running (local/start.sh) after `python bin/local_signup.py setup`. Run: .venv/bin/python -m tests.test_welcome_e2e
 (E2E_AGENT=claude to use Claude Code instead of Codex.) It creates a fresh account newbieNNNN each run.
 Against the public server: HAGENCY_HOMESERVER=https://matrix.<domain> HAGENCY_SERVER_NAME=<server>
 E2E_CONSOLE=https://rooms.<domain> E2E_TOKEN=<invite token> E2E_NAME=pubtest2.
@@ -156,7 +156,7 @@ def main():
     home = Path(tempfile.mkdtemp(prefix="hagency-home-"))
     log = open(home / "connect.log", "w")
     backend = os.environ.get("E2E_AGENT", "codex")
-    proc = subprocess.Popen([str(ROOT / ".venv/bin/python"), "connect.py", code, "--agent", backend, "--server", CONSOLE,
+    proc = subprocess.Popen([str(ROOT / ".venv/bin/python"), "bin/connect.py", code, "--agent", backend, "--server", CONSOLE,
                              "--home", str(home), "--foreground"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
     try:
         until("the agent online", lambda: "online" in (home / "connect.log").read_text(), timeout=90)

@@ -1,7 +1,7 @@
 """End-to-end test of the real user flow: humans @mention agents in #bridge-test over the
 Matrix client API and we check that the right agent replies (and only that agent).
 
-Needs: stack up (./start.sh) and both agent adapters running. Run: .venv/bin/python -m tests.test_e2e
+Needs: stack up (local/start.sh) and both agent adapters running. Run: .venv/bin/python -m tests.test_e2e
 """
 import json
 import time

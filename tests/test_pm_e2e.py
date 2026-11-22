@@ -1,5 +1,5 @@
 """End-to-end: people run the project by talking to @pm in plain words. Real Matrix, fake GitHub,
-no agents needed. Stop ./start.sh first (this starts its own @pm). Run: .venv/bin/python -m tests.test_pm_e2e
+no agents needed. Stop local/start.sh first (this starts its own @pm). Run: .venv/bin/python -m tests.test_pm_e2e
 
 - "where are we?" answers with the mode; anyone can ask.
 - betty (a contributor) can't switch to autonomous; anna (the owner) can, by saying so.
@@ -37,7 +37,7 @@ def main():
     room_id = test_room()
     tmp = Path(tempfile.mkdtemp(prefix="pm-e2e-"))
     env = {**os.environ, **make_fake_github(tmp)}
-    pm = subprocess.Popen([str(ROOT / ".venv/bin/python"), "loop.py"], cwd=ROOT, env=env,
+    pm = subprocess.Popen([str(ROOT / ".venv/bin/python"), "bin/loop.py"], cwd=ROOT, env=env,
                           stdout=open(tmp / "pm.log", "w"), stderr=subprocess.STDOUT)
     try:
         time.sleep(6)

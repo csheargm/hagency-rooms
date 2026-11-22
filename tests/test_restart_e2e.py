@@ -1,5 +1,5 @@
 """End-to-end: code changes and crashes don't lose work. Runs supervise.py (real Matrix, real Codex,
-fake GitHub). Stop ./start.sh first — this starts its own agent adapters. Run: .venv/bin/python -m tests.test_restart_e2e
+fake GitHub). Stop local/start.sh first — this starts its own agent adapters. Run: .venv/bin/python -m tests.test_restart_e2e
 
 A. Live code change: anna asks anna-agent two things around a code save. Both are answered,
    each exactly once, across the restart (the second may arrive while the old process drains).
@@ -38,7 +38,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="restart-e2e-"))
     env = {**os.environ, **make_fake_github(tmp), "LOOP_STEP_TIMEOUT_S": str(STEP_TIMEOUT_S)}
     out = open(tmp / "supervise.log", "w")
-    sup = subprocess.Popen([str(ROOT / ".venv/bin/python"), "supervise.py"], cwd=ROOT, env=env,
+    sup = subprocess.Popen([str(ROOT / ".venv/bin/python"), "bin/supervise.py"], cwd=ROOT, env=env,
                            stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
     agent = lambda who: f"@{who}-agent:{SERVER_NAME}"
     bot = f"@pm:{SERVER_NAME}"

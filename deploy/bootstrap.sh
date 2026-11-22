@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 umask 077
 PM_DIR="$(cd ../.. && pwd)/pm"
-[ -f "$PM_DIR/loop.py" ] || { echo "✗ $PM_DIR has no @pm code: run deploy.sh from your computer"; exit 1; }
+[ -f "$PM_DIR/bin/loop.py" ] || { echo "✗ $PM_DIR has no @pm code: run deploy.sh from your computer"; exit 1; }
 get() { python3 envfile.py get "$1"; }
 
 # 1. Docker, Compose and vnstat (traffic counts for guard.py) from Ubuntu's own archive.

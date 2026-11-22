@@ -141,7 +141,7 @@ class Rename(unittest.TestCase):
         """Only @pm's own name is ever set at start (setup_accounts), and only this module and that one
         write display names at all: no agent adapter, connect script or set-up names an agent."""
         self.assertEqual(set(setup_accounts.DISPLAY_NAMES), {"pm"})
-        writers = sorted(str(p.relative_to(ROOT)) for p in [*ROOT.glob("*.py"), *(p for d in paths.CODE_DIRS for p in (ROOT / d).rglob("*.py")), *ROOT.glob("*.sh"), *ROOT.glob("*.ps1"),
+        writers = sorted(str(p.relative_to(ROOT)) for p in [*ROOT.glob("*.py"), *(p for d in paths.CODE_DIRS for p in (ROOT / d).rglob("*.py")), *ROOT.glob("*/*.sh"), *ROOT.glob("*/*.ps1"),
                                                               *ROOT.glob("static/*.js")]
                          if re.search(r"/displayname|\"displayname\":", p.read_text(encoding="utf-8")))
         self.assertEqual(writers, ["common/setup_accounts.py", "server/pm_rename.py"])

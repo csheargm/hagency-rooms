@@ -37,9 +37,9 @@ Hermes joins through its own Matrix gateway, with our adapter handling only its 
    "Hagency agent <you>" on Windows): you can close the window, and it starts again when you log
    in. Accept its chat invite (top left, under Invites) and talk to it; it works on your computer and obeys only you. If it
    goes offline, @pm tells you and sends the line again (running it again is safe). To stop it:
-   `~/.hagency/app/.venv/bin/python ~/.hagency/app/connect.py --stop`, or Disconnect under My agent
+   `~/.hagency/app/.venv/bin/python ~/.hagency/app/bin/connect.py --stop`, or Disconnect under My agent
    in the Hagency panel ("@pm disconnect my agent" works too). On Windows the same `--stop` works
-   with `%LOCALAPPDATA%\Hagency\app\.venv\Scripts\python.exe %LOCALAPPDATA%\Hagency\app\connect.py --stop`
+   with `%LOCALAPPDATA%\Hagency\app\.venv\Scripts\python.exe %LOCALAPPDATA%\Hagency\app\bin\connect.py --stop`
    (it ends and removes the Scheduled Task).
    On Windows, Claude Code from its installer (`claude.exe`) and npm's `codex`/`claude` both work:
    the agent never starts a CLI through a shell, so for npm's `.cmd` wrapper it starts the program
@@ -85,16 +85,20 @@ obeys only your full ID. Your Hagency panel in Element signs you in with your ow
 federation); elsewhere, say "@pm send me my console link" in a room you share with @pm.
 
 The site is https://www.hagencylabs.xyz. How the public server is run and deployed:
-[docs/DEPLOY_ORACLE.md](docs/DEPLOY_ORACLE.md). On a local server (below), `python local_signup.py setup`
-turns on sign-up by token (and the Welcome room), and `python local_signup.py token` makes a token
+[docs/DEPLOY_ORACLE.md](docs/DEPLOY_ORACLE.md). On a local server (below), `python bin/local_signup.py setup`
+turns on sign-up by token (and the Welcome room), and `python bin/local_signup.py token` makes a token
 for http://localhost:8649/#/register.
 
 ## Developers
 
 Code lives by where it runs (docs/adr/0011-repo-layout.md): `server/` (@pm, console, panel),
 `client/` (connect and the background service on people's computers), `adapters/agents/` (the agent
-adapter that links an AI to the rooms), `common/` (shared), `mcp_tools/`. The `*.py` files at the root
-are launchers under the names installed agents and the docs use (`python bridge.py`, `connect.py`…).
+adapter that links an AI to the rooms), `common/` (shared), `mcp_tools/`. `bin/` holds the small
+launchers that people, background services and @pm's container run by path (`python bin/bridge.py`,
+`bin/connect.py`…, docs/adr/0012-launchers-in-bin.md); `local/` the local test server (`local/start.sh`,
+its Docker Compose file and settings); `deploy/` the public server; `docs/` the guides, ADRs,
+`REVIEWS.md` and `TIMELOG.md`. The root keeps only the README, licence, security and contributing
+notes, `requirements.txt` and these folders.
 
 | What | Where |
 |---|---|
@@ -108,11 +112,11 @@ are launchers under the names installed agents and the docs use (`python bridge.
 1. Start everything — server, accounts (first run only), @pm and each person's agent:
 
    ```bash
-   cd hagency-rooms && ./start.sh      # in your clone
+   cd hagency-rooms && local/start.sh      # in your clone
    ```
 
    Leave it running (Ctrl-C stops the agent adapters; the server keeps running in Docker).
-   To use Claude Code instead of Codex: `./start.sh claude` (run `claude` → `/login` first).
+   To use Claude Code instead of Codex: `local/start.sh claude` (run `claude` → `/login` first).
 
 2. Look up anna's password (it is never printed by the scripts):
 
@@ -135,7 +139,7 @@ are launchers under the names installed agents and the docs use (`python bridge.
 
    **An agent only obeys its owner** (betty mentioning `@anna-agent` is ignored), because for
    its owner it runs their CLI exactly as they configured it, with their tools and access
-   (docs/adr/0006-owner-cli-powers.md). With `ALLOW_MEMBERS=1 ./start.sh` other joined members
+   (docs/adr/0006-owner-cli-powers.md). With `ALLOW_MEMBERS=1 local/start.sh` other joined members
    can ask it too, but their questions run locked down (read-only, no web, no MCP).
 
 **Invite the agent somewhere else:** create a room, *turn encryption off* in the create dialog,
@@ -144,7 +148,7 @@ without a mention. In an encrypted room the agent says it can't read it (no E2EE
 
 ## How it works
 
-- `bridge.py <owner> [--agent codex|claude]` logs in as `<owner>-agent`, auto-joins invites from
+- `bin/bridge.py <owner> [--agent codex|claude]` logs in as `<owner>-agent`, auto-joins invites from
   local users, and reacts only to messages that **@mention it** (pill or plain `anna-agent`) or
   arrive in a 2-person DM, sent by its **owner** (or, with `--allow-members`, any joined room
   member) that is not itself an agent (loop guard). Pending invites at startup get the same
@@ -173,7 +177,7 @@ without a mention. In an encrypted room the agent says it can't read it (no E2EE
 
 ## Live code changes
 
-`start.sh` runs the agent adapters and @pm under `supervise.py`. Save any `.py` file and they
+`local/start.sh` runs the agent adapters and @pm under `bin/supervise.py`. Save any `.py` file and they
 restart by themselves within a second; you never restart the server. A file with a syntax error
 is not loaded; the running version stays up and the error is printed. On restart, each process
 finishes the answer or loop step it is in the middle of, and the new one picks up messages sent
@@ -201,10 +205,10 @@ drives the real flow over the Matrix API with the agent adapters running: anna a
 agents, checks replies, typing, per-room memory across turns, that the other agent stays quiet,
 that anna's agent ignores betty, and the encrypted-room warning.
 
-`tests/test_pm_e2e.py` (stop `start.sh` first) talks to @pm in plain words: anyone can stop, a
+`tests/test_pm_e2e.py` (stop `local/start.sh` first) talks to @pm in plain words: anyone can stop, a
 contributor can't switch to autonomous, and the owner can, just by saying so.
 
-`tests/test_restart_e2e.py` (stop `start.sh` first) saves a code file between two questions and checks
+`tests/test_restart_e2e.py` (stop `local/start.sh` first) saves a code file between two questions and checks
 both are answered exactly once, then kills the builder's agent adapter mid-step and checks the loop
 resends the step and the issue is still merged.
 
@@ -258,7 +262,7 @@ short reply.
 ## Stop / reset
 
 ```bash
-docker compose down      # in your clone
+docker compose -f local/docker-compose.yml down      # in your clone
 ```
 
 Delete `data/`, `.env` and `rooms/` to start from scratch.
@@ -271,7 +275,7 @@ Delete `data/`, `.env` and `rooms/` to start from scratch.
 **One room, one repo.** The room owner or a maintainer picks it: say `@pm this room works on
 owner/name`, or use **Project repo** in the Hagency console (**Remove repo** there, or `@pm remove the repo`, takes it
 off again; refused while work runs). The console's **Check readiness**
-button runs the same read-only check as `github_setup.py check`: each agent can write, merges
+button runs the same read-only check as `bin/github_setup.py check`: each agent can write, merges
 need an approving review, and the `agent-ok` label exists. The repo is stored as a list in the
 room's `xyz.hagencylabs.loop` state, so a room can hold several repos later. A project that spans
 repos is a **Matrix Space** with one room per repo. Create the Space in Element (＋ → Create a
@@ -282,8 +286,8 @@ or a maintainer may choose **any repo** that has the App installed and that thei
 account can write to. An operator may restrict this with `HAGENCY_REPOS` (empty: any repo). When a
 room can't use a repo, @pm names the one missing step: the App's install link, the account that
 can't write, or the server's list. **Locally, without the App**, rooms choose only from `LOOP_REPO`
-plus any in `HAGENCY_REPOS="owner/a owner/b"`. Set both in `local.env` (copy `local.env.example`;
-git-ignored), which `start.sh` loads; the code's own default is only a placeholder. There @pm reads
+plus any in `HAGENCY_REPOS="owner/a owner/b"`. Set both in `local/local.env` (copy `local/local.env.example`;
+git-ignored), which `local/start.sh` loads; the code's own default is only a placeholder. There @pm reads
 with the host's own `gh` login, so a free choice would let any room see any repo that login can read,
 private ones included. The demo room starts on `LOOP_REPO`.
 
@@ -327,8 +331,8 @@ so the loop stops and says so instead of merging.
 Follow [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md). In short:
 1. Sign in one GitHub account per agent in `.gh/<agent>/`.
 2. Give each account Write access to the repo.
-3. Run `github_setup.py ruleset` to make GitHub the merge gate.
-4. Run `github_setup.py check` and confirm you see `✓ ready`.
+3. Run `bin/github_setup.py ruleset` to make GitHub the merge gate.
+4. Run `bin/github_setup.py check` and confirm you see `✓ ready`.
 
 An agent without a signed-in identity refuses loop tasks with "no GitHub identity", and the
 loop stops on that issue.
@@ -341,7 +345,7 @@ loop stops on that issue.
 
 The full loop test below runs real Codex agents against a fake GitHub (`tests/fake_gh.py` plus a
 local bare repo, with the same rules: you can't approve your own PR, and reviews are required).
-Stop `start.sh`'s agent adapters first, because the test starts its own:
+Stop `local/start.sh`'s agent adapters first, because the test starts its own:
 
 ```bash
 .venv/bin/python -m tests.test_loop_e2e

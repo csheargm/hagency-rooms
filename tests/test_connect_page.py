@@ -173,7 +173,7 @@ class WindowsInstaller(unittest.TestCase):
         self.assertIn("$Code -notmatch $CodePattern", self.text)
         self.assertNotRegex(self.text, r"(?i)password|Invoke-Expression")
         self.assertIn("--pair-only", self.text)                   # connect.py saves; the task runs the agent
-        self.assertIn("connect_win.py", self.text)
+        self.assertIn("bin\\connect_win.py", self.text)
 
     def test_never_closes_the_persons_window(self):
         """It runs inside their own PowerShell: `exit` would close it."""

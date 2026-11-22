@@ -33,7 +33,7 @@ PUBLIC_HOMESERVER = os.environ.get("HAGENCY_PUBLIC_HOMESERVER", "http://localhos
 CODES = pairing.Codes(ROOT / "data" / "pairing.json")
 LIMIT = pairing.Limiter()
 NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
-INSTALLER = ROOT / "connect.sh"
+INSTALLER = ROOT / "client" / "connect.sh"
 CONSOLE_MARK = "__HAGENCY_CONSOLE__"
 # Behind the public server's Caddy every request comes from Caddy; it sets X-Forwarded-For to the
 # real client (Caddy trusts no incoming one). HAGENCY_TRUST_PROXY names the proxy (its Docker host

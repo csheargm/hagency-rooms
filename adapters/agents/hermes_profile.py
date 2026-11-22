@@ -24,6 +24,7 @@ from pathlib import Path
 from common import github
 from adapters.agents import workdirs
 from common import bridge_config
+from common import paths
 from common.bridge_config import ROOT, SERVER_NAME
 
 HERMES_HOME = Path.home() / ".hermes"
@@ -171,7 +172,7 @@ def set_code_dir(name: str, code: Path) -> bool:
     version (customize.py). HAGENCY_HOME keeps it finding the official folder's state either way.
     False: no hagency args line to point (a hand-edited profile), nothing changed."""
     cfg = profile_dir(name) / "config.yaml"
-    text, found = MCP_ARGS.subn(lambda m: f"    args: [{code / 'hagency_mcp.py'}]", cfg.read_text())
+    text, found = MCP_ARGS.subn(lambda m: f"    args: [{paths.launcher(code, 'hagency_mcp.py')}]", cfg.read_text())
     if not found:
         return False
     if not re.search(r"^      HAGENCY_HOME: .*$", text, re.M):
@@ -253,7 +254,7 @@ onboarding:                           # no "shall I build your profile?" offers 
 mcp_servers:
   hagency:
     command: {PY}
-    args: [{ROOT / 'hagency_mcp.py'}]
+    args: [{paths.launcher(ROOT, 'hagency_mcp.py')}]
     timeout: 300
     env:
 {env_lines}

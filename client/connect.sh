@@ -6,7 +6,7 @@
 # Installs (or updates) Hagency Rooms in ~/.hagency/app, then runs connect.py with @pm's one-time
 # code. Your agent's sign-in is kept in ~/.hagency/credentials.json (only you can read it).
 # It then runs in the background (launchd / systemd --user); run this again any time, it's safe.
-# To stop it: ~/.hagency/app/.venv/bin/python ~/.hagency/app/connect.py --stop
+# To stop it: ~/.hagency/app/.venv/bin/python ~/.hagency/app/bin/connect.py --stop
 set -eu
 CONSOLE="${HAGENCY_CONSOLE:-__HAGENCY_CONSOLE__}"
 REPO="${HAGENCY_REPO:-https://github.com/csheargm/hagency-rooms}"
@@ -36,6 +36,6 @@ fi
 
 # Piped from curl, this script's stdin is the download: read questions from the terminal if there is one.
 if (: </dev/tty) 2>/dev/null; then
-  exec "$APP/.venv/bin/python" "$APP/connect.py" --server "$CONSOLE" "$@" </dev/tty
+  exec "$APP/.venv/bin/python" "$APP/bin/connect.py" --server "$CONSOLE" "$@" </dev/tty
 fi
-exec "$APP/.venv/bin/python" "$APP/connect.py" --server "$CONSOLE" "$@"
+exec "$APP/.venv/bin/python" "$APP/bin/connect.py" --server "$CONSOLE" "$@"

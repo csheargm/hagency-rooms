@@ -44,10 +44,10 @@ def checks(rooms: str, matrix: str, console: str, domain: str, server: str, publ
         ("sign-up needs an invite token", lambda: token_only(fetch(f"{matrix}/_matrix/client/v3/register", {})[1])),
         ("@pm's account", lambda: json.loads(fetch(f"{matrix}/_matrix/client/v3/profile/{pm}")[1]).get("displayname")
          == "Product Manager"),
-        ("@pm online: /connect.sh served", lambda: "connect.py" in (t := fetch(f"{console}/connect.sh")[1])
+        ("@pm online: /connect.sh served", lambda: "bin/connect.py" in (t := fetch(f"{console}/connect.sh")[1])
          and "__HAGENCY_CONSOLE__" not in t),
         ("the Connect page and /connect.ps1 served", lambda: "connect/start.js" in fetch(f"{console}/connect/start")[1]
-         and "connect_win.py" in (t := fetch(f"{console}/connect.ps1")[1]) and "__HAGENCY_CONSOLE__" not in t),
+         and "bin\\connect_win.py" in (t := fetch(f"{console}/connect.ps1")[1]) and "__HAGENCY_CONSOLE__" not in t),
     ]
     if public:
         items += [

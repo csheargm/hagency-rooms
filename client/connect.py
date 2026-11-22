@@ -1,10 +1,10 @@
 """Connect your own agent to Hagency Rooms, from your own computer: Codex, Claude Code, Hermes, a
 model in Ollama, or any OpenAI-compatible service (the kinds: agent_kinds.py, docs/adr/0008-agent-kinds.md).
 
-  python connect.py CODE [--agent KIND] [--model M] [--base-url URL]   # once, with the code @pm sent you
-  python connect.py                               # later: start it again with the saved sign-in
-  python connect.py --stop                        # stop it and remove the background service
-  python connect.py --name cx-codex-agent [--stop] # the same for a further agent of yours
+  python bin/connect.py CODE [--agent KIND] [--model M] [--base-url URL]   # once, with the code @pm sent you
+  python bin/connect.py                               # later: start it again with the saved sign-in
+  python bin/connect.py --stop                        # stop it and remove the background service
+  python bin/connect.py --name cx-codex-agent [--stop] # the same for a further agent of yours
 
 It trades @pm's one-time code for your agent's sign-in (POST <server>/connect), saves it in
 ~/.hagency/credentials.json (mode 600, never in this folder), and runs the agent as a
@@ -39,6 +39,7 @@ from common.bridge_config import credentials_match
 from common import paths
 
 APP = paths.ROOT.resolve()
+CONNECT = paths.launcher(APP, "connect.py")    # how people run this again
 BACKENDS = agent_kinds.LEGACY                 # what an agent with no kind runs, as before
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 TIMEOUT_S = 30
@@ -137,7 +138,7 @@ def background(creds: dict, path: Path) -> bool:
         return False
     print(f"✓ Your agent now runs in the background ({how}): you can close this Terminal. It starts again when\n"
           f"  you log in. Its log: {path.parent / 'logs' / (agent_name(creds) + '.log')}\n"
-          f"  To stop it: {sys.executable} {APP / 'connect.py'} {name_arg(creds)}--stop")
+          f"  To stop it: {sys.executable} {CONNECT} {name_arg(creds)}--stop")
     return True
 
 
@@ -209,14 +210,14 @@ def connect_here(args, home: Path, path: Path, saved: dict) -> tuple[dict, Path]
         saved = {**fresh, **{k: before[k] for k in ("agent", *connect_kinds.KIND_SETTINGS) if k in before}}
         save(path, saved)                                         # the code is used up: keep the sign-in
         if bad_offer and not args.agent:
-            raise SystemExit(f"✗ {bad_offer}.\n  Your sign-in is saved: run {sys.executable} {APP / 'connect.py'} "
+            raise SystemExit(f"✗ {bad_offer}.\n  Your sign-in is saved: run {sys.executable} {CONNECT} "
                              f"{name_arg(saved)}--agent KIND (no code needed)")
     kind = pick_kind(args, offered, saved)
     pending = connect_kinds.pending_for(kind, saved, offered)
     save(path, pending)                                           # chosen: a rerun asks only what's missing
     why = connect_kinds.problem(kind)
     if why:
-        raise SystemExit(f"✗ {why}\n  Your sign-in is saved; then run {sys.executable} {APP / 'connect.py'} "
+        raise SystemExit(f"✗ {why}\n  Your sign-in is saved; then run {sys.executable} {CONNECT} "
                          f"{name_arg(saved)}(no code needed)")
     creds = connect_kinds.settings(kind, pending, args, path.parent)
     save(path, creds)
@@ -225,8 +226,21 @@ def connect_here(args, home: Path, path: Path, saved: dict) -> tuple[dict, Path]
     return creds, path
 
 
+def migrate_services() -> None:
+    """Services written before the launchers moved into bin/ (ADR 0012) run them from there again.
+    A failure is said and the connect goes on: it installs this agent's own service afresh anyway."""
+    try:
+        moved = agent_service.migrate(APP)
+    except (OSError, RuntimeError) as e:
+        print(f"note: couldn't update an older background service ({e}); run this again", file=sys.stderr)
+        return
+    if moved:
+        print(f"✓ updated {len(moved)} background service(s) to this version's paths")
+
+
 def main() -> None:
     args = parse_args()
+    migrate_services()
     home = args.home.resolve()
     path = (home / args.name if args.name else home) / "credentials.json"
     saved = read_saved(path)
@@ -241,7 +255,7 @@ def main() -> None:
     if args.pair_only:
         if creds.get("label") and os.name == "nt":   # connect.ps1 registers only the first agent's task (for now)
             raise SystemExit(f"✓ saved. On Windows a further agent runs in a window for now: "
-                             f"{sys.executable} {APP / 'connect.py'} --name {agent_name(creds)} --foreground")
+                             f"{sys.executable} {CONNECT} --name {agent_name(creds)} --foreground")
         return
     if not args.foreground and background(creds, path):
         return

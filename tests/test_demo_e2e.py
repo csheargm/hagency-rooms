@@ -1,5 +1,5 @@
 """End-to-end: the demo's product cycle, driven only by people talking. Real Matrix, real Codex
-agents (anna-agent, betty-agent), fake GitHub starting with NO issues. Stop ./start.sh first.
+agents (anna-agent, betty-agent), fake GitHub starting with NO issues. Stop local/start.sh first.
 Run: .venv/bin/python -m tests.test_demo_e2e           (both agents Codex, via the agent adapter)
      DEMO_ANNA=hermes .venv/bin/python -m tests.test_demo_e2e   (anna's agent is Hermes, as in the demo)
 
@@ -43,7 +43,7 @@ def confirm_latest(anna, room_id, words, ts):
 def start_anna(env: dict, pw: dict, logs) -> list[subprocess.Popen]:
     """anna's agent: the Codex agent adapter, or (DEMO_ANNA=hermes) Hermes through the hagency MCP server."""
     if os.environ.get("DEMO_ANNA") != "hermes":
-        return [subprocess.Popen([str(ROOT / ".venv/bin/python"), "bridge.py", "anna"], cwd=ROOT, env=env,
+        return [subprocess.Popen([str(ROOT / ".venv/bin/python"), "bin/bridge.py", "anna"], cwd=ROOT, env=env,
                                  stdout=logs, stderr=logs)]
     gh_env = {k: env[k] for k in ("FAKE_GH_STATE", "GH_BIN", "GH_IDENTITY_ROOT", "LOOP_REPO")}
     profiles = hermes_profile.configure_both("annademo", owner="anna", agent="anna-agent",
@@ -63,7 +63,7 @@ def main():
     env = {**os.environ, **make_fake_github(tmp)}
     py, logs = str(ROOT / ".venv/bin/python"), open(tmp / "procs.log", "w")
     procs = [subprocess.Popen([py, *a], cwd=ROOT, env=env, stdout=logs, stderr=logs)
-             for a in (["bridge.py", "betty"], ["loop.py"])]
+             for a in (["bin/bridge.py", "betty"], ["bin/loop.py"])]
     procs += start_anna(env, pw, logs)
     gh = lambda: json.loads((tmp / "gh.json").read_text())
     try:

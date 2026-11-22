@@ -54,7 +54,7 @@ class Contract(unittest.TestCase):
             self.assertTrue(agent_kinds.valid_base_url(ok), ok)
 
     def test_the_windows_installer_knows_the_same_kinds_and_model_names(self):
-        ps1 = (ROOT / "connect.ps1").read_text()
+        ps1 = (ROOT / "client" / "connect.ps1").read_text()
         kinds = re.search(r"\[ValidateSet\(([^)]*)\)\]\[string\]\$Agent", ps1).group(1)
         self.assertEqual(re.findall(r"'([a-z]+)'", kinds), [k for k in agent_kinds.KINDS if k not in agent_kinds.NOT_ON_WINDOWS])
         model = re.search(r"\[ValidatePattern\('([^']*)'\)\]\[string\]\$Model", ps1).group(1)

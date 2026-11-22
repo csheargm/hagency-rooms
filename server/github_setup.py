@@ -1,8 +1,8 @@
 """One-time GitHub setup for the loop: check every agent identity, and apply the merge-gate ruleset.
 
-  python github_setup.py check [--repo owner/name] [agent ...]   # default agents: anna-agent betty-agent
-  python github_setup.py ruleset [--repo owner/name]             # as the repo owner (your normal `gh` login)
-  python github_setup.py pages [--repo owner/name]               # publish the default branch (GitHub Pages)
+  python bin/github_setup.py check [--repo owner/name] [agent ...]   # default agents: anna-agent betty-agent
+  python bin/github_setup.py ruleset [--repo owner/name]             # as the repo owner (your normal `gh` login)
+  python bin/github_setup.py pages [--repo owner/name]               # publish the default branch (GitHub Pages)
 
 The repo defaults to LOOP_REPO. A room's "Check" in the Hagency console runs the same check
 (read-only); changing the repo's settings stays with its owner, here.
@@ -20,7 +20,7 @@ from common import github_app
 from common.github import LABEL, REPO, GitHubError, run, run_json
 
 DEFAULT_AGENTS = ("anna-agent", "betty-agent")
-RULESET_FILE = github.ROOT / "github-ruleset.json"
+RULESET_FILE = github.ROOT / "docs" / "github-ruleset.json"
 RULESET_NAME = json.loads(RULESET_FILE.read_text())["name"]
 
 
@@ -39,7 +39,7 @@ def evaluate(identities: dict[str, dict], main_rules: list[dict], repo: str = RE
         problems.append(f"agents share a GitHub account ({logins}); each needs its own, or nobody can approve")
     pr_rules = [r for r in main_rules if r.get("type") == "pull_request"]
     if not any(r.get("parameters", {}).get("required_approving_review_count", 0) >= 1 for r in pr_rules):
-        problems.append(f"{branch} on {repo} doesn't require an approving review — run `github_setup.py ruleset --repo {repo}`")
+        problems.append(f"{branch} on {repo} doesn't require an approving review — run `bin/github_setup.py ruleset --repo {repo}`")
     return problems
 
 
@@ -66,7 +66,7 @@ async def readiness(repo: str, agents: list[str], detail: bool = True) -> tuple[
         return identities, [f"can't read {repo}" + (f": {str(e)[:160]}" if detail else "")]
     problems = evaluate(identities, rules if isinstance(rules, list) else [], repo, branch, detail)
     if LABEL not in labels:
-        problems.append(f"no '{LABEL}' label on {repo} — run `github_setup.py ruleset --repo {repo}`")
+        problems.append(f"no '{LABEL}' label on {repo} — run `bin/github_setup.py ruleset --repo {repo}`")
     return identities, problems
 
 

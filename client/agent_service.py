@@ -23,6 +23,11 @@ from common import paths
 LABEL = "xyz.hagencylabs.agent"
 RESTART_S = 30
 WINDOWS = "schtasks"
+WINDOWS_KEEPERS = ("connect_win.py", "bridge.py")   # what a Python of ours on Windows runs
+# TODO(remove after 2027-02-01): services and keepers written before the launchers moved into bin/
+# (docs/adr/0012-launchers-in-bin.md) name these (and WINDOWS_KEEPERS) at the installation's root;
+# migrate() rewrites them, keeper_paths() still recognises the old ones.
+OLD_ROOT_LAUNCHERS = ("bridge.py", "hermes_local.py")
 
 
 def windows_task(agent_localpart: str) -> str:
@@ -34,11 +39,17 @@ def label(agent_localpart: str) -> str:
     return f"{LABEL}.{agent_localpart}"
 
 
+def keeper_paths(app: Path) -> list[Path]:
+    """The files a Python running this installation's Windows keeper or agent adapter names: in bin/,
+    or at the root for one started before the update (TODO above)."""
+    return [p for n in WINDOWS_KEEPERS for p in (paths.launcher(app, n), app / n)]
+
+
 def command(app: Path, owner: str, backend: str) -> list[str]:
     """The agent adapter running this kind's CLI; for hermes, hermes_local.py (its two gateways, ADR 0008)."""
     if backend == "hermes":
-        return [sys.executable, str(app / "hermes_local.py")]
-    return [sys.executable, str(app / "bridge.py"), owner, "--agent", backend]
+        return [sys.executable, str(paths.launcher(app, "hermes_local.py"))]
+    return [sys.executable, str(paths.launcher(app, "bridge.py")), owner, "--agent", backend]
 
 
 def plist(app: Path, owner: str, backend: str, agent: str, creds: Path, logs: Path) -> str:
@@ -58,13 +69,16 @@ def plist(app: Path, owner: str, backend: str, agent: str, creds: Path, logs: Pa
             "</dict></plist>\n")
 
 
+def _quote(a: str) -> str:
+    """One systemd argument: it expands %specifiers and $VARIABLES even inside quotes, so both are doubled."""
+    return '"' + a.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$") + '"'
+
+
 def unit(app: Path, owner: str, backend: str, agent: str, creds: Path, logs: Path) -> str:
-    # systemd expands %specifiers and $VARIABLES even inside quotes: both are doubled to stay literal
-    quote = lambda a: '"' + a.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$") + '"'
     return ("[Unit]\nDescription=Hagency Rooms agent " + agent + "\nAfter=network-online.target\n\n[Service]\n"
-            f"ExecStart={' '.join(quote(a) for a in command(app, owner, backend))}\n"
-            f"WorkingDirectory={app}\nEnvironment={quote('HAGENCY_CREDENTIALS=' + str(creds))}\n"
-            f"Environment={quote('PATH=' + os.environ.get('PATH', '/usr/bin:/bin'))}\n"
+            f"ExecStart={' '.join(_quote(a) for a in command(app, owner, backend))}\n"
+            f"WorkingDirectory={app}\nEnvironment={_quote('HAGENCY_CREDENTIALS=' + str(creds))}\n"
+            f"Environment={_quote('PATH=' + os.environ.get('PATH', '/usr/bin:/bin'))}\n"
             f"Restart=on-failure\nRestartSec={RESTART_S}\nStandardOutput=append:{logs / (agent + '.log')}\n"
             f"StandardError=append:{logs / (agent + '.log')}\n\n[Install]\nWantedBy=default.target\n")
 
@@ -136,7 +150,7 @@ def _ours(pid: str, app: Path, run) -> bool:
     out = run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ask], capture_output=True, text=True).stdout
     exe, _, line = out.strip().lower().partition("|")
     return (PureWindowsPath(exe).name.startswith("python")      # the program itself, not text in its arguments
-            and any(str(app / f).lower() in line for f in ("connect_win.py", "bridge.py")))
+            and any(str(f).lower() in line for f in keeper_paths(app)))
 
 
 def _stop_windows(agent: str, home: Path, run, app: Path) -> bool:
@@ -179,3 +193,52 @@ def stop(agent: str, run=subprocess.run, home: Path | None = None, app: Path | N
     existed = path.exists()
     path.unlink(missing_ok=True)
     return existed
+
+
+def _moved(text: str, app: Path, how: str) -> str:
+    """The service file's text with each old root launcher of `app` named at its place in bin/."""
+    token = (lambda p: f"<string>{escape(str(p))}</string>") if how == "launchd" else (lambda p: _quote(str(p)))
+    for name in OLD_ROOT_LAUNCHERS:
+        text = text.replace(token(app / name), token(paths.launcher(app, name)))
+    return text
+
+
+def migrate(app: Path, run=subprocess.run, home: Path | None = None) -> list[str]:
+    """Rewrite this installation's background services (every agent's, further ones too) that still
+    run a launcher from the root, and load them again; the names of those rewritten. Windows: none
+    here (connect.ps1 moves its task). If anything fails, every file not yet loaded again is put back
+    as it was, so the next connect run tries it again (GPT review), and RuntimeError says why."""
+    how = kind()
+    if how not in ("launchd", "systemd"):
+        return []
+    folder = service_file(how, "x", home).parent
+    pattern = f"{LABEL}.*.plist" if how == "launchd" else "hagency-agent-*.service"
+    done, pending = [], {}                    # pending: rewritten, not yet loaded again
+    try:
+        for path in sorted(folder.glob(pattern)):
+            text = path.read_text()
+            new = _moved(text, app, how)
+            if new == text:
+                continue
+            pending[path] = text
+            _write(path, new)
+            if how == "launchd":              # launchd keeps the loaded arguments: load the file again
+                run(["launchctl", "bootout", f"gui/{os.getuid()}/{path.stem}"], capture_output=True)
+                _loaded(run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(path)], capture_output=True, text=True),
+                        f"launchd wouldn't load {path.name} again")
+                pending.pop(path)
+                done.append(path.name)
+        if pending:                           # systemd reads ExecStart at the next start
+            _loaded(run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True), "systemd wouldn't reload")
+            done += [path.name for path in pending]
+            pending = {}
+    except (OSError, RuntimeError) as e:
+        for path, text in pending.items():
+            _write(path, text)
+        raise RuntimeError(str(e)) from e
+    return done
+
+
+def _loaded(r, what: str) -> None:
+    if r.returncode != 0:
+        raise RuntimeError(f"{what}: {(r.stderr or r.stdout or '').strip()[:200]}")

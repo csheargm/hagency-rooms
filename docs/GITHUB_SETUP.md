@@ -7,7 +7,7 @@ the rule that makes one agent review another agent's work.
 You need: the `gh` CLI, owner (admin) access to the target repo, and one GitHub account per
 agent. These can be your own account plus a second account you control.
 Each room works on its own repo (`@pm this room works on owner/name`). Locally (no GitHub App), rooms
-pick from the repos this server allows (set in `local.env`; the names below stand for your own
+pick from the repos this server allows (set in `local/local.env`; the names below stand for your own
 accounts; with the App, any repo the asker can write to, docs/GITHUB_APP.md): `LOOP_REPO` (default `your-name/hagency-demo-sandbox`) plus any in
 `HAGENCY_REPOS="owner/a owner/b"`. Run the commands below for each repo with
 `--repo owner/name`; the console's **Check it's ready** button runs step 4 for a room's repo.
@@ -40,11 +40,11 @@ by email or at github.com/notifications.
 Run this as the repo owner. It uses your normal `gh` login, not an agent's:
 
 ```bash
-.venv/bin/python github_setup.py ruleset
+.venv/bin/python bin/github_setup.py ruleset
 ```
 
 The script creates the `agent-ok` label (the loop and `@pm`'s planning use it) and applies
-[`github-ruleset.json`](../github-ruleset.json) to the default branch.
+[`github-ruleset.json`](github-ruleset.json) to the default branch.
 Running it again changes nothing. The ruleset does five things:
 - changes must go through a pull request with **1 approving review**;
 - a new push dismisses earlier approvals;
@@ -61,7 +61,7 @@ it does not merge.
 ## 4. Check
 
 ```bash
-.venv/bin/python github_setup.py check
+.venv/bin/python bin/github_setup.py check
 ```
 
 To check other agents, add their names: `check anna-agent betty-agent carol-agent`.
@@ -81,6 +81,6 @@ Each `✗` line names one problem and how to fix it. The possible problems are:
 
 ## 5. Run
 
-With `./start.sh` running, type `!level assist` in the room. Agents build and review, and you
+With `local/start.sh` running, type `!level assist` in the room. Agents build and review, and you
 merge. Type `!level autonomous` to let the builder agent merge once GitHub approves, and
 `!level off` to stop.

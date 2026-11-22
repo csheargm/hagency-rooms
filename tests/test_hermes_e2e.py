@@ -2,7 +2,7 @@
 (`annatestroom`: only anna, her own tools; `annatestloop`: only pm's tasks, contained tools; ADR 0006);
 there is no room allowlist, so the owner can also DM it. Both talk to Matrix
 through Hermes's own gateway and to the GitHub loop through hagency_mcp.py; betty's agent is the
-Codex agent adapter. Real Matrix, real Hermes and Codex, fake GitHub. Stop ./start.sh first.
+Codex agent adapter. Real Matrix, real Hermes and Codex, fake GitHub. Stop local/start.sh first.
 Run: .venv/bin/python -m tests.test_hermes_e2e
 
 A. Hermes answers its owner in the room, and ignores betty (MATRIX_ALLOWED_USERS).
@@ -89,7 +89,7 @@ def main():
     run_env = {**os.environ, **gh_env, "HAGENCY_AGENTS": str(agents_file)}
     logs = open(tmp / "procs.log", "w")
     procs = [subprocess.Popen([PY, *a], cwd=ROOT, env=run_env, stdout=logs, stderr=logs)
-             for a in (["bridge.py", "betty"], ["loop.py"])]
+             for a in (["bin/bridge.py", "betty"], ["bin/loop.py"])]
     procs += [subprocess.Popen(["hermes", "-p", p, "gateway", "run"], stdout=logs, stderr=logs) for p in (PERSONAL, LOOP)]
     anna, betty = login("anna", env["PW_ANNA"]), login("betty", env["PW_BETTY"])
     me = f"@{HERMES}:{SERVER_NAME}"

@@ -25,7 +25,7 @@ STOPPED = ("Stopped: **{agent}** stays connected, but it ignores messages and ta
            "once later. If it still answers, its computer runs older code: run its connect line there once more to update it.")
 STARTED = "Started: **{agent}** answers again."
 HERMES = ("**{agent}** runs Hermes, which can't be stopped from here yet. On its computer, run "
-          "`~/.hagency/app/.venv/bin/python ~/.hagency/app/connect.py --stop` (and the connect line to start it again).")
+          "`~/.hagency/app/.venv/bin/python ~/.hagency/app/bin/connect.py --stop` (and the connect line to start it again).")
 FAILED = "⚠️ I couldn't {verb} your agent just now; please try again."
 
 

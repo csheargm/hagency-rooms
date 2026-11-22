@@ -48,7 +48,7 @@ class KeepRunning(unittest.TestCase):
     def test_runs_the_bridge_with_the_sign_in_by_file_not_on_the_command_line(self):
         home = home_with()
         (argv, kw), = self.run_it(home, 1, [10])[0]
-        self.assertEqual(argv[1:], [str(connect_win.APP / "bridge.py"), "anna", "--agent", "claude"])
+        self.assertEqual(argv[1:], [str(connect_win.APP / "bin" / "bridge.py"), "anna", "--agent", "claude"])
         self.assertNotIn("s3cret-pw", " ".join(argv))
         self.assertEqual(kw["env"]["HAGENCY_CREDENTIALS"], str(home / "credentials.json"))
         self.assertEqual(kw["env"]["PYTHONIOENCODING"], "utf-8")
