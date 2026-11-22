@@ -40,7 +40,8 @@ connect line (`git pull`, then `bin/connect.py`), so the rewrite happens there:
   **this installation** (all agents, further ones too) whose arguments name an old root launcher is
   rewritten to `bin/` with the same escaping/quoting, then loaded again (launchd: bootout + bootstrap,
   since it keeps the loaded copy; systemd: daemon-reload). bootout returns before the job is gone, so
-  bootstrap waits (bounded) until `launchctl print` no longer finds it, and retries its error 5.
+  bootstrap waits until `launchctl print` no longer finds it and retries its error 5, all within
+  10 s of the bootout (`agent_service.GONE_TIMEOUT_S`).
   Other installations' services are left alone. If the service manager refuses one, that file is put
   back as it was (so the next run tries again) and the rest still move; the run then says which
   agents moved and which didn't, and goes on (it installs this agent's own service afresh anyway).

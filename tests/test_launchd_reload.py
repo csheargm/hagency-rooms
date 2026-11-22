@@ -78,10 +78,16 @@ class Reload(unittest.TestCase):
         launchd = FakeLaunchd(linger=float("inf"))
         r = self.load(launchd)
         self.assertIn("Input/output error", r.stderr)
-        self.assertEqual([c[1] for c in launchd.calls].count("bootstrap"), agent_service.BOOTSTRAP_TRIES)
-        most = (agent_service.GONE_TIMEOUT_S + agent_service.GONE_POLL_S
-                + (agent_service.BOOTSTRAP_TRIES - 1) * agent_service.BOOTSTRAP_RETRY_S)
+        self.assertGreaterEqual(launchd.now, agent_service.GONE_TIMEOUT_S)          # it did wait
+        most = agent_service.GONE_TIMEOUT_S + agent_service.GONE_POLL_S + agent_service.BOOTSTRAP_RETRY_S
         self.assertLessEqual(launchd.now, most)                         # one deadline for every try
+
+    def test_error_5_after_print_lets_go_is_tried_until_the_deadline(self):
+        """GPT review: print can stop finding the job seconds before launchd will load it again."""
+        launchd = FakeLaunchd(busy_after_gone=3)                        # loadable only at the 4th try, 3 s on
+        self.assertEqual(self.load(launchd).returncode, 0)
+        self.assertEqual([c[1] for c in launchd.calls].count("bootstrap"), 4)
+        self.assertIn(self.path.stem, launchd.loaded)
 
 
 class MigrateAll(unittest.TestCase):

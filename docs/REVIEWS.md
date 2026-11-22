@@ -1454,3 +1454,8 @@ Two points, both verified in the code and adopted, with tests in test_launchd_re
   load. That needs a write to fail right after a write to the same file succeeded; the report
   already names the file and says it couldn't be put back, and a launchd plist left rewritten
   already names `bin/` and loads at the next login. A marker would be new state on disk for it.
+
+### Third GPT pass
+- Adopted, **P2: three bootstrap tries 1 s apart could give up 2 s after `print` let go**, with
+  most of the 10 s window unused. Error 5 is now tried again until the one deadline from the
+  bootout; tested with a job loadable only at the fourth try.

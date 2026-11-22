@@ -30,10 +30,9 @@ WINDOWS_KEEPERS = ("connect_win.py", "bridge.py")   # what a Python of ours on W
 # still recognises them; client/service_migration.py rewrites the old services.
 
 # launchctl bootout returns before the job is gone; a bootstrap meanwhile fails with error 5
-GONE_TIMEOUT_S = 10.0                         # how long to wait for a booted-out job to go
+GONE_TIMEOUT_S = 10.0                         # how long to wait for it to go and be loadable again
 GONE_POLL_S = 0.25
-BOOTSTRAP_TRIES = 3
-BOOTSTRAP_RETRY_S = 1.0
+BOOTSTRAP_RETRY_S = 1.0                       # between loads refused with error 5, until that deadline
 LAUNCHD_BUSY = 5                              # "Bootstrap failed: 5: Input/output error"
 # how a reload is run: its output as text, never undecodable bytes that would skip the put-back (GPT review)
 MANAGER_OUTPUT = {"capture_output": True, "text": True, "errors": "replace"}
@@ -216,17 +215,16 @@ def _busy(r) -> bool:
 
 def load_again(path: Path, job: str, run=subprocess.run, sleep=time.sleep, clock=time.monotonic):
     """Unload the launchd job (if loaded), wait until it is gone, and load its file again; launchd keeps
-    the arguments it loaded. bootout returns before the job is gone, so the wait (GONE_TIMEOUT_S in all,
-    for every try) comes first and a load refused while it is still going is tried again."""
+    the arguments it loaded. bootout returns before the job is gone, so it first waits until `print`
+    no longer finds it, and a load refused while it is still going (error 5) is tried again until
+    GONE_TIMEOUT_S from the bootout (GPT review: `print` can stop finding it before it can be loaded)."""
     domain = f"gui/{os.getuid()}"
     target = f"{domain}/{job}"
     run(["launchctl", "bootout", target], capture_output=True)
     end = clock() + GONE_TIMEOUT_S
-    for attempt in range(BOOTSTRAP_TRIES):
-        if attempt:
-            sleep(BOOTSTRAP_RETRY_S)
+    while True:
         _wait_gone(target, run, sleep, clock, end)
         r = run(["launchctl", "bootstrap", domain, str(path)], **MANAGER_OUTPUT)
-        if not _busy(r):
-            break
-    return r
+        if not _busy(r) or clock() >= end:
+            return r
+        sleep(BOOTSTRAP_RETRY_S)
