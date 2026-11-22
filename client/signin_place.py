@@ -91,7 +91,9 @@ def place(home: Path, folder: Path, fresh: dict) -> Path:
         return own                            # moved aside before: it stays there
     if _free_for(path, fresh):
         return path
-    return own                                # free: the check above found no other agent there
+    if not _free_for(own, fresh):             # another agent's file in that folder (GPT review)
+        raise _refuse(own)
+    return own
 
 
 def kept_aside(home: Path, path: Path) -> bool:

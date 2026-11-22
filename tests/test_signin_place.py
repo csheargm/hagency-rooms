@@ -109,6 +109,13 @@ class SameComputer(unittest.TestCase):
             signin_place.place(self.home, self.home, other)
         self.assertEqual(self.saved("cx-agent")["user_id"], A["user_id"])
 
+    def test_another_agents_file_in_the_new_ones_folder_is_not_replaced(self):
+        connect.save(self.home / "credentials.json", A)
+        connect.save(self.home / B_NAME / "credentials.json", {**A, "user_id": "@zz-agent:other.example"})
+        with self.assertRaises(SystemExit):
+            signin_place.place(self.home, self.home, B)
+        self.assertEqual(self.saved(B_NAME)["user_id"], "@zz-agent:other.example")
+
     def test_a_broken_service_file_doesnt_stop_the_pairing(self):
         self.run_connect("CODE-A")
         path = agent_service.service_file("launchd", "zz-agent", self.user_home)
