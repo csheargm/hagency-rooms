@@ -20,12 +20,18 @@ def my_agents(loop, room, room_id: str, user: str) -> list[dict]:
         if registry.owns(user, a["localpart"]):
             aid = f"@{a['localpart']}:{SERVER_NAME}"
             found.append({"name": a["localpart"], "label": a["label"], "first": a["first"], "follow": a["follow"],
-                          "display": a.get("display") or "", "runs": pm_kinds.describe(a),   # pm_rename, pm_kinds
+                          "display": a.get("display") or "", "runs": badge(a),   # pm_rename, pm_kinds
                           "remote": a["agent"] == registry.REMOTE, "online": loop.agent_online(a["localpart"]),
                           "stopped": a["stopped"], "hermes": a.get("agent_kind") == "hermes",   # pm_stop.py
                           "connected": loop.ever_connected(a["localpart"]),   # pm_presence.py: online at least once
                           "here": ownership.joined(room, aid), "invited": aid in getattr(room, "invited_users", {})})
     return found
+
+
+def badge(agent: dict) -> str:
+    """The AI it runs (pm_kinds.describe); for an agent on a person's computer whose AI isn't known yet
+    ("the one on my computer", not reported since: kind_report.py), pm_kinds.NOT_REPORTED; else ""."""
+    return pm_kinds.describe(agent) or (pm_kinds.NOT_REPORTED if agent.get("agent") == registry.REMOTE else "")
 
 
 def can_add(user: str, mine: list) -> bool:

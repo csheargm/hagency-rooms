@@ -81,7 +81,7 @@ class PickInChat(flows.Provisioning):
         self.assertEqual(self.run_(console.act(loop, "!r", CX, "add", keyed)), pm_kinds.NO_KEYS)
         mine = console.my_agents(SimpleNamespace(agent_online=lambda a: None, ever_connected=lambda a: False),
                                  SimpleNamespace(users={}, invited_users={}), "!r", CX)
-        self.assertEqual([a["runs"] for a in mine], ["", "Ollama (a model on your computer): qwen2.5-coder:7b"])
+        self.assertEqual([a["runs"] for a in mine], [pm_kinds.NOT_REPORTED, "Ollama (a model on your computer): qwen2.5-coder:7b"])
 
     def test_remove_codex_then_add_codex_again(self):
         """Owner request: the name is theirs to use again; its closed account never comes back."""

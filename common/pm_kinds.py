@@ -6,6 +6,7 @@ never asked for, typed or stored here: the person enters it on their own compute
 The kinds, their names and the model / address checks are agent_kinds.py's (one place, R3): this
 module only reads what people say or click into that contract.
 """
+import ipaddress
 import json
 import re
 import urllib.parse
@@ -21,6 +22,7 @@ SAID = {"codex": "codex", "claude": "claude", "claude code": "claude", "hermes":
 KEY_RE = re.compile(r"\b(sk|rk|pk|gsk|xai|hf|or|nvapi)[-_][A-Za-z0-9_-]{12,}|\bbearer\s+\S{12,}", re.I)
 NO_KEYS = ("That looks like an API key: never type one here, in any chat. You enter it on your own computer "
            "when you connect the agent, and it stays there. (If it was a real key, revoke it with its provider.)")
+NOT_REPORTED = "AI: not reported yet"         # My agents, until the agent's computer says (kind_report.py)
 HOW = ("Say which AI it runs, for example \"add another agent called pi using claude\", \"... using ollama "
        "llama3.2\" or \"... using remote https://openrouter.ai/api/v1 openai/gpt-4o\" (codex, claude, hermes, "
        "ollama [model], remote <base URL> <model>).")
@@ -118,12 +120,57 @@ def from_panel(value: str) -> tuple[str, dict | str | None]:
     return text["name"].strip(), choice(text["agent_kind"], text["model"].strip(), text["base_url"].strip())
 
 
+REPORT_KEYS = ("agent_kind", "model", "host")   # what an agent's computer reports (kind_report.py); never a key
+LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+HOST_RE = re.compile(rf"(?=.{{1,253}}$){LABEL}(?:\.{LABEL})*")   # a DNS name: letters, digits, inner "-", dots
+
+
+def host_url(host: str) -> str:
+    return "https://" + (f"[{host}]" if ":" in host else host)   # an IPv6 address in brackets
+
+
+def is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return "%" not in host                    # no IPv6 zone ("fe80::1%en0")
+
+
+def valid_host(host: object) -> bool:
+    """A DNS name or an IP address that agent_kinds.valid_base_url takes: no scheme, port, user, path,
+    query or escapes ("a%20b.example": GPT re-check)."""
+    if not (isinstance(host, str) and (HOST_RE.fullmatch(host) or is_ip(host))):
+        return False
+    return agent_kinds.valid_base_url(host_url(host)) and urllib.parse.urlsplit(host_url(host)).hostname == host.lower()
+
+
+def reported(content: object) -> dict | None:
+    """What an agent's computer says it runs, as @pm keeps it ({agent_kind, model?, host?}), or None: not a
+    dict, a field other than REPORT_KEYS (an api_key), a non-string or key-like value, or a kind, model or
+    host that choice / agent_kinds refuse. An Ollama model is from that computer's installed list, so it is checked
+    only for a known key prefix, not for a long token (GPT review: local names such as Qwen3CoderNextInstruct)."""
+    if not isinstance(content, dict) or not set(content) <= set(REPORT_KEYS) or not all(isinstance(v, str) for v in content.values()):
+        return None
+    kind, model, host = (content.get(k, "") for k in REPORT_KEYS)
+    if kind not in agent_kinds.KINDS or (host and not valid_host(host)) or looks_like_key(host):
+        return None
+    if looks_like_key(model) if kind == "remote" else KEY_RE.search(model):   # a known key prefix, any kind (GPT re-check)
+        return None
+    picked = choice(kind, model, host_url(host) if host else "")
+    if not isinstance(picked, dict):
+        return None
+    return {"agent_kind": kind, **({"model": model} if model else {}), **({"host": host.lower()} if host else {})}
+
+
 def describe(agent: dict) -> str:
-    """What My agents shows: "Claude Code", "Local model (Ollama): llama3.2", "Remote: openai/gpt-4o at openrouter.ai"."""
-    kind = agent.get("agent_kind")
+    """What My agents shows: "Claude Code", "Local model (Ollama): llama3.2", "Remote: openai/gpt-4o at openrouter.ai".
+    What its computer reported (agent["reported"]: reported()) wins over what was picked for it."""
+    shown = agent.get("reported") or agent
+    kind = shown.get("agent_kind")
     if kind not in agent_kinds.KINDS:
         return ""
     if kind == "remote":
-        host = urllib.parse.urlsplit(agent.get("base_url") or "").hostname or "?"
-        return f"Remote: {agent.get('model') or '?'} at {host}"
-    return name(kind) + (f": {agent['model']}" if agent.get("model") else "")
+        host = shown.get("host") or urllib.parse.urlsplit(shown.get("base_url") or "").hostname or "?"
+        return f"Remote: {shown.get('model') or '?'} at {host}"
+    return name(kind) + (f": {shown['model']}" if shown.get("model") else "")

