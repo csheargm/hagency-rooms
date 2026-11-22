@@ -111,11 +111,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now hagency-guard.timer >/dev/null 2>&1
 
 # 8. Done only when everything answers inside (deploy.sh then checks HTTPS from outside).
+SIGNUP=$(python3 signup.py mode)                         # open or token: the mode configured above, no value
 for _ in $(seq 1 100); do
-  dc exec -T pm .venv/bin/python deploy/health.py --internal "$MATRIX_DOMAIN" "$SERVER_NAME" >/dev/null 2>&1 && break
+  dc exec -T pm .venv/bin/python deploy/health.py --internal "$MATRIX_DOMAIN" "$SERVER_NAME" "$SIGNUP" >/dev/null 2>&1 && break
   sleep 3                                                # @pm installs its packages on a first start
 done
-dc exec -T pm .venv/bin/python deploy/health.py --internal "$MATRIX_DOMAIN" "$SERVER_NAME"
+dc exec -T pm .venv/bin/python deploy/health.py --internal "$MATRIX_DOMAIN" "$SERVER_NAME" "$SIGNUP"
 # The owner's Synapse admin account (for Synapse Admin): its first password is random and kept
 # nowhere; the owner sets their own with `invite.sh owner-password` (docs/DEPLOY_ORACLE.md).
 dc exec -T pm .venv/bin/python deploy/admin_user.py ensure owner

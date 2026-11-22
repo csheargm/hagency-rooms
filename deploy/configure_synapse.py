@@ -1,7 +1,9 @@
 """Adjust Synapse's generated homeserver.yaml for the public server (bootstrap.sh runs it every time;
 running it again changes nothing):
   - Postgres instead of SQLite (the database block is replaced);
-  - sign-up only with a registration token (an invite), no guests, no URL previews;
+  - sign-up with a registration token (an invite), or open to anyone with a confirmed email once SMTP
+    is set in .env (signup.py, ADR 0013); never without either; no guests, no URL previews;
+  - sign-in with Google and GitHub, each once its keys are in .env (sso_login.py);
   - every new account joins the private Welcome room, created by @pm, where @pm greets them
     (pm_welcome.py; @pm must exist before the first sign-up, or Synapse can't create the room);
   - the public URL; Synapse's own rate limits, except sign-ins per address (@pm's container signs in often);
@@ -20,10 +22,13 @@ from pathlib import Path
 
 import envfile
 import hostfiles
+import signup
+import sso_login
 
 MARKER = ".hagency-configured"
 WELCOME_LOCALPART = "welcome"                 # #welcome:<server>; pm_welcome.py looks for this room
 PM_LOCALPART = "pm"
+RESERVED_NAMES = (PM_LOCALPART, "owner")      # owner: bootstrap.sh's `admin_user.py ensure owner`
 
 
 def welcome_settings(server_name: str) -> dict:
@@ -37,12 +42,16 @@ def welcome_settings(server_name: str) -> dict:
     }
 
 
-def module_settings(server_name: str) -> dict:
+def module_settings(server_name: str, public_signup: bool = False) -> dict:
     """The modules Synapse loads from /modules: @pm at power 50 in new rooms (it needs room version 12),
-    and @pm's private chat with a person here opens already joined."""
+    and @pm's private chat with a person here opens already joined. With public sign-up (open email
+    sign-up or an SSO provider), also: our own names (@pm, @owner, agents, bots) can't be taken there."""
     pm = f"@{PM_LOCALPART}:{server_name}"
     modules = [{"module": "hagency_pm_moderator.PmModerator", "config": {"pm": pm}},
                {"module": "hagency_auto_accept.AutoAccept", "config": {"pm": pm, "server": server_name}}]
+    if public_signup:
+        modules.append({"module": "hagency_reserved_names.ReservedNames",
+                        "config": {"names": list(RESERVED_NAMES), "suffixes": list(sso_login.RESERVED_SUFFIXES)}})
     return {"modules": json.dumps(modules), "default_room_version": '"12"'}
 
 
@@ -86,7 +95,8 @@ def configure(text: str, e: dict) -> str:
     extra = {
         "public_baseurl": json.dumps(f"https://{e['MATRIX_DOMAIN']}/"),
         "enable_registration": "true",
-        "registration_requires_token": "true",       # an admin hands out tokens: invite-only
+        # An admin hands out tokens (invite-only), unless open sign-up requires a confirmed email instead.
+        "registration_requires_token": "false" if signup.is_open(e) else "true",
         "allow_guest_access": "false",
         "max_upload_size": "20M",                    # with media_retention: the disk and traffic stay free-tier
         "media_retention": "{local_media_lifetime: 90d, remote_media_lifetime: 30d}",
@@ -96,12 +106,14 @@ def configure(text: str, e: dict) -> str:
         "rc_login": "{address: {per_second: 0.02, burst_count: 20}}",
         "url_preview_enabled": "false",              # previews would fetch arbitrary URLs from the server
         **welcome_settings(e["SERVER_NAME"]),
-        **module_settings(e["SERVER_NAME"]),
+        **module_settings(e["SERVER_NAME"], signup.is_open(e) or bool(sso_login.enabled(e))),
         **directory_settings(e["SERVER_NAME"]),
     }
     # Synapse refuses to start with this older key next to the two directory keys above (GPT re-check).
     text = re.sub(rf"(?m)^{LEGACY_DIRECTORY_KEY}:.*\n?", "", text)
-    return set_keys(text, extra)
+    # Closing sign-up (or removing a provider's keys) again removes what opened it.
+    text = signup.drop_keys(text, signup.stale_keys(e) + sso_login.stale_keys(e))
+    return set_keys(set_keys(text, extra), {**signup.settings(e), **sso_login.settings(e)})
 
 
 def install(path: Path, e: dict) -> bool:
@@ -121,4 +133,5 @@ if __name__ == "__main__":
     if envfile.validate(values):
         raise SystemExit("✗ run `python3 envfile.py check` first")
     changed = install(Path(sys.argv[1]), values)
-    print(f"✓ homeserver.yaml {'configured' if changed else 'unchanged'}: Postgres, invite-only sign-up, Welcome room, @pm moderator, chats open joined")
+    print(f"✓ homeserver.yaml {'configured' if changed else 'unchanged'}: Postgres, Welcome room, @pm moderator, chats open joined")
+    print(f"  {signup.describe(values)}; {sso_login.describe(values)}")

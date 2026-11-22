@@ -33,20 +33,46 @@ RULES = {
     "GITHUB_APP_SLUG": r"[a-z0-9][a-z0-9-]{0,62}",   # its github.com/apps/<slug> name, for install links
     "GITHUB_APP_CLIENT_ID": r"Iv[A-Za-z0-9.]{6,62}",  # its Client ID (public, not the secret): Connect GitHub
     "HAGENCY_REPOS": rf"{REPO}(,{REPO}){{0,49}}",   # optional: only these repos (empty: any; github.allowed_repo)
+    # Outgoing email for sign-up and password reset (signup.py, ADR 0013); the owner fills these.
+    "SMTP_HOST": DOMAIN, "SMTP_PORT": r"25|465|587|2525",
+    "SMTP_USER": r"[A-Za-z0-9._%+@=-]{1,254}",
+    "SMTP_PASS": r"[A-Za-z0-9!%&()*+,./:;<=>?@\[\]^_{|}~#-]{8,256}",   # no quotes, $, backslashes or spaces (.env rules)
+    "SMTP_FROM": rf"[A-Za-z0-9._%+-]{{1,64}}@{DOMAIN}",               # the address only; signup.py adds the name
+    "HAGENCY_OPEN_SIGNUP": r"[01]",            # 1: open sign-up once SMTP is set; 0: invite tokens only
+    # Sign-in with Google / GitHub (sso_login.py): each on once both of its keys are set.
+    "HAGENCY_GOOGLE_CLIENT_ID": r"[0-9]{6,30}-[a-z0-9]{8,64}\.apps\.googleusercontent\.com",
+    "HAGENCY_GOOGLE_CLIENT_SECRET": r"[A-Za-z0-9_-]{16,128}",
+    "HAGENCY_GITHUB_CLIENT_ID": r"[A-Za-z0-9.]{16,40}",
+    "HAGENCY_GITHUB_CLIENT_SECRET": r"[A-Za-z0-9_]{20,128}",
 }
-SECRETS = {"POSTGRES_PASSWORD"}
+# Sign-up and sign-in settings: a bad value turns that feature off (signup.py and sso_login.py check them
+# against RULES and bootstrap prints which), instead of stopping the deploy, so a typo made while
+# closing sign-up (HAGENCY_OPEN_SIGNUP=0) can't leave the old, open config running (GPT review).
+FAIL_CLOSED = {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "HAGENCY_OPEN_SIGNUP",
+               "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
+               "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
+COMPOSE_UNSAFE = re.compile(r"""['"`$\\\s]""")
+# TODO(split): give Docker Compose its own env file with only its validated settings (bootstrap.sh,
+# deploy.sh, invite.sh), so no sign-up value can ever stop a deploy (GPT re-check; its own session, R8).
+KEY_RE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")   # a .env name; anything else is a malformed line
+SECRETS = {"POSTGRES_PASSWORD"}               # filled with a random value when empty
+PRIVATE = SECRETS | {"SMTP_USER", "SMTP_PASS",   # never printed (`get` refuses them)
+                     "HAGENCY_GOOGLE_CLIENT_SECRET", "HAGENCY_GITHUB_CLIENT_SECRET"}
 OPTIONAL = {"OPERATOR", "ALLOW_REMOTE", "REMOTE_PER_HOUR",     # OPERATOR: empty until the operator has an account
             "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID",   # the GitHub App: empty until
-            "HAGENCY_REPOS"}                                               # it is registered
+            "HAGENCY_REPOS",                                               # it is registered
+            "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",   # empty: sign-up by invite only
+            "HAGENCY_OPEN_SIGNUP", "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
+            "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
 
 
 def read() -> dict:
     values = {}
-    for line in ENV.read_text().splitlines():
+    for number, line in enumerate(ENV.read_text().splitlines(), 1):
         if line.strip() and not line.lstrip().startswith("#"):
             key, sep, value = line.partition("=")
-            if not sep:
-                raise SystemExit(f"✗ .env: not NAME=value: {key.strip()[:40]}")
+            if not sep or not KEY_RE.fullmatch(key.strip()):   # the line number only: a pasted secret
+                raise SystemExit(f"✗ .env line {number}: not NAME=value")   # is never echoed (GPT review)
             values[key.strip()] = value.strip()
     return values
 
@@ -81,7 +107,11 @@ def ensure() -> dict:
 def validate(values: dict) -> list[str]:
     problems = [f"{k} is missing" for k in RULES if not values.get(k) and k not in OPTIONAL]
     problems += [f"{k} doesn't look right" for k, rx in RULES.items()
-                 if values.get(k) and not re.fullmatch(rx, values[k])]
+                 if values.get(k) and k not in FAIL_CLOSED and not re.fullmatch(rx, values[k])]
+    # Docker Compose reads .env too (bootstrap.sh, before Synapse is reconfigured) and misreads these
+    # characters, which would stop the deploy with the old config still live: name them first (GPT review).
+    problems += [f"{k} has a quote, $, backslash or space (Docker Compose would misread it)"
+                 for k in sorted(FAIL_CLOSED) if COMPOSE_UNSAFE.search(values.get(k, ""))]
     return problems
 
 
@@ -134,7 +164,7 @@ if __name__ == "__main__":
         problems = validate(values) + app_key_problems(values)
         print("\n".join(f"✗ {p} (edit ~/hagency/deploy/.env)" for p in problems) or "✓ .env ok")
         sys.exit(1 if problems else 0)
-    if cmd == ["get"] and len(sys.argv) == 3 and sys.argv[2] in RULES and sys.argv[2] not in SECRETS:
+    if cmd == ["get"] and len(sys.argv) == 3 and sys.argv[2] in RULES and sys.argv[2] not in PRIVATE | FAIL_CLOSED:
         values = read()
         if validate(values):
             raise SystemExit("✗ run `python3 envfile.py check` first")
