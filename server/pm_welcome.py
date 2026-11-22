@@ -244,6 +244,9 @@ class Welcome(Lobby, GitHubLink, FirstAgent):   # pm_github.py: Connect GitHub, 
             await self.say(room.room_id, pointer(person), mention=person)
         return dm is not None
 
+    async def point_to_offer(self, room_id: str, person: str) -> None:
+        await self.say(room_id, pointer(person), mention=person)   # pm_lobby.py: my offer went out already
+
     async def on_remote_invite(self, room: MatrixRoom, event: InviteMemberEvent) -> None:
         """Someone from another server opened a private chat with me: their way in (no Welcome for
         them). I join it, answer as to "I want an agent" and leave: the offer goes to a chat I make

@@ -6,7 +6,8 @@
     anyone else's 👍 there is answered too (a newcomer gets the offer, someone with an agent hears
     privately that they're set up), once per person per greeting;
   - the Welcome room's topic points at my private chat ("Start here 👉 …").
-Mixed into pm_welcome.Welcome (client, user_id, say, offer_thumb, offer_again, is_newcomer, dm_rooms).
+Mixed into pm_welcome.Welcome (client, user_id, say, offer_thumb, offer_again, point_to_offer, is_newcomer,
+may_have_agent, private_room, dm_rooms).
 """
 import asyncio
 import logging
@@ -31,15 +32,15 @@ WELCOME_NAME = "Welcome"
 GET = "👍"
 GREET = "Hi {person}! Click 👍 below to get your agent: I'll send you a private message with the next step."
 # Someone who already has an agent clicked 👍 under another person's greeting (seen live: silence).
-SET_UP = ("You're already set up here: {agents}. That 👍 is for newcomers, so there's nothing more to do. "
+SET_UP = ("You're already set up here{agents}. That 👍 is for newcomers, so there's nothing more to do. "
           "To open your console, type \"@pm send me my console link\".")
 
 
 def agents_in_words(agents: list[dict]) -> str:
-    """'your agent **a**' or 'your agents **a**, **b**': the name they gave it, else its account (as in
+    """': your agent **a**' or ': your agents **a**, **b**': the name they gave it, else its account (as in
     pm_agents.HAVE; a label alone, "main", says nothing to them)."""
     names = [f"**{a.get('display') or a['localpart']}**" for a in agents]
-    return f"your agent{'s' if len(names) > 1 else ''} {', '.join(names)}"
+    return f": your agent{'s' if len(names) > 1 else ''} {', '.join(names)}"
 
 
 class Lobby:
@@ -141,30 +142,37 @@ class Lobby:
                      if e.get("event") == event_id and e.get("room") == room_id), None)
 
     async def on_others_greeting(self, room: MatrixRoom, event: ReactionEvent) -> bool:
-        """👍 under someone else's greeting: a newcomer gets my offer, as from their own; someone with an
-        agent hears, privately, that they're set up. Once per person per greeting (no spam)."""
+        """👍 under someone else's greeting: answered once per person per greeting (no spam)."""
         if event.key.replace("️", "") != GET or self.greeting_at(room.room_id, event.reacts_to) is None:
             return False                      # anything else stays someone else's business
-        person, clicking = event.sender, self.__dict__.setdefault("_lobby_clicking", set())
+        person, once = event.sender, (event.reacts_to, event.sender)
         answered = self.__dict__.setdefault("_lobby_answered", set())   # (greeting, person), since my start
-        if (event.reacts_to, person) in answered or person in clicking:
+        clicking = self.__dict__.setdefault("_lobby_clicking", set())
+        if once in answered or person in clicking:
             return True
-        agents = registry.agents_of(person)
-        if self.is_newcomer(person) or not self.may_have_agent(person) or not agents:   # offer_again says why not
-            if not (self.lobby_greeted().get(person) or {}).get("done"):   # their own offer went out once, ever
-                answered.add((event.reacts_to, person))
-                if not await self.lobby_offer(room, person):
-                    answered.discard((event.reacts_to, person))   # it didn't go out: another click may retry
-            return True
-        answered.add((event.reacts_to, person))
+        answered.add(once)
         clicking.add(person)
         try:
-            dm = await self.private_room(person)
-            await self.say(dm or room.room_id, SET_UP.format(agents=agents_in_words(agents)),
-                           mention=None if dm else person)
+            if not await self.answer_others_click(room, person):
+                answered.discard(once)        # nothing went out: another click may retry
         except RuntimeError as e:             # loop.SendError: another click may retry
-            answered.discard((event.reacts_to, person))
-            log.error("couldn't tell %s they're set up: %s", person, e)
+            answered.discard(once)
+            log.error("couldn't answer %s's 👍: %s", person, e)
         finally:
             clicking.discard(person)
+        return True
+
+    async def answer_others_click(self, room: MatrixRoom, person: str) -> bool:
+        """A newcomer gets my offer, as from their own greeting (or where it is, if it went out already);
+        someone with an agent hears that they're set up: privately, as their agents' names are theirs."""
+        agents = registry.agents_of(person)
+        if self.is_newcomer(person) or not self.may_have_agent(person) or not agents:   # offer_again says why not
+            if (self.lobby_greeted().get(person) or {}).get("done"):   # their own offer went out once, ever
+                await self.point_to_offer(room.room_id, person)        # pm_welcome.py
+                return True
+            return await self.lobby_offer(room, person)
+        if dm := await self.private_room(person):
+            await self.say(dm, SET_UP.format(agents=agents_in_words(agents)))
+        else:                                 # no private chat: still an answer, without their agents' names
+            await self.say(room.room_id, f"{person}: " + SET_UP.format(agents=""), mention=person)
         return True

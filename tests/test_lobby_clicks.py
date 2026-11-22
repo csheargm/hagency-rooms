@@ -53,13 +53,16 @@ class OthersGreeting(Base):
         self.react(ANNA, to="$greet2")                                     # another person's greeting: once more
         self.assertEqual(len(self.said), 2)
 
-    def test_no_private_chat_answers_in_the_lobby_naming_them(self):
+    def test_no_private_chat_answers_in_the_lobby_without_their_agents_names(self):   # GPT review
         self.lp.private_room = mock.AsyncMock(return_value=None)
         self.lp.say = mock.AsyncMock(return_value="$x")
         self.react(ANNA)
         self.lp.say.assert_awaited_once()
-        self.assertEqual(self.lp.say.await_args.args[0], "!l")
+        where, body = self.lp.say.await_args.args
+        self.assertEqual(where, "!l")
         self.assertEqual(self.lp.say.await_args.kwargs["mention"], ANNA)
+        self.assertNotIn("anna-agent", body)
+        self.assertIn("already set up here. That 👍 is for newcomers", body)
 
     def test_a_failed_send_lets_another_click_retry(self):
         self.lp.say = mock.AsyncMock(side_effect=[RuntimeError("M_LIMIT_EXCEEDED"), "$x"])
@@ -78,9 +81,17 @@ class OthersGreeting(Base):
         self.react(BETTY)                                                  # on newbie1's greeting
         self.assertTrue(self.lp._lobby_greeted[BETTY]["done"])
         self.react(BETTY, to="$betty")                                     # then their own: once ever
-        self.lp._lobby_greeted["@other:" + S] = {"room": "!l", "event": "$greet2"}
-        self.react(BETTY, to="$greet2")
         self.lp.offer_again.assert_awaited_once_with(self.lobby, BETTY)
+
+    def test_a_newcomer_whose_offer_went_out_is_pointed_to_it(self):   # GPT review: never silence
+        self.lp._lobby_greeted[BETTY] = {"room": "!l", "event": "$betty", "done": True}
+        self.assertTrue(self.react(BETTY))
+        self.lp.offer_again.assert_not_awaited()                           # still one offer, ever
+        self.assertEqual(len(self.said), 1)
+        self.assertEqual(self.said[0][0], "!l")
+        self.assertIn("I've sent you a private message", self.said[0][1])
+        self.react(BETTY)
+        self.assertEqual(len(self.said), 1)                                # once per greeting
 
     def test_a_newcomers_offer_that_failed_can_be_clicked_again(self):
         self.lp.offer_again = mock.AsyncMock(side_effect=[RuntimeError("M_LIMIT_EXCEEDED"), True])
@@ -106,6 +117,6 @@ class OthersGreeting(Base):
     def test_several_agents_are_all_named(self):
         self.assertEqual(pm_lobby.agents_in_words([{"localpart": "a-agent", "label": "main", "display": "Claude"},
                                                    {"localpart": "a-codex", "label": "codex"}]),
-                         "your agents **Claude**, **a-codex**")
-        self.assertEqual(pm_lobby.agents_in_words([{"localpart": "a-agent", "label": "main"}]), "your agent **a-agent**")
+                         ": your agents **Claude**, **a-codex**")
+        self.assertEqual(pm_lobby.agents_in_words([{"localpart": "a-agent", "label": "main"}]), ": your agent **a-agent**")
         self.assertNotIn(PM, pm_lobby.SET_UP)
