@@ -1,10 +1,11 @@
 """Is Hagency Rooms up? Stdlib only: runs in @pm's container and on the operator's computer.
 
-  python deploy/health.py --internal MATRIX_DOMAIN SERVER_NAME   # bootstrap.sh, inside the Docker network
+  python deploy/health.py --internal MATRIX_DOMAIN SERVER_NAME [open|token]   # bootstrap.sh, inside Docker
   python3 deploy/health.py ROOMS_DOMAIN MATRIX_DOMAIN SERVER_NAME # deploy.sh, over HTTPS from outside
 
 Checks Element (page and config), Synapse's client API, that sign-up needs an invite token or a
-confirmed email (either mode of signup.py; never neither), @pm's
+confirmed email (either mode of signup.py, never neither; bootstrap names the mode it configured,
+and then exactly that mode must be live), @pm's
 account, and @pm's console serving /connect.sh, the Connect page and /connect.ps1 (it starts only
 after @pm has signed in and synced).
 From outside also .well-known, federation on 8448 and Element's home page (Caddy serves it). Prints ✓/✗ per check; exits 1 on any ✗.
@@ -32,13 +33,19 @@ VERIFYING_STAGES = ("m.login.registration_token",   # invite-only sign-up
                     "m.login.email.identity")       # open sign-up with a confirmed email (signup.py)
 
 
-def verified_only(text: str) -> bool:
-    """Every registration flow needs an invite token or a confirmed email: no flow signs up unchecked."""
+SIGNUP_STAGE = {"token": VERIFYING_STAGES[0], "open": VERIFYING_STAGES[1]}
+
+
+def verified_only(text: str, mode: str | None = None) -> bool:
+    """Every registration flow needs an invite token or a confirmed email: no flow signs up unchecked.
+    With a mode (signup.py's), every flow needs exactly that one: closing sign-up must have taken effect."""
     flows = json.loads(text).get("flows") or [{}]
-    return all(any(s in f.get("stages", []) for s in VERIFYING_STAGES) for f in flows)
+    needed = (SIGNUP_STAGE[mode],) if mode else VERIFYING_STAGES
+    return all(any(s in f.get("stages", []) for s in needed) for f in flows)
 
 
-def checks(rooms: str, matrix: str, console: str, domain: str, server: str, public: bool) -> list[tuple[str, object]]:
+def checks(rooms: str, matrix: str, console: str, domain: str, server: str, public: bool,
+           mode: str | None = None) -> list[tuple[str, object]]:
     """(name, check) pairs; each check returns True or raises."""
     pm = urllib.parse.quote(f"@pm:{server}")
     items = [
@@ -46,7 +53,8 @@ def checks(rooms: str, matrix: str, console: str, domain: str, server: str, publ
         ("Element points at this homeserver", lambda: json.loads(fetch(f"{rooms}/config.json")[1])
          ["default_server_config"]["m.homeserver"]["base_url"] == f"https://{domain}"),
         ("client API (/_matrix/client/versions)", lambda: "versions" in json.loads(fetch(f"{matrix}/_matrix/client/versions")[1])),
-        ("sign-up needs an invite token or a confirmed email", lambda: verified_only(fetch(f"{matrix}/_matrix/client/v3/register", {})[1])),
+        (f"sign-up needs {'a confirmed email' if mode == 'open' else 'an invite token' if mode else 'an invite token or a confirmed email'}",
+         lambda: verified_only(fetch(f"{matrix}/_matrix/client/v3/register", {})[1], mode)),
         ("@pm's account", lambda: json.loads(fetch(f"{matrix}/_matrix/client/v3/profile/{pm}")[1]).get("displayname")
          == "Product Manager"),
         ("@pm online: /connect.sh served", lambda: "bin/connect.py" in (t := fetch(f"{console}/connect.sh")[1])
@@ -80,8 +88,9 @@ def run(items) -> bool:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) == 3 and argv[0] == "--internal":
-        items = checks("http://element", "http://synapse:8008", "http://localhost:8650", *argv[1:], public=False)
+    if len(argv) in (3, 4) and argv[0] == "--internal" and argv[3:4] in ([], ["open"], ["token"]):
+        items = checks("http://element", "http://synapse:8008", "http://localhost:8650", *argv[1:3], public=False,
+                       mode=(argv[3:4] or [None])[0])
     elif len(argv) == 3:
         items = checks(f"https://{argv[0]}", f"https://{argv[1]}", f"https://{argv[0]}", *argv[1:], public=True)
     else:

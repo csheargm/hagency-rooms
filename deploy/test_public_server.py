@@ -107,6 +107,21 @@ class Health(unittest.TestCase):
         self.assertFalse(health.verified_only(json.dumps({"flows": [mail, {"stages": ["m.login.recaptcha"]}]})))
         self.assertFalse(health.verified_only(json.dumps({})))                     # no flows: not proof
 
+    def test_the_configured_mode_must_be_the_live_one(self):
+        """GPT review: closing sign-up must be seen to take effect, not just "some verification"."""
+        tok = {"flows": [{"stages": ["m.login.registration_token", "m.login.dummy"]},
+                         {"stages": ["m.login.registration_token", "m.login.email.identity"]}]}
+        mail = {"flows": [{"stages": ["m.login.email.identity"]}]}
+        self.assertTrue(health.verified_only(json.dumps(tok), "token"))
+        self.assertFalse(health.verified_only(json.dumps(mail), "token"))           # still open: fails
+        self.assertTrue(health.verified_only(json.dumps(mail), "open"))
+        self.assertFalse(health.verified_only(json.dumps({"flows": tok["flows"][:1]}), "open"))
+        with mock.patch.object(health, "run", return_value=True) as ran:
+            self.assertEqual(health.main(["--internal", "m", "m", "token"]), 0)
+            self.assertIn("an invite token", ran.call_args[0][0][3][0])
+        with mock.patch("builtins.print"):
+            self.assertEqual(health.main(["--internal", "m", "m", "wide-open"]), 2)
+
     def test_failures_and_errors_both_count(self):
         def boom():
             raise OSError("refused")

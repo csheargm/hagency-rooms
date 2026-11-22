@@ -25,13 +25,18 @@ providers have already verified the person, and most newcomers have one of the t
   (`rc_registration` 3 then one per ~5.5 min per address; `rc_3pid_validation` 3 then one per ~8 min).
   `request_token_inhibit_3pid_errors: true`, so the email step doesn't reveal whether an address
   already has an account.
+- `synapse_modules/hagency_reserved_names.py` (loaded only when sign-up is public): a sign-up that
+  carries an email, or comes through Google/GitHub, can't take @pm, @owner, or a name ending in
+  `-agent` or `-bot`; the admin API, which makes those accounts, is untouched. Without it, someone
+  could take @pm on a fresh database before @pm's container makes it, or a person's future agent name.
 - Fail closed: any SMTP key missing, partial or malformed, or the switch at 0, keeps token-only
   sign-up. With no SMTP the config is byte for byte what it was before this change (tested against a
   saved copy). `enable_registration_without_verification` is removed on every run, whatever mode.
 - Complete SMTP with the switch at 0 still configures email: password reset works, sign-up is
   invite-only. That is how the owner closes sign-up quickly: `HAGENCY_OPEN_SIGNUP=0`, deploy.
 - `deploy/sso_login.py`: Google (`issuer https://accounts.google.com/`, openid/profile/email; the
-  localpart from the email, the email kept) and GitHub (no discovery, its three OAuth endpoints,
+  localpart from the email; the email itself is not bound to the account, because Synapse would bind
+  it unchallenged and move it off an account that already has it) and GitHub (no discovery, its three OAuth endpoints,
   `subject_claim: id`, the localpart from the login), each on only when both of its keys are set;
   independent of each other and of SMTP. `allow_existing_users: false` (Synapse's default, written
   out so nobody flips it unnoticed): a taken localpart is never linked; Synapse tries name1, name2, ...
@@ -40,19 +45,22 @@ providers have already verified the person, and most newcomers have one of the t
   "continue?" page.
 - Secrets live only in the VM's git-ignored `.env` (mode 600) and in `homeserver.yaml` (mode 600,
   Synapse's own). `envfile.py get` refuses them; bootstrap prints only which mode is on and the
-  names of missing keys. `deploy/health.py` now accepts a token or an email in every registration
-  flow, and fails on any flow that needs neither.
+  names of missing keys. A malformed sign-up or sign-in value turns that feature off instead of
+  stopping the deploy (`envfile.FAIL_CLOSED`), so a typo made while closing sign-up still closes it.
+  `deploy/health.py` checks that every registration flow needs exactly what bootstrap configured
+  (`signup.py mode`: token or email); from outside, a token or an email, never neither.
 
 ## What this protects, and what is left
 - Protects: no account without a working mailbox or a Google/GitHub account; the existing
   accounts (@pm, agents, people) can't be claimed through SSO; the SMTP plan's daily quota and the
   server's disk are bounded per address by the rate limits.
 - Left: disposable mailboxes and fresh Google/GitHub accounts still work, so a determined spammer
-  can make accounts slowly, from many addresses. Every new account lands in the private Welcome room
+  can make accounts slowly, from many addresses. Synapse has no limit on SSO account creation
+  (`rc_registration` covers password sign-up only) and no server-wide email budget: the SMTP plan's
+  own daily cap is the ceiling, after which confirmation emails fail until the next day. Every new account lands in the private Welcome room
   with @pm only and reaches other rooms only when they are Open or it is invited; room owners and Synapse Admin
-  (deactivate, shadow-ban) are the remedy. Open password sign-up can still take a free `-agent` name
-  before that person's agent exists (that was already true for token holders; the squatter then holds
-  that name until the owner removes the account in Synapse Admin). If abuse shows up: close sign-up with the switch, add
+  (deactivate, shadow-ban) are the remedy. A token holder signing up without an email can still take
+  a reserved name, as before this change (the owner chose them). If abuse shows up: close sign-up with the switch, add
   `allowed_local_3pids` (only some email domains), or a CAPTCHA as well.
 
 ## Consequences

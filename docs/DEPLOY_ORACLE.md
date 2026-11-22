@@ -111,7 +111,8 @@ It checks the commit is on GitHub's master, then on the VM: fetches it from GitH
 - generates Synapse's config once and adjusts it (`configure_synapse.py`: Postgres, sign-up
   (token-only, or email-verified: `signup.py`; Google/GitHub: `sso_login.py`), the Welcome room @pm owns, media retention), atomically, refusing a changed server name;
 - starts everything, reloads Caddy, installs the daily guard;
-- checks inside Docker (`deploy/health.py --internal`): Element, Synapse, that every sign-up flow needs a token or a confirmed email,
+- checks inside Docker (`deploy/health.py --internal`): Element, Synapse, that every sign-up flow needs exactly what was configured
+  (a token, or a confirmed email),
   @pm's account and @pm's console.
 
 Then `deploy.sh` checks over HTTPS from the Mac (`deploy/health.py`): Element, its config, the
@@ -236,7 +237,10 @@ How names are chosen: a Google account gets its email's name (anna.lee@gmail.com
 GitHub account its login (@octocat). A name already taken (@pm, someone's account, an agent) is never
 linked to: Synapse picks @octocat1, @octocat2, ... instead (`allow_existing_users` stays false). A name
 ending in `-agent` or `-bot` gets `-g` / `-gh` added, so nobody signing in takes a future agent's name.
-Everyone, however they signed up, lands in Welcome with @pm.
+Google's email is not attached to the account (Synapse would attach it unchecked). With sign-up open
+in any way, `synapse_modules/hagency_reserved_names.py` also refuses @pm, @owner and `-agent`/`-bot`
+names to email sign-up and to Google/GitHub ("Rate limited", deliberately vague); @pm still makes
+agents through the admin API. Everyone, however they signed up, lands in Welcome with @pm.
 
 ## Next (separate steps)
 

@@ -5,11 +5,13 @@
   - anything else (no SMTP, part of it, a value that doesn't validate, or HAGENCY_OPEN_SIGNUP=0):
     sign-up stays invite-token only, exactly as before.
 Complete SMTP also turns on Synapse's email: password reset by email works in both modes.
+`python3 signup.py mode` prints "open" or "token" (bootstrap.sh hands it to health.py; no value).
 Registration never opens without verification: enable_registration_without_verification is always
 removed, and the open mode is only ever paired with a required email. No value is ever printed.
 """
 import json
 import re
+import sys
 
 import envfile
 
@@ -83,3 +85,9 @@ def stale_keys(e: dict) -> list[str]:
     """Keys a previous mode may have left that this one must not keep (closing sign-up removes them)."""
     wanted = settings(e)
     return [NO_VERIFICATION] + [k for k in EMAIL_KEYS + OPEN_KEYS if k not in wanted]
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["mode"]:
+        raise SystemExit("usage: python3 signup.py mode")
+    print("open" if is_open(envfile.read()) else "token")

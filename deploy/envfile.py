@@ -45,6 +45,12 @@ RULES = {
     "HAGENCY_GITHUB_CLIENT_ID": r"[A-Za-z0-9.]{16,40}",
     "HAGENCY_GITHUB_CLIENT_SECRET": r"[A-Za-z0-9_]{20,128}",
 }
+# Sign-up and sign-in settings: a bad value turns that feature off (signup.py and sso_login.py check them
+# against RULES and bootstrap prints which), instead of stopping the deploy, so a typo made while
+# closing sign-up (HAGENCY_OPEN_SIGNUP=0) can't leave the old, open config running (GPT review).
+FAIL_CLOSED = {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "HAGENCY_OPEN_SIGNUP",
+               "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
+               "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
 SECRETS = {"POSTGRES_PASSWORD"}               # filled with a random value when empty
 PRIVATE = SECRETS | {"SMTP_USER", "SMTP_PASS",   # never printed (`get` refuses them)
                      "HAGENCY_GOOGLE_CLIENT_SECRET", "HAGENCY_GITHUB_CLIENT_SECRET"}
@@ -97,7 +103,7 @@ def ensure() -> dict:
 def validate(values: dict) -> list[str]:
     problems = [f"{k} is missing" for k in RULES if not values.get(k) and k not in OPTIONAL]
     problems += [f"{k} doesn't look right" for k, rx in RULES.items()
-                 if values.get(k) and not re.fullmatch(rx, values[k])]
+                 if values.get(k) and k not in FAIL_CLOSED and not re.fullmatch(rx, values[k])]
     return problems
 
 
@@ -150,7 +156,7 @@ if __name__ == "__main__":
         problems = validate(values) + app_key_problems(values)
         print("\n".join(f"✗ {p} (edit ~/hagency/deploy/.env)" for p in problems) or "✓ .env ok")
         sys.exit(1 if problems else 0)
-    if cmd == ["get"] and len(sys.argv) == 3 and sys.argv[2] in RULES and sys.argv[2] not in PRIVATE:
+    if cmd == ["get"] and len(sys.argv) == 3 and sys.argv[2] in RULES and sys.argv[2] not in PRIVATE | FAIL_CLOSED:
         values = read()
         if validate(values):
             raise SystemExit("✗ run `python3 envfile.py check` first")

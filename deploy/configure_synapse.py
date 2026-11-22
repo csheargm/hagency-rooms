@@ -28,6 +28,7 @@ import sso_login
 MARKER = ".hagency-configured"
 WELCOME_LOCALPART = "welcome"                 # #welcome:<server>; pm_welcome.py looks for this room
 PM_LOCALPART = "pm"
+RESERVED_NAMES = (PM_LOCALPART, "owner")      # owner: bootstrap.sh's `admin_user.py ensure owner`
 
 
 def welcome_settings(server_name: str) -> dict:
@@ -41,12 +42,16 @@ def welcome_settings(server_name: str) -> dict:
     }
 
 
-def module_settings(server_name: str) -> dict:
+def module_settings(server_name: str, public_signup: bool = False) -> dict:
     """The modules Synapse loads from /modules: @pm at power 50 in new rooms (it needs room version 12),
-    and @pm's private chat with a person here opens already joined."""
+    and @pm's private chat with a person here opens already joined. With public sign-up (open email
+    sign-up or an SSO provider), also: our own names (@pm, @owner, agents, bots) can't be taken there."""
     pm = f"@{PM_LOCALPART}:{server_name}"
     modules = [{"module": "hagency_pm_moderator.PmModerator", "config": {"pm": pm}},
                {"module": "hagency_auto_accept.AutoAccept", "config": {"pm": pm, "server": server_name}}]
+    if public_signup:
+        modules.append({"module": "hagency_reserved_names.ReservedNames",
+                        "config": {"names": list(RESERVED_NAMES), "suffixes": list(sso_login.RESERVED_SUFFIXES)}})
     return {"modules": json.dumps(modules), "default_room_version": '"12"'}
 
 
@@ -101,7 +106,7 @@ def configure(text: str, e: dict) -> str:
         "rc_login": "{address: {per_second: 0.02, burst_count: 20}}",
         "url_preview_enabled": "false",              # previews would fetch arbitrary URLs from the server
         **welcome_settings(e["SERVER_NAME"]),
-        **module_settings(e["SERVER_NAME"]),
+        **module_settings(e["SERVER_NAME"], signup.is_open(e) or bool(sso_login.enabled(e))),
         **directory_settings(e["SERVER_NAME"]),
     }
     # Synapse refuses to start with this older key next to the two directory keys above (GPT re-check).

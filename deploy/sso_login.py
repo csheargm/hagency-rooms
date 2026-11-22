@@ -8,7 +8,8 @@ no token or email; password registration is never opened by this file.
 A new SSO account never takes over an existing one: allow_existing_users stays false, so a mapped
 localpart that is taken (pm, an agent's) is never linked; Synapse appends 1, 2, ... until it finds a
 free one (synapse/handlers/sso.py, _call_attribute_mapper). Names ending -agent or -bot (identity.py's
-agent accounts, admin-bot) get a suffix too, so an SSO account never squats an agent's future name.
+agent accounts, admin-bot) get a suffix too, so an SSO account never squats an agent's future name;
+hagency_reserved_names.py refuses @pm and @owner before they exist. No email is taken from Google.
 Redirect URL for both apps: https://<MATRIX_DOMAIN>/_synapse/client/oidc/callback (Caddyfile routes
 /_synapse/client* to Synapse). No value is ever printed.
 """
@@ -20,7 +21,8 @@ import envfile
 PROVIDERS = {"google": ("HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET"),
              "github": ("HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET")}
 CALLBACK_PATH = "/_synapse/client/oidc/callback"
-RESERVED_SUFFIXES = ("-agent", "-bot")          # identity.AGENT_SUFFIX and the server's bots (admin-bot)
+RESERVED_SUFFIXES = ("-agent", "-bot")          # identity.AGENT_SUFFIX and the server's bots (admin-bot);
+                                                # also synapse_modules/hagency_reserved_names.py's config
 
 
 def localpart_template(source: str, tag: str) -> str:
@@ -49,7 +51,9 @@ def google(e: dict) -> dict:
             "allow_existing_users": False, "enable_registration": True,
             "user_mapping_provider": {"config": {
                 "localpart_template": localpart_template("user.email|localpart_from_email", "g"),
-                "display_name_template": "{{ user.name }}", "email_template": "{{ user.email }}"}}}
+                # No email_template: Synapse would bind it unchallenged, moving that address (and its
+                # password reset) off any account that already has it (GPT review; storage upserts it).
+                "display_name_template": "{{ user.name }}"}}}
 
 
 def github(e: dict) -> dict:

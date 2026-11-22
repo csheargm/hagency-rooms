@@ -98,6 +98,22 @@ class StaysClosed(unittest.TestCase):
                          ("SMTP_PASS", "has$dollar"), ("SMTP_FROM", "Name <a@b.org>")):
             self.assertEqual(configure(GENERATED, {**OPEN, key: bad}), TOKEN_ONLY, key)
 
+    def test_a_bad_value_never_stops_the_deploy_that_closes_sign_up(self):
+        """GPT review: envfile.py check failing would leave the old, open config running."""
+        opened = configure(GENERATED, OPEN)
+        closing = {**OPEN, "HAGENCY_OPEN_SIGNUP": "0", "SMTP_PASS": "typo with spaces"}
+        full = {**closing, "PM_UID": "1001", "ADMIN_DOMAIN": "admin.example.org"}
+        self.assertEqual(envfile.validate(full), [])                      # bootstrap goes on
+        self.assertEqual(configure(opened, closing), TOKEN_ONLY)
+        self.assertIn("SMTP_PASS doesn't look right", run_main(full))
+
+    def test_signup_mode_for_the_health_check(self):
+        for e, want in ((BASE, "token"), (OPEN, "open"), ({**OPEN, "HAGENCY_OPEN_SIGNUP": "0"}, "token")):
+            with mock.patch.object(envfile, "read", return_value=e), mock.patch.object(sys, "argv", ["signup.py", "mode"]), \
+                    contextlib.redirect_stdout(io.StringIO()) as out:
+                runpy.run_path(signup.__file__, run_name="__main__")
+            self.assertEqual(out.getvalue(), want + "\n")
+
     def test_the_switch_off_stays_closed_but_keeps_email_for_password_reset(self):
         for switch in ("0", "", "yes", None):
             e = {**OPEN, "HAGENCY_OPEN_SIGNUP": switch} if switch is not None else {**BASE, **SMTP}
@@ -167,7 +183,7 @@ class NoSecretOutput(unittest.TestCase):
             self.assertNotIn("x y z", text)
 
     def test_envfile_get_refuses_smtp_credentials(self):
-        for key in ("SMTP_PASS", "SMTP_USER"):
+        for key in ("SMTP_PASS", "SMTP_USER", "SMTP_HOST"):
             with mock.patch.object(sys, "argv", ["envfile.py", "get", key]), contextlib.redirect_stdout(io.StringIO()) as out:
                 with self.assertRaises(SystemExit) as stop:
                     runpy.run_path(envfile.__file__, run_name="__main__")

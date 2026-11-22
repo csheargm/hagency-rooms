@@ -40,7 +40,7 @@ class Providers(unittest.TestCase):
         self.assertEqual((g["issuer"], g["idp_brand"], g["idp_name"]), ("https://accounts.google.com/", "google", "Google"))
         self.assertEqual(g["scopes"], ["openid", "profile", "email"])
         self.assertEqual(g["client_secret"], SECRETS[0])
-        self.assertEqual(g["user_mapping_provider"]["config"]["email_template"], "{{ user.email }}")
+        self.assertNotIn("email_template", g["user_mapping_provider"]["config"])   # GPT review: no unchallenged binding
         self.assertEqual(value(out, "registration_requires_token"), "true")
         self.assertNotIn("registrations_require_3pid", out)
         self.assertNotIn("enable_registration_without_verification", out)
@@ -103,6 +103,24 @@ class NoTakeover(unittest.TestCase):
         self.assertEqual(render(g, {"email": "Anna.Lee@gmail.com"}), "anna.lee")
         self.assertEqual(render(g, {"email": "cx-agent@gmail.com"}), "cx-agent-g")
         self.assertEqual(render(g, {"email": "x-bot @gmail.com"}), "x-bot-g")          # trimmed first
+
+
+class ReservedNamesModule(unittest.TestCase):
+    def modules(self, e: dict) -> list:
+        return [m["module"] for m in json.loads(value(configure(GENERATED, e), "modules"))]
+
+    def test_loaded_with_public_sign_up_only(self):
+        guard = "hagency_reserved_names.ReservedNames"
+        self.assertIn(guard, self.modules({**BASE, **GOOGLE}))
+        self.assertIn(guard, self.modules({**BASE, **GITHUB}))
+        self.assertIn(guard, self.modules(OPEN))
+        self.assertNotIn(guard, self.modules(BASE))
+        self.assertNotIn(guard, self.modules({**OPEN, "HAGENCY_OPEN_SIGNUP": "0"}))
+
+    def test_it_reserves_pm_owner_and_the_agent_and_bot_suffixes(self):
+        config = next(m["config"] for m in json.loads(value(configure(GENERATED, OPEN), "modules"))
+                      if m["module"].startswith("hagency_reserved_names"))
+        self.assertEqual(config, {"names": ["pm", "owner"], "suffixes": ["-agent", "-bot"]})
 
 
 class NoSecrets(unittest.TestCase):
