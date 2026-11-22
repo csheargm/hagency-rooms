@@ -20,6 +20,7 @@ from server import remote_agent
 from common import setup_accounts
 from server.loop import Loop
 from common.saved_dict import SavedDict
+from tests.fake_launchd import FakeLaunchd
 
 S = "bridge.localhost"
 NEW, PM, AGENT = f"@newbie1:{S}", f"@pm:{S}", "newbie1-agent"
@@ -62,11 +63,12 @@ class Service(unittest.TestCase):
 
     def test_a_refused_start_is_an_error_not_silence(self):
         run = lambda args, **k: SimpleNamespace(returncode=5, stdout="", stderr="Bootstrap failed: 5")
+        fake = FakeLaunchd()                                         # its clock: the retries take no real time
         with mock.patch.object(agent_service, "kind", return_value="launchd"), \
                 mock.patch.object(agent_service, "service_file", return_value=Path(tempfile.mkdtemp()) / "x.plist"):
             with self.assertRaisesRegex(RuntimeError, "Bootstrap failed"):
                 agent_service.install(Path("/app"), NEW, "codex", AGENT, Path(tempfile.mkdtemp()) / "c.json", run=run,
-                                      sleep=lambda s: None)
+                                      sleep=fake.sleep, clock=fake.clock)
 
 
 class WindowsTask(unittest.TestCase):

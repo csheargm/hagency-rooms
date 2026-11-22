@@ -17,7 +17,7 @@ from tests.fake_launchd import FakeLaunchd
 
 HOME = Path("/Users/a b")                    # a made-up home; nothing here is anyone's real service
 APP = HOME / ".hagency" / "app"
-OWNERS = "chrisxie-at-example-org-0123456789-agent"   # the owner's own agent sorts first, as on that Mac
+OWNERS = "anna-at-example-org-0123456789-agent"   # the owner's own agent sorts first, as on that Mac
 FURTHER = ("cx-agent", "cx-codex-agent", "cx-codex2-agent", "cx-hermes-agent")
 
 

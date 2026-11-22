@@ -1459,3 +1459,7 @@ Two points, both verified in the code and adopted, with tests in test_launchd_re
 - Adopted, **P2: three bootstrap tries 1 s apart could give up 2 s after `print` let go**, with
   most of the 10 s window unused. Error 5 is now tried again until the one deadline from the
   bootout; tested with a job loadable only at the fourth try.
+
+### Fourth GPT pass
+No other open issues. Adopted, P3: the refused-start install test spun on the real clock for the
+whole 10 s deadline; it now uses FakeLaunchd's clock.
