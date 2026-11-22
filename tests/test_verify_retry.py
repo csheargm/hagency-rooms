@@ -88,6 +88,9 @@ class Retry(unittest.TestCase):
         owners = mock.patch("server.ownership.owner_id", lambda a: a.replace("-agent", ""))   # each agent: its own person
         owners.start()
         self.addCleanup(owners.stop)
+        no_prs = mock.patch("server.pm_paused.agent_prs", mock.AsyncMock(return_value={}))   # no unrecorded PRs
+        no_prs.start()
+        self.addCleanup(no_prs.stop)
         self.lp = loop.Loop.__new__(loop.Loop)
         self.lp.lock = asyncio.Lock()
         self.lp.room_repos = {"!r": REPO}

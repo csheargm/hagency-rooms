@@ -24,6 +24,7 @@ class FakeGitHub:
         self.issues: dict[str, list] = {}              # repo -> REST issue objects (PRs included, like GitHub)
         self.labels: dict[str, list] = {}
         self.prs: dict[tuple, dict] = {}               # (repo, number) -> GraphQL fields
+        self.pulls: dict[str, list] = {}               # repo -> REST pull objects (open ones listed)
         self.pages: dict[str, dict] = {}
         self.permissions: dict[tuple, str] = {}        # (repo, login) -> permission
         self.private: set[str] = set()                 # "owner/name" (lower) of private repos; others public
@@ -131,6 +132,12 @@ class FakeGitHub:
         if len(rest) == 2 and rest[0] == "issues":
             found = [i for i in self.issues.get(repo, []) if str(i["number"]) == rest[1]]
             return (200, found[0]) if found else (404, {"message": "Not Found"})
+        if rest == ["pulls"]:
+            page, per = int(q.get("page", 1)), int(q.get("per_page", 30))
+            head = urllib.parse.unquote(q.get("head", ""))
+            items = [p for p in self.pulls.get(repo, []) if p["state"] == q.get("state", "open")
+                     and (not head or head == f"{(p['head']['repo'] or {}).get('full_name', '').split('/')[0]}:{p['head']['ref']}")]
+            return 200, items[(page - 1) * per:page * per]
         if rest == ["labels"]:
             page, per = int(q.get("page", 1)), int(q.get("per_page", 30))
             return 200, self.labels.get(repo, [])[(page - 1) * per:page * per]

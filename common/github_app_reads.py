@@ -105,6 +105,28 @@ async def pr_view(args: list[str]) -> dict:
     return {f: "" if pr.get(f) is None else pr.get(f) for f in fields}   # gh prints null as ""
 
 
+PR_LIST_FIELDS = {"number", "title", "state", "headRefName", "isCrossRepository"}
+
+
+def _pr_listed(raw: dict, repo: str, fields: list[str]) -> dict:
+    head_repo = ((raw.get("head") or {}).get("repo") or {}).get("full_name")   # None: the fork was deleted
+    shaped = {"number": raw.get("number"), "title": raw.get("title"), "state": str(raw.get("state", "")).upper(),
+              "headRefName": (raw.get("head") or {}).get("ref") or "",
+              "isCrossRepository": str(head_repo or "").lower() != repo.lower()}
+    return {f: shaped[f] for f in fields}
+
+
+async def pr_list(args: list[str]) -> list:
+    """Open PRs only: the one list @pm makes (pm_paused.py, a paused issue's PR that was never recorded)."""
+    repo, fields, limit = _repo(args), _fields(args, PR_LIST_FIELDS), _limit(args)
+    if (_opt(args, "--state") or "open").lower() != "open":
+        raise github.GitHubError("@pm lists only open PRs through the GitHub App")
+    query = {"state": "open"}
+    if _opt(args, "--head"):          # REST's head filter names the owner: a fork's same-named branch isn't it
+        query["head"] = f"{repo.split('/', 1)[0]}:{_opt(args, '--head')}"
+    return [_pr_listed(raw, repo, fields) for raw in await _pages(repo, "/pulls", query, limit)]
+
+
 async def label_list(args: list[str]) -> list:
     repo, fields = _repo(args), _fields(args, {"name"})
     return [{f: lb.get(f) for f in fields} for lb in await _pages(repo, "/labels", {}, _limit(args))]
@@ -119,7 +141,7 @@ async def api_get(args: list[str]) -> object:
 
 
 READS = {("issue", "list"): issue_list, ("issue", "view"): issue_view, ("pr", "view"): pr_view,
-         ("label", "list"): label_list}
+         ("pr", "list"): pr_list, ("label", "list"): label_list}
 
 
 async def run_json(args: list[str]) -> object:

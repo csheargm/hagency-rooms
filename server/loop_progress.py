@@ -12,7 +12,7 @@ from adapters.agents import agents
 from common import github
 from common import room_state
 from common.redact import markup_safe as safe
-from server.pm_paused import next_steps, num  # noqa: F401 - num: other modules import it from here
+from server.pm_paused import next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
 
 log = logging.getLogger("loop")
 
@@ -204,21 +204,11 @@ class Progress:
                                if paused and n is None else
                                "Nothing is paused here." if not paused else f"#{n} isn't paused. Paused here: {listed}.")
                 return
-            if pr := await self.requeue(key, repo):
-                await self.say(rid, f"PR #{pr} for #{num(key)} is still open. Merge or close it on GitHub, "
-                                    f"then say \"@pm retry #{num(key)}\" again.")
-                return
+            item = self.state[key]
+        if why := await requeue(self, key, item, repo):   # GitHub is asked outside the lock (pm_paused)
+            await self.say(rid, why)
+            return
         await self.say(rid, f"OK, #{num(key)} goes back in the queue; I'll pick it up within a minute.")
-
-    async def requeue(self, key: str, repo: str) -> int | None:
-        """A paused issue back in the queue (call under self.lock), unless its PR is still open: a fresh
-        build would race it (one PR per issue). Returns that PR's number, else None."""
-        pr = self.state[key].get("pr")
-        if pr and await self.pr_open(pr, repo):
-            return pr
-        del self.state[key]
-        self.save()
-        return None
 
     async def pr_open(self, pr: int, repo: str) -> bool:
         try:
