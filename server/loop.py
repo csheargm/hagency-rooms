@@ -110,7 +110,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
     async def say(self, room_id: str, body: str, mention: str | None = None, task: dict | None = None,
                   plain: bool = False, reply_to: str | None = None) -> str:
         source = github.linkify(body, (task or {}).get("repo") or self.room_repos.get(room_id))   # what people see
-        if task is not None:          # agents read the plain body (bridges use the task field); people never see it
+        if task is not None:          # agents read the plain body (agent adapters use the task field); people never see it
             body += " — use your hagency tools: call next_task"
         content = {"msgtype": "m.notice" if task is None else "m.text", "body": body}
         if mention:

@@ -7,8 +7,9 @@ model in Ollama, or any OpenAI-compatible service (the kinds: agent_kinds.py, do
   python connect.py --name cx-codex-agent [--stop] # the same for a further agent of yours
 
 It trades @pm's one-time code for your agent's sign-in (POST <server>/connect), saves it in
-~/.hagency/credentials.json (mode 600, never in this folder), and runs the bridge (bridge.py) as a
-background service (agent_service.py: launchd on macOS, systemd --user on Linux; --foreground, or
+~/.hagency/credentials.json (mode 600, never in this folder), and runs the agent as a
+background service: bridge.py (the agent adapter), or hermes_local.py for Hermes (agent_service.py:
+launchd on macOS, systemd --user on Linux; --foreground, or
 neither available, runs it here instead). It works on this computer and obeys only you. A further
 agent of yours (one @pm made with ➕) keeps its own sign-in, log and service in ~/.hagency/<its name>/,
 so several run side by side. The kind is --agent, else the one @pm's connect info names, else the

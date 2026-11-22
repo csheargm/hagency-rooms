@@ -1,4 +1,4 @@
-"""Bring-your-own-agent bridge: logs in as the owner's agent and answers @mentions/DMs
+"""The agent adapter (bring your own agent): logs in as the owner's agent and answers @mentions/DMs
 by running the owner's local agent CLI (Codex or Claude Code) per room.
 
 Usage: python bridge.py anna [--agent codex|claude]     (or a full ID: @alice:matrix.org)
@@ -32,9 +32,12 @@ from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME, agent_handle, ag
 TYPING_REFRESH_S = 20       # re-send typing before the 30s server timeout lapses
 TYPING_TIMEOUT_MS = 30_000
 MAX_REPLY_CHARS = 30_000
-MAX_CONCURRENT_TURNS = 3     # CLI processes per bridge across all rooms
+MAX_CONCURRENT_TURNS = 3     # CLI processes per agent adapter across all rooms
 
 log = logging.getLogger("bridge")
+# What an agent says once in an encrypted room it can't read (plain words: no E2EE or version jargon).
+ENCRYPTED_NOTE = ("I can't read encrypted rooms yet, so I can't see messages here. "
+                  "Please talk to me in a room without encryption.")
 
 
 class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeStop):   # agent_stop.py: Stop / Start
@@ -93,8 +96,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
         if room.room_id in self.warned_e2ee or event.sender == self.user_id:
             return
         self.warned_e2ee.add(room.room_id)
-        await self.send(room.room_id, "I can't read encrypted rooms yet (bridge v1 has no E2EE). "
-                        "Please use an unencrypted room.")
+        await self.send(room.room_id, ENCRYPTED_NOTE)
 
     async def on_message(self, room: MatrixRoom, event: RoomMessageText) -> None:
         if lifecycle.is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
@@ -288,7 +290,7 @@ def main() -> None:
     try:
         asyncio.run(bridge.run())
     except KeyboardInterrupt:
-        pass  # Ctrl-C is the normal way to stop the bridge
+        pass  # Ctrl-C is the normal way to stop the agent adapter
 
 
 if __name__ == "__main__":

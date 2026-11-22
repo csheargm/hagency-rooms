@@ -1,5 +1,5 @@
 """Speech to text for voice messages, on this computer (the audio never leaves it). Shared by @pm
-(pm_voice.py) and the agent bridges (bridge_voice.py): each hears only what is addressed to it.
+(pm_voice.py) and the agent adapters (bridge_voice.py): each hears only what is addressed to it.
 """
 import asyncio
 import logging

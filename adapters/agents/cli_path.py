@@ -1,4 +1,4 @@
-"""How to start an agent CLI without a shell on every OS (the bridge's turns, connect.py's check).
+"""How to start an agent CLI without a shell on every OS (the agent adapter's turns, connect.py's check).
 
 On macOS and Linux the bare name is started as it always was. On Windows, npm installs each CLI as
 a .cmd wrapper (codex.cmd, claude.cmd). Started by bare name without a shell, Windows looks only for

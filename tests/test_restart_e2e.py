@@ -1,9 +1,9 @@
 """End-to-end: code changes and crashes don't lose work. Runs supervise.py (real Matrix, real Codex,
-fake GitHub). Stop ./start.sh first — this starts its own bridges. Run: .venv/bin/python -m tests.test_restart_e2e
+fake GitHub). Stop ./start.sh first — this starts its own agent adapters. Run: .venv/bin/python -m tests.test_restart_e2e
 
 A. Live code change: anna asks anna-agent two things around a code save. Both are answered,
    each exactly once, across the restart (the second may arrive while the old process drains).
-B. Crash mid-step: the builder's bridge is SIGKILLed right after it claims an issue. The
+B. Crash mid-step: the builder's agent adapter is SIGKILLed right after it claims an issue. The
    supervisor revives it, the loop's watchdog resends the step, and the issue still gets merged.
 """
 import os
@@ -69,7 +69,7 @@ def main():
         wait_for(anna, room_id, lambda s, body: s == agent("anna") and "claimed #210" in body, "claim", ts)
         pid = subprocess.run(["pgrep", "-f", "bridge.py anna "], capture_output=True, text=True).stdout.split()
         os.kill(int(pid[0]), signal.SIGKILL)
-        check("builder bridge killed mid-step", True, f"pid {pid[0]}")
+        check("builder agent adapter killed mid-step", True, f"pid {pid[0]}")
         body = wait_for(anna, room_id, lambda s, b: s == bot and ("asked again" in b or "stopped" in b), "resend", ts)
         check("loop resends the step that got no answer", "asked again" in body, body[:100])
         body = wait_for(anna, room_id, lambda s, b: s == agent("anna") and b.startswith(("merged", "⚠️")), "merge", ts)

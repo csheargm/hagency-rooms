@@ -2,7 +2,7 @@
 
 On the server everything comes from this folder: Synapse at http://127.0.0.1:8648 and the
 passwords in the git-ignored .env. On a person's own computer, connect.py saves the credentials it
-was given (homeserver, user_id, password, owner) in a 0600 file under ~/.hagency/ and runs the bridge
+was given (homeserver, user_id, password, owner) in a 0600 file under ~/.hagency/ and runs the agent adapter
 with HAGENCY_CREDENTIALS pointing at it; then the homeserver and server name come from that file.
 HAGENCY_HOMESERVER / HAGENCY_SERVER_NAME override the defaults without a file.
 """

@@ -10,12 +10,12 @@ Status: ✅ works today · 🟡 works with a manual step · ❌ missing (smalles
 | 1 | Anna signs in to Element with her Matrix account. | Anna | ✅ |
 | 2 | Anna brings her Hermes in: a room-only profile that obeys only Anna. | Anna | 🟡 works (`test_hermes_e2e.py` sets it up); needs a one-command `onboard anna` |
 | 3 | Anna creates the room "Hello World" and is its owner. She adds setup-bot and pm. | Anna | 🟡 room ✅; bots are added by `setup_accounts.py`, should be `!setup` or an invite |
-| 4 | Betty signs in, gets invited, and brings her own Hermes (using a Codex model). | Betty | 🟡 same onboarding as step 2; Betty currently uses the Codex bridge |
+| 4 | Betty signs in, gets invited, and brings her own Hermes (using a Codex model). | Betty | 🟡 same onboarding as step 2; Betty currently uses the Codex agent adapter |
 | 5 | Anna and Betty discuss: purpose, users, what "done" means. Each can ask their own agent (`@anna-hermes-agent what would a minimal version need?`). | both | ✅ each agent answers only its owner; DMs work after the Hermes DM fix |
 | 6 | Anna: "spec is ready". One agent writes a short spec from the discussion and posts it. The people edit it, then approve it. | Anna + agent | ❌ `!spec draft` / `!spec approve` |
 | 7 | The approved spec becomes GitHub issues (`agent-ok`) in the project repo. | @pm | ❌ part of `!spec approve` |
 | 8 | Project repo with the merge ruleset. | Anna | 🟡 `github_setup.py ruleset` exists; a fresh repo per project is a manual `gh repo create` |
-| 9 | `!level assist`: @pm hands issues to the two agents. One builds, the other person's agent reviews, and the pinned **Project status** shows it live. | @pm + agents | ✅ (Hermes via `hagency_mcp.py`, Codex via bridge) |
+| 9 | `!level assist`: @pm hands issues to the two agents. One builds, the other person's agent reviews, and the pinned **Project status** shows it live. | @pm + agents | ✅ (Hermes via `hagency_mcp.py`, Codex via the agent adapter) |
 | 10 | Human review: in Assist, each PR stops at "ready — a person merges". Anna or Betty reads it and merges on GitHub. | people | ✅ |
 | 11 | Test drive: they run Hello World from the repo, locally or on GitHub Pages. | people | 🟡 manual (`git pull` and open it) |
 | 12 | They talk about what to change. Anna: "update the spec". The new issues go back into the loop. | all | ❌ same `!spec` as step 6; the loop then picks the new issues up ✅ |
@@ -46,6 +46,6 @@ Everything else in the table already works.
   recognises a DM only through its own `m.direct` data and didn't record DM invites there.
 - **Only the owner (or @pm) can pull an agent into a room.** Hermes joined every invite, so anyone
   could invite Anna's agent into their room and have it read along. With `MATRIX_ALLOWED_USERS`
-  set it now ignores other inviters, as our bridge does (`docs/hermes-matrix-invite-allowlist.patch`;
+  set it now ignores other inviters, as our agent adapter does (`docs/hermes-matrix-invite-allowlist.patch`;
   no list keeps upstream's join-all). Answers no longer quote the question either
   (`docs/hermes-matrix-reply-mode.patch`).

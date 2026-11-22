@@ -1,4 +1,4 @@
-"""Live check with the real Codex CLI and the owner's real config: a bridge turn sees no
+"""Live check with the real Codex CLI and the owner's real config: an agent adapter turn sees no
 connectors (Gmail, Drive, ...), MCP servers, web search or computer/browser use.
 Run: .venv/bin/python -m tests.test_codex_lockdown_live   (needs `codex` signed in)
 """

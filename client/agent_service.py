@@ -35,7 +35,7 @@ def label(agent_localpart: str) -> str:
 
 
 def command(app: Path, owner: str, backend: str) -> list[str]:
-    """The bridge running this kind's CLI; for hermes, hermes_local.py (its two gateways, ADR 0008)."""
+    """The agent adapter running this kind's CLI; for hermes, hermes_local.py (its two gateways, ADR 0008)."""
     if backend == "hermes":
         return [sys.executable, str(app / "hermes_local.py")]
     return [sys.executable, str(app / "bridge.py"), owner, "--agent", backend]
@@ -129,7 +129,7 @@ def install(app: Path, owner: str, backend: str, agent: str, creds: Path, run=su
 
 
 def _ours(pid: str, app: Path, run) -> bool:
-    """Is this PID still a Python running this installation's keeper or bridge? (A stale agent.pid
+    """Is this PID still a Python running this installation's keeper or agent adapter? (A stale agent.pid
     may name a reused number: only a command line naming our own files counts.)"""
     ask = (f"$p = Get-CimInstance Win32_Process -Filter 'ProcessId = {int(pid)}'; "
            '"$($p.ExecutablePath)|$($p.CommandLine)"')

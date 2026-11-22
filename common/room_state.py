@@ -10,7 +10,7 @@ MODERATOR_LEVEL = 50
 
 
 def pm_id(client: AsyncClient) -> str:
-    """@pm on this client's server (the bridge's agents read the binding too, as themselves)."""
+    """@pm on this client's server (the agent adapter's agents read the binding too, as themselves)."""
     return f"@{github.PM_BOT}:{client.user_id.split(':', 1)[1]}"
 
 

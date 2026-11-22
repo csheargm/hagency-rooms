@@ -1,8 +1,9 @@
 # Hagency Rooms — chat where each person brings their own agent (Matrix + Element)
 
 One-day prototype: a stock Matrix homeserver (Synapse) and Element as the chat app, plus a
-~270-line Python bridge that lets each person's **own** agent (Codex, Claude Code, Hermes, a local
-Ollama model or a remote model, on their own computer) join rooms as a Matrix user (`@anna-agent`, `@betty-agent`).
+Python agent adapter that lets each person's **own** agent (Codex, Claude Code, a local Ollama model
+or a remote model, on their own computer) join rooms as a Matrix user (`@anna-agent`, `@betty-agent`);
+Hermes joins through its own Matrix gateway, with our adapter handling only its code-change buttons.
 
 ## Get started (no setup)
 
@@ -104,13 +105,13 @@ are launchers under the names installed agents and the docs use (`python bridge.
 
 ## Run it locally
 
-1. Start everything — server, accounts (first run only) and both agent bridges:
+1. Start everything — server, accounts (first run only), @pm and each person's agent:
 
    ```bash
    cd hagency-rooms && ./start.sh      # in your clone
    ```
 
-   Leave it running (Ctrl-C stops the bridges; the server keeps running in Docker).
+   Leave it running (Ctrl-C stops the agent adapters; the server keeps running in Docker).
    To use Claude Code instead of Codex: `./start.sh claude` (run `claude` → `/login` first).
 
 2. Look up anna's password (it is never printed by the scripts):
@@ -147,7 +148,7 @@ without a mention. In an encrypted room the agent says it can't read it (no E2EE
   local users, and reacts only to messages that **@mention it** (pill or plain `anna-agent`) or
   arrive in a 2-person DM, sent by its **owner** (or, with `--allow-members`, any joined room
   member) that is not itself an agent (loop guard). Pending invites at startup get the same
-  local-server check as live ones; at most 3 CLI turns run at once per bridge. Earlier un-addressed room chatter (last 20 lines) is passed as context.
+  local-server check as live ones; at most 3 CLI turns run at once per agent adapter. Earlier un-addressed room chatter (last 20 lines) is passed as context.
 - `agents.py` runs the CLI with the prompt on **stdin**, no shell, in
   `~/.hagency/work/<owner>/<room>/` (outside the app; `workdirs.py` moves an old
   `rooms/<owner>/<room>/` folder there with its sessions), and resumes that room's saved session
@@ -172,7 +173,7 @@ without a mention. In an encrypted room the agent says it can't read it (no E2EE
 
 ## Live code changes
 
-`start.sh` runs the bridges and @pm under `supervise.py`. Save any `.py` file and they
+`start.sh` runs the agent adapters and @pm under `supervise.py`. Save any `.py` file and they
 restart by themselves within a second; you never restart the server. A file with a syntax error
 is not loaded; the running version stays up and the error is printed. On restart, each process
 finishes the answer or loop step it is in the middle of, and the new one picks up messages sent
@@ -196,7 +197,7 @@ moves on to the next one.
 
 `test_rules`/`test_agents` cover who gets answered (owner-only, mentions, DMs, invitees,
 non-members, other agents, malformed mentions) and CLI argv/session-state safety. `test_e2e`
-drives the real flow over the Matrix API with the bridges running: anna and betty @mention their
+drives the real flow over the Matrix API with the agent adapters running: anna and betty @mention their
 agents, checks replies, typing, per-room memory across turns, that the other agent stays quiet,
 that anna's agent ignores betty, and the encrypted-room warning.
 
@@ -204,7 +205,7 @@ that anna's agent ignores betty, and the encrypted-room warning.
 contributor can't switch to autonomous, and the owner can, just by saying so.
 
 `tests/test_restart_e2e.py` (stop `start.sh` first) saves a code file between two questions and checks
-both are answered exactly once, then kills the builder's bridge mid-step and checks the loop
+both are answered exactly once, then kills the builder's agent adapter mid-step and checks the loop
 resends the step and the issue is still merged.
 
 ## Talking to @pm
@@ -306,17 +307,17 @@ It starts at `off`.
 - Autonomous: the builder agent merges.
 
 **Who does what.** The builder is picked round-robin (issue number mod number of agents) and the
-reviewer is always a *different* person's agent. Each step runs in that person's bridge with
+reviewer is always a *different* person's agent. Each step runs in that person's agent adapter with
 **that agent's own GitHub identity**. @pm holds no GitHub credentials; it only reads.
 - Build: the agent CLI edits a fresh clone with `.git` moved out of its sandbox. Codex runs with
-  `workspace-write` and no network. The bridge then commits, pushes and opens the PR.
+  `workspace-write` and no network. The agent adapter then commits, pushes and opens the PR.
 - Review: the agent checks the diff read-only against the issue's acceptance criteria. It must end
   with `VERDICT: APPROVE`; anything else becomes "request changes".
 - Fix: on "changes requested", the builder's agent gets the reviewer's reasons and revises its
   own PR branch (a new commit, so earlier approvals don't count), and the same reviewer looks
   again. After 2 rounds without approval, a person takes over.
 - Merge: the builder merges only when **GitHub itself** reports the PR `MERGEABLE` + `CLEAN` +
-  `APPROVED`, re-checked in its bridge just before merging.
+  `APPROVED`, re-checked in its agent adapter just before merging.
 
 The merge gate is GitHub's own. Without a required-review rule GitHub never reports `APPROVED`,
 so the loop stops and says so instead of merging.
@@ -340,7 +341,7 @@ loop stops on that issue.
 
 The full loop test below runs real Codex agents against a fake GitHub (`tests/fake_gh.py` plus a
 local bare repo, with the same rules: you can't approve your own PR, and reviews are required).
-Stop `start.sh`'s bridges first, because the test starts its own:
+Stop `start.sh`'s agent adapters first, because the test starts its own:
 
 ```bash
 .venv/bin/python -m tests.test_loop_e2e

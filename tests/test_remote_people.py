@@ -215,7 +215,7 @@ class Provision(unittest.TestCase):
 
 
 class OwnComputer(unittest.TestCase):
-    """connect.py and the bridge on a matrix.org person's computer."""
+    """connect.py and the agent adapter on a matrix.org person's computer."""
     agent = identity.agent_localpart(ALICE, "rooms.example.org")
     creds = {"homeserver": "https://matrix.example.org", "user_id": f"@{agent}:rooms.example.org",
              "password": "s3cret", "owner": ALICE}

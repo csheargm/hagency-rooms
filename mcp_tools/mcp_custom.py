@@ -1,5 +1,5 @@
 """Change your agent's own code, for agents that use the hagency MCP server (Hermes). The Codex /
-Claude Code bridge does the same in bridge_custom.py; both share customize.py and the same buttons.
+Claude Code agent adapter does the same in bridge_custom.py; both share customize.py and the same buttons.
 
 The agent edits its owner's private copy with read_my_code / write_my_code (contained to that copy,
 like the build tools), then finish_code_change posts the offer in the owner's private room with the

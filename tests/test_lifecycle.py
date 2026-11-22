@@ -37,7 +37,7 @@ class HandOff(unittest.TestCase):
         self.assertEqual((data["token"], data["handled"]), ("B1", ["$a"]))  # resume at B1, skip $a
 
     def test_a_disconnected_agent_stops_instead_of_retrying_its_dead_sign_in(self):
-        """Seen live (step 4): after Disconnect the bridge re-synced ~45 times a second for ever."""
+        """Seen live (step 4): after Disconnect the agent adapter re-synced ~45 times a second for ever."""
         from nio import SyncResponse
         client = FakeClient()
         point = lifecycle.SyncPoint(client)

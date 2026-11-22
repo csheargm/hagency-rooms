@@ -2,7 +2,7 @@
 CLIs often include absolute paths (user names, folder layout). Everything posted from an exception
 or a tool's output goes through room_safe() first; the full text stays in the local log.
 An agent's own reply goes through secret_safe(): it runs with its owner's full CLI (it can read
-their files), so anything shaped like a credential, and the bridge's own token, is cut out."""
+their files), so anything shaped like a credential, and the agent adapter's own token, is cut out."""
 import html
 import re
 from pathlib import Path

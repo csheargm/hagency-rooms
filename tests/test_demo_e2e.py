@@ -1,6 +1,6 @@
 """End-to-end: the demo's product cycle, driven only by people talking. Real Matrix, real Codex
 agents (anna-agent, betty-agent), fake GitHub starting with NO issues. Stop ./start.sh first.
-Run: .venv/bin/python -m tests.test_demo_e2e           (both agents Codex, via the bridge)
+Run: .venv/bin/python -m tests.test_demo_e2e           (both agents Codex, via the agent adapter)
      DEMO_ANNA=hermes .venv/bin/python -m tests.test_demo_e2e   (anna's agent is Hermes, as in the demo)
 
 1. anna and betty agree on a tiny project in plain chat.
@@ -41,7 +41,7 @@ def confirm_latest(anna, room_id, words, ts):
 
 
 def start_anna(env: dict, pw: dict, logs) -> list[subprocess.Popen]:
-    """anna's agent: the Codex bridge, or (DEMO_ANNA=hermes) Hermes through the hagency MCP server."""
+    """anna's agent: the Codex agent adapter, or (DEMO_ANNA=hermes) Hermes through the hagency MCP server."""
     if os.environ.get("DEMO_ANNA") != "hermes":
         return [subprocess.Popen([str(ROOT / ".venv/bin/python"), "bridge.py", "anna"], cwd=ROOT, env=env,
                                  stdout=logs, stderr=logs)]

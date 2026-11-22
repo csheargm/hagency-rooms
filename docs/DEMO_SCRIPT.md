@@ -79,7 +79,7 @@ LOOP_REPO=your-name/hagency-hello .venv/bin/python github_setup.py pages
 LOOP_REPO=your-name/hagency-hello ./start.sh
 ```
 
-This starts `@pm`, Anna's Hermes gateway and Betty's Claude Code bridge. Saving a code file
+This starts `@pm`, Anna's Hermes gateway and Betty's Claude Code agent adapter. Saving a code file
 restarts them without losing messages.
 
 ## 4. Create the project room and invite people (≈2 min, in Element)

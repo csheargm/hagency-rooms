@@ -186,7 +186,7 @@ class WindowsInstaller(unittest.TestCase):
         self.assertIn("'\"{0}\" --home \"{1}\"' -f $runner, $HagencyHome", self.text)
 
     def test_only_a_cli_the_bridge_can_start_is_picked(self):
-        """GPT review: a .ps1 wrapper passes Get-Command but not the bridge's shell-less start. npm's
+        """GPT review: a .ps1 wrapper passes Get-Command but not the agent adapter's shell-less start. npm's
         .cmd wrapper is fine now: cli_path.py starts the program it wraps, without a shell."""
         self.assertIn('Get-Command "$Name.exe", "$Name.cmd" -CommandType Application', self.text)
 

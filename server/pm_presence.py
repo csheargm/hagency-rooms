@@ -1,6 +1,6 @@
 """@pm notices when a person's own agent (bring your own, connect.py) goes offline, and tells them.
 
-Every CHECK_S, @pm asks Synapse for each such agent's presence (a syncing bridge is "online"; @pm
+Every CHECK_S, @pm asks Synapse for each such agent's presence (a syncing agent adapter is "online"; @pm
 shares Welcome with every agent, so it may see it). An agent that was online and has now been away
 for OFFLINE_S gets ONE private message to its owner, at most once per ALERT_EVERY_S, with a 🔁
 button: the Connect page again with a fresh code (running it again is safe). The console's

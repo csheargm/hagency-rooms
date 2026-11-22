@@ -1,6 +1,8 @@
-"""Unit tests for who the bridge answers. Run: .venv/bin/python -m unittest tests.test_rules"""
+"""Unit tests for who the agent adapter answers. Run: .venv/bin/python -m unittest tests.test_rules"""
+import asyncio
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from adapters.agents.bridge import Bridge
 
@@ -17,6 +19,21 @@ def room(members, invited=()):
 def msg(sender, body, mentions=None):
     content = {"body": body, **({"m.mentions": {"user_ids": mentions}} if mentions is not None else {})}
     return SimpleNamespace(sender=sender, body=body, source={"content": content})
+
+
+class EncryptedRooms(unittest.TestCase):
+    def test_the_note_is_plain_and_sent_once_per_room(self):
+        """Step 3 of the repo reorg: no "bridge v1" or "E2EE" in what people read."""
+        b = Bridge("anna", "codex")
+        b.send = mock.AsyncMock()
+        event = SimpleNamespace(sender=BETTY)
+        for rid in ("!r", "!r", "!other"):          # GPT review: once per room, to that room
+            asyncio.run(b.on_encrypted(SimpleNamespace(room_id=rid), event))
+        self.assertEqual([c.args[0] for c in b.send.await_args_list], ["!r", "!other"])
+        note = b.send.await_args.args[1]
+        self.assertIn("I can't read encrypted rooms yet", note)
+        self.assertIn("without encryption", note)           # what to do instead
+        self.assertNotRegex(note, r"(?i)bridge|e2ee|v1")
 
 
 class Rules(unittest.TestCase):

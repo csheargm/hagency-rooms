@@ -58,7 +58,7 @@ GH_BIN = os.environ.get("GH_BIN", "gh")          # tests point this at tests/fak
 IDENTITY_ROOT = Path(os.environ.get("GH_IDENTITY_ROOT", ROOT / ".gh"))
 CMD_TIMEOUT_S = 120
 
-# Event content keys shared by loop.py and the bridges.
+# Event content keys shared by loop.py and the agent adapters.
 TASK_KEY = "xyz.hagencylabs.task"
 RESULT_KEY = "xyz.hagencylabs.result"
 LEVEL_EVENT = "xyz.hagencylabs.loop"

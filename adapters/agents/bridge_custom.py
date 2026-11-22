@@ -26,7 +26,9 @@ from common.saved_dict import SavedDict
 log = logging.getLogger("bridge")
 CHANGE = re.compile(r"^\W*(please\s+|can you\s+|could you\s+)?(change|make|add|fix|update|remove|delete|"
                     r"customi[sz]e|improve|tweak|rename|let|teach)\b", re.I)
-ABOUT_CODE = re.compile(r"\b(your (own )?(code|bridge|program)|the bridge|hagency( rooms)?|yourself)\b", re.I)
+# "agent adapter" is today's word for it (ADR 0011); "bridge" still counts
+ABOUT_CODE = re.compile(r"\b(your (own )?(code|bridge|agent adapter|program)|the (bridge|agent adapter)|hagency( rooms)?|yourself)\b",
+                        re.I)
 GO_BACK = customize.GO_BACK
 USE, SEND, DROP, BACK = "👍", "📤", "🗑️", "↩️"
 
@@ -160,7 +162,7 @@ class BridgeCustom:
             return False
         back = await self.send(rid, f"✅ {result.capitalize()}. Switching to your version {offer['sha'][:7]}: I'll be back "
                                     f"in a moment.\n\n{BACK} **Go back** to the official version any time (or tell @pm "
-                                    "\"go back to the official bridge\", or use the console).")
+                                    "\"go back to the official version\", or use the console).")
         self.offers()[back] = {"room": rid, "back": offer["sha"]}
         await self.react(rid, back, BACK)
         return True

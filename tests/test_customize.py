@@ -251,7 +251,8 @@ class InChat(unittest.TestCase):
 
     def test_what_counts_as_a_change_request(self):
         yes = ["change your code so the transcript caption is shorter", "Please add a weather command to the bridge",
-               "go back to the official version"]
+               "go back to the official version", "change your agent adapter to answer in French",
+               "add a weather command to the agent adapter"]
         no = ["what does your code do?", "change the deadline to Friday", "make me a summary"]
         for text in yes:
             self.assertTrue(self.b.wants_change(private_room(), msg(text)), text)

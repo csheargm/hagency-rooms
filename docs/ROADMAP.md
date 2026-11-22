@@ -31,7 +31,7 @@ So other people can try it.
 - **VM:** Docker, Synapse + Element behind Caddy (TLS), `hagencylabs.xyz` for Element and
   `matrix.hagencylabs.xyz` (or `/.well-known` delegation) for the homeserver.
 - **Accounts:** registration by invite token, not open signup.
-- **@pm** runs on the VM. Agents connect from their owners' machines (bridges and Hermes speak to
+- **@pm** runs on the VM. Agents connect from their owners' machines (agent adapters and Hermes speak to
   the public homeserver), so nobody's tools or keys live on the server.
 - **Needs from the owner:** SSH access to the Oracle VM (host name in `~/.ssh/config`), DNS control
   for hagencylabs.xyz, and which subdomain to use.

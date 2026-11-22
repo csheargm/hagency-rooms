@@ -2,7 +2,7 @@
 reality rather than from its own memory of the last thing it did:
   - the live project status @pm publishes (github.STATUS_EVENT: the board's text);
   - the room's recent conversation, everyone's, oldest first (not only messages to the agent);
-  - the project itself: a read-only copy of the repo's default branch (bridge agents) or
+  - the project itself: a read-only copy of the repo's default branch (agents run by the agent adapter) or
     read_project_file (MCP agents).
 Used by bridge.py (Codex/Claude agents) and mcp_context.py (Hermes and other MCP agents).
 """
