@@ -1437,3 +1437,11 @@ Rejected: charging the per-client "any sign-in" budget before a federation slot 
 - **Found by CI, after the re-check:** the deny list's "never looked up" (0) read as fresh while
   `time.monotonic()` was under 10 minutes, as on a freshly booted server: no own addresses refused
   for its first ten minutes. Fixed, with a test.
+
+## GPT review of the service migration race fix (R15)
+Two points, both verified in the code and adopted, with tests in test_launchd_reload:
+- **P2: a systemd rollback stopped at the first unit it couldn't write back**, leaving the later
+  ones rewritten (so the next run would skip them). Each unit is now put back on its own; one that
+  can't be is named, with both reasons.
+- **P2: a service file that isn't text** (UnicodeDecodeError) ended the connect run. It is now one
+  more failure named in the report, and the other agents still move.

@@ -118,13 +118,42 @@ class MigrateAll(unittest.TestCase):
         self.assertEqual(owners.read_text(), further_plist(OWNERS, f"{APP}/bridge.py"))   # put back: still to do
         self.assertEqual(self.migrate("launchd", FakeLaunchd()), [owners.name])          # the next run moves it
 
-    def test_systemd_still_reloads_once_and_never_waits(self):
+    def test_an_unreadable_plist_is_named_and_the_others_still_move(self):
+        """GPT review: a file that isn't text (UnicodeDecodeError) mustn't end the run."""
+        self.files[OWNERS].write_bytes(b"\xff\xfe\x00garbage")
+        launchd = FakeLaunchd()
+        with self.assertRaises(service_migration.MigrationError) as e:
+            self.migrate("launchd", launchd, sleep=launchd.sleep, clock=launchd.clock)
+        self.assertEqual(list(e.exception.failed), [self.files[OWNERS].name])
+        self.assertEqual(launchd.loaded, {self.files[a].stem for a in FURTHER})
+
+    def test_a_unit_that_cant_be_put_back_doesnt_stop_the_others_being_put_back(self):
+        """GPT review: after a refused daemon-reload every unit is put back, even if one write fails."""
+        units = self.units()
+        first, olds = units[0], {u: u.read_text() for u in units}
+        write = service_migration._write
+        def refuse_first(path, text):
+            if path == first and text == olds[first]:
+                raise PermissionError("read-only")
+            write(path, text)
+        with mock.patch.object(service_migration, "_write", refuse_first), \
+                self.assertRaises(service_migration.MigrationError) as e:
+            self.migrate("systemd", lambda *a, **k: mock.Mock(returncode=1, stdout="", stderr="no bus"))
+        self.assertEqual(sorted(e.exception.failed), sorted(u.name for u in units))
+        self.assertIn("couldn't be put back", e.exception.failed[first.name])
+        self.assertEqual({u: u.read_text() for u in units[1:]}, {u: olds[u] for u in units[1:]})
+
+    def units(self) -> list[Path]:
         units = []
         for agent in FURTHER:
             unit = agent_service.service_file("systemd", agent, self.home)
             unit.parent.mkdir(parents=True, exist_ok=True)
             unit.write_text(f'[Service]\nExecStart="{APP}/.venv/bin/python" "{APP}/bridge.py" "cx"\n')
             units.append(unit)
+        return units
+
+    def test_systemd_still_reloads_once_and_never_waits(self):
+        units = self.units()
         launchd = FakeLaunchd()
         self.assertEqual(self.migrate("systemd", launchd, sleep=self.fail), sorted(u.name for u in units))
         self.assertEqual(launchd.calls, [["systemctl", "--user", "daemon-reload"]])

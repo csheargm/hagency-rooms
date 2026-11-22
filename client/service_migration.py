@@ -49,10 +49,19 @@ def _move_one(path: Path, app: Path, how: str, run, sleep, clock) -> str | None:
     if how == "launchd":
         try:
             _loaded(load_again(path, path.stem, run, sleep, clock), "launchd wouldn't load it again")
-        except (OSError, RuntimeError):
-            _write(path, text)
-            raise
+        except (OSError, RuntimeError) as e:
+            raise RuntimeError(_put_back(path, text, e)) from e
     return text
+
+
+def _put_back(path: Path, text: str, why: Exception) -> str:
+    """Write the file's old text back, so the next run tries it again; why it failed, and if even
+    that write failed, that too (GPT review: one unwritable file mustn't stop the others)."""
+    try:
+        _write(path, text)
+    except OSError as e:
+        return f"{why}; and it couldn't be put back as it was ({e})"
+    return str(why)
 
 
 def migrate(app: Path, run=subprocess.run, home: Path | None = None, sleep=time.sleep,
@@ -70,7 +79,7 @@ def migrate(app: Path, run=subprocess.run, home: Path | None = None, sleep=time.
     for path in sorted(folder.glob(pattern)):
         try:
             old = _move_one(path, app, how, run, sleep, clock)
-        except (OSError, RuntimeError) as e:
+        except (OSError, RuntimeError, UnicodeDecodeError) as e:   # unreadable: GPT review
             failed[path.name] = str(e)
             continue
         if old is not None and how == "launchd":
@@ -83,8 +92,7 @@ def migrate(app: Path, run=subprocess.run, home: Path | None = None, sleep=time.
             done += [path.name for path in pending]
         except (OSError, RuntimeError) as e:
             for path, text in pending.items():
-                _write(path, text)
-                failed[path.name] = str(e)
+                failed[path.name] = _put_back(path, text, e)
     if failed:
         raise MigrationError(done, failed)
     return done
