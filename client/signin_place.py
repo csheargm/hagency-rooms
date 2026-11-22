@@ -48,14 +48,21 @@ def same_agent(saved: dict, fresh: dict) -> bool:
 
 
 def _free_for(path: Path, fresh: dict) -> bool:
-    """Nothing there (or a damaged file), or this same agent's own sign-in."""
+    """Nothing there (or a damaged file), or this same agent's own sign-in. A file that is there but
+    can't be read counts as someone's (GPT review: os.replace would still overwrite it)."""
+    try:
+        path.read_bytes()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
     saved = read_saved(path)
     return not saved.get("user_id") or same_agent(saved, fresh)
 
 
-def _refuse(path: Path) -> SystemExit:
-    return SystemExit(f"✗ {path} already keeps the sign-in of {read_saved(path).get('user_id')}, another agent; "
-                      "nothing was replaced. Ask @pm for a new code and run the line it gives you again.")
+def _refuse(where: Path) -> SystemExit:
+    return SystemExit(f"✗ Another agent already uses {where} on this computer, so nothing was replaced and this "
+                      "agent wasn't set up. Please tell @pm.")
 
 
 def place(home: Path, folder: Path, fresh: dict) -> Path:
@@ -72,6 +79,8 @@ def place(home: Path, folder: Path, fresh: dict) -> Path:
         return own                            # moved aside before: it stays there
     if _free_for(path, fresh):
         return path
+    if agent_name(read_saved(path)) == agent_name(fresh):   # same name, another server: one service name
+        raise _refuse(path)                   # for both, so the first one's would be replaced (GPT review)
     if not _free_for(own, fresh):
         raise _refuse(own)
     return own

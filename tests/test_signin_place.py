@@ -147,6 +147,29 @@ class SameComputer(unittest.TestCase):
             signin_place.place(self.home, folder, {**A, "user_id": f"@cx-codex-agent:{S}", "label": "codex"})
         self.assertIn("nothing was replaced", str(e.exception))
 
+    def test_a_file_that_cant_be_read_is_not_replaced(self):
+        connect.save(self.home / "credentials.json", A)
+        locked = self.home / "credentials.json"
+
+        def unreadable(real):
+            def read(path, *a, **k):
+                if path == locked:
+                    raise PermissionError("denied")
+                return real(path, *a, **k)
+            return read
+        with mock.patch.object(Path, "read_bytes", unreadable(Path.read_bytes)), \
+                mock.patch.object(Path, "read_text", unreadable(Path.read_text)):
+            got = signin_place.place(self.home, self.home, B)
+        self.assertEqual(got, self.home / B_NAME / "credentials.json")
+
+    def test_the_same_name_from_another_server_is_refused_not_given_the_same_service(self):
+        self.run_connect("CODE-A")
+        _, said, failed = self.run_connect("CODE-X", answer={**A, "user_id": "@cx-agent:other.example",
+                                                             "homeserver": "https://other.example"})
+        self.assertIn("Please tell @pm", failed)
+        self.assertEqual(self.saved()["user_id"], A["user_id"])
+        self.assertFalse((self.home / "cx-agent").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
