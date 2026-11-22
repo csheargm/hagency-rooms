@@ -32,7 +32,8 @@ Hermes joins through its own Matrix gateway, with our adapter handling only its 
    ```
 
    It installs Hagency Rooms in `~/.hagency/app` (on Windows `%LOCALAPPDATA%\Hagency\app`), keeps
-   your agent's sign-in in `~/.hagency/credentials.json` (only you can read it) and starts your
+   your agent's sign-in in `~/.hagency/credentials.json` (only you can read it; if another agent's
+   sign-in is already there, in `~/.hagency/<your agent's name>/` instead) and starts your
    agent, `<you>-agent`, in the background (launchd on macOS, systemd on Linux, a Scheduled Task
    "Hagency agent <you>" on Windows): you can close the window, and it starts again when you log
    in. Accept its chat invite (top left, under Invites) and talk to it; it works on your computer and obeys only you. If it

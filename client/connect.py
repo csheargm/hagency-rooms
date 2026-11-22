@@ -7,7 +7,8 @@ model in Ollama, or any OpenAI-compatible service (the kinds: agent_kinds.py, do
   python bin/connect.py --name cx-codex-agent [--stop] # the same for a further agent of yours
 
 It trades @pm's one-time code for your agent's sign-in (POST <server>/connect), saves it in
-~/.hagency/credentials.json (mode 600, never in this folder), and runs the agent as a
+~/.hagency/credentials.json (mode 600, never in this folder; signin_place.py: never over another
+agent's, which a second person pairing on this computer would otherwise do), and runs the agent as a
 background service: bridge.py (the agent adapter), or hermes_local.py for Hermes (agent_service.py:
 launchd on macOS, systemd --user on Linux; --foreground, or
 neither available, runs it here instead). It works on this computer and obeys only you. A further
@@ -34,6 +35,8 @@ from client import agent_service
 from adapters.agents import cli_path
 from client import connect_kinds
 from client import service_migration
+from client import signin_place
+from client.signin_place import agent_name, name_arg, read_saved
 from common import identity
 from client.ask_line import ask_line
 from common.bridge_config import credentials_match
@@ -86,14 +89,6 @@ def agent_dir(home: Path, creds: dict) -> Path:
     return home / agent_name(creds) if creds.get("label") else home
 
 
-def read_saved(path: Path) -> dict:
-    try:
-        saved = json.loads(path.read_text()) if path.exists() else {}
-    except (OSError, ValueError):
-        saved = {}                            # damaged: a new code replaces it
-    return saved if isinstance(saved, dict) else {}
-
-
 def save(path: Path, data: dict) -> None:
     """Written as 0600 (in a 0700 folder, whatever the umask made it) and swapped in whole."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -124,11 +119,7 @@ def pick_backend(given: str | None, saved: str | None, ask=input) -> str:
     return choice
 
 
-def agent_name(creds: dict) -> str:
-    return str(creds.get("user_id", "")).lstrip("@").partition(":")[0]
-
-
-def background(creds: dict, path: Path) -> bool:
+def background(creds: dict, path: Path, home: Path) -> bool:
     """Start the agent as a background service; False when this computer has none (run it here)."""
     try:
         how = agent_service.install(APP, creds["owner"], creds["agent"], agent_name(creds), path)
@@ -139,12 +130,8 @@ def background(creds: dict, path: Path) -> bool:
         return False
     print(f"✓ Your agent now runs in the background ({how}): you can close this Terminal. It starts again when\n"
           f"  you log in. Its log: {path.parent / 'logs' / (agent_name(creds) + '.log')}\n"
-          f"  To stop it: {sys.executable} {CONNECT} {name_arg(creds)}--stop")
+          f"  To stop it: {sys.executable} {CONNECT} {name_arg(home, path)}--stop")
     return True
-
-
-def name_arg(creds: dict) -> str:
-    return f"--name {agent_name(creds)} " if creds.get("label") else ""
 
 
 def stop(saved: dict, home: Path) -> None:
@@ -206,20 +193,20 @@ def connect_here(args, home: Path, path: Path, saved: dict) -> tuple[dict, Path]
         fresh = redeem(args.server, args.code)
         offered = {k: fresh.pop(k) for k in agent_kinds.OFFER_KEYS if k in fresh}
         bad_offer = fresh.pop("offer_error", None)
-        path = agent_dir(home, fresh) / "credentials.json"        # a further agent: its own folder
+        path = signin_place.place(home, agent_dir(home, fresh), fresh)   # never over another agent's
         before = read_saved(path)
         saved = {**fresh, **{k: before[k] for k in ("agent", *connect_kinds.KIND_SETTINGS) if k in before}}
         save(path, saved)                                         # the code is used up: keep the sign-in
         if bad_offer and not args.agent:
             raise SystemExit(f"✗ {bad_offer}.\n  Your sign-in is saved: run {sys.executable} {CONNECT} "
-                             f"{name_arg(saved)}--agent KIND (no code needed)")
+                             f"{name_arg(home, path)}--agent KIND (no code needed)")
     kind = pick_kind(args, offered, saved)
     pending = connect_kinds.pending_for(kind, saved, offered)
     save(path, pending)                                           # chosen: a rerun asks only what's missing
     why = connect_kinds.problem(kind)
     if why:
         raise SystemExit(f"✗ {why}\n  Your sign-in is saved; then run {sys.executable} {CONNECT} "
-                         f"{name_arg(saved)}(no code needed)")
+                         f"{name_arg(home, path)}(no code needed)")
     creds = connect_kinds.settings(kind, pending, args, path.parent)
     save(path, creds)
     if kind == "hermes":
@@ -260,13 +247,15 @@ def main() -> None:
         raise SystemExit("✗ not connected yet: run this with the code @pm sent you")
     check_first(args)
     creds, path = connect_here(args, home, path, saved)
+    for agent in signin_place.stranded(home, skip=agent_name(creds)):
+        print(f"✗ {signin_place.REPLACED.format(agent)}", file=sys.stderr)
     print(f"✓ connected as {creds['user_id']} ({creds['agent']}); only {creds['owner']} can direct it")
     if args.pair_only:
-        if creds.get("label") and os.name == "nt":   # connect.ps1 registers only the first agent's task (for now)
-            raise SystemExit(f"✓ saved. On Windows a further agent runs in a window for now: "
-                             f"{sys.executable} {CONNECT} --name {agent_name(creds)} --foreground")
+        if signin_place.kept_aside(home, path) and os.name == "nt":   # connect.ps1 registers only the first agent's task
+            raise SystemExit(f"✓ saved. On Windows this agent runs in a window for now: "
+                             f"{sys.executable} {CONNECT} {name_arg(home, path)}--foreground")
         return
-    if not args.foreground and background(creds, path):
+    if not args.foreground and background(creds, path, home):
         return
     print("Your agent is online while this runs (Ctrl-C stops it).", flush=True)
     os.chdir(APP)

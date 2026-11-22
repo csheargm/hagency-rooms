@@ -48,6 +48,7 @@ class Flow(unittest.TestCase):
                 mock.patch.object(sys.stdin, "isatty", lambda: tty), \
                 mock.patch.object(agent_service, "install", return_value="launchd") as install, \
                 mock.patch.object(connect.service_migration, "migrate", return_value=[]), \
+                mock.patch.object(connect.signin_place, "stranded", return_value=[]), \
                 mock.patch.object(connect.os, "execve"), redirect_stdout(said), redirect_stderr(err):
             try:
                 connect.main()
