@@ -1,5 +1,5 @@
 """Unit tests: talking to @pm in plain words. Run: .venv/bin/python -m unittest tests.test_pm_chat"""
-# TODO(R4, 366 lines): split Brain + BrainParse (line 230 on) into test_pm_brain.py, importing Talk.
+# TODO(R4, 514 lines): split Brain + BrainParse (class Brain on) into test_pm_brain.py, importing Talk.
 import asyncio
 import time
 import unittest
@@ -71,6 +71,9 @@ class Talk(unittest.TestCase):
             p = mock.patch.object(target, name, value)
             p.start()
             self.addCleanup(p.stop)
+        no_prs = mock.patch("server.pm_paused.agent_prs", mock.AsyncMock(return_value={}))   # no unrecorded PRs
+        no_prs.start()
+        self.addCleanup(no_prs.stop)
         self.lp = Loop.__new__(Loop)
         self.lp.room_repos, self.lp.state, self.lp.lock = {}, {}, asyncio.Lock()
         self.lp.user_id, self.lp.pending, self.lp.boards = PM, {}, {}

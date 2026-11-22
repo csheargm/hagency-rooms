@@ -38,6 +38,9 @@ class EveryModeSwitch(unittest.TestCase):
             p = mock.patch.object(target, name, value)
             p.start()
             self.addCleanup(p.stop)
+        no_prs = mock.patch("server.pm_paused.agent_prs", mock.AsyncMock(return_value={}))   # no unrecorded PRs
+        no_prs.start()
+        self.addCleanup(no_prs.stop)
         self.lp = Loop.__new__(Loop)
         self.lp.room_repos, self.lp.state, self.lp.lock, self.lp.save = {}, paused(7, 9), asyncio.Lock(), mock.Mock()
         self.lp.user_id, self.lp.pending, self.lp.boards, self.said = PM, {}, {}, []
