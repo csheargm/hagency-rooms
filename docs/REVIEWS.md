@@ -1445,3 +1445,12 @@ Two points, both verified in the code and adopted, with tests in test_launchd_re
   can't be is named, with both reasons.
 - **P2: a service file that isn't text** (UnicodeDecodeError) ended the connect run. It is now one
   more failure named in the report, and the other agents still move.
+
+### Second GPT pass
+- Adopted, **P2: output launchctl or systemctl can't decode** raised before the exit status was
+  read, so the file wasn't put back. Both reloads now run with `errors="replace"`
+  (`agent_service.MANAGER_OUTPUT`); tested.
+- Rejected, P2: a persistent retry marker for a file that couldn't be put back after a failed
+  load. That needs a write to fail right after a write to the same file succeeded; the report
+  already names the file and says it couldn't be put back, and a launchd plist left rewritten
+  already names `bin/` and loads at the next login. A marker would be new state on disk for it.

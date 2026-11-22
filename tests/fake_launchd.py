@@ -11,6 +11,7 @@ BUSY = SimpleNamespace(returncode=5, stdout="", stderr="Bootstrap failed: 5: Inp
 class FakeLaunchd:
     def __init__(self, linger: float = 0.0, busy_after_gone: int = 0, refuse=()):
         self.now, self.calls, self.loaded = 0.0, [], set()
+        self.options: list[dict] = []          # the keyword arguments of each call
         self.linger = linger                  # seconds a booted-out job is still there
         self.busy = busy_after_gone           # error-5 refusals even once print no longer finds it
         self.refuse = set(refuse)             # jobs launchd never loads again
@@ -22,8 +23,9 @@ class FakeLaunchd:
     def sleep(self, seconds: float) -> None:
         self.now += seconds
 
-    def __call__(self, args, **_):
+    def __call__(self, args, **options):
         self.calls.append(args)
+        self.options.append(options)
         verb = args[1]
         if verb == "bootout":
             job = args[2].rsplit("/", 1)[1]

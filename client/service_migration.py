@@ -9,7 +9,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from client import agent_service
-from client.agent_service import LABEL, _quote, _write, load_again, service_file
+from client.agent_service import LABEL, MANAGER_OUTPUT, _quote, _write, load_again, service_file
 from common import paths
 
 OLD_ROOT_LAUNCHERS = ("bridge.py", "hermes_local.py")   # where older services name them: the root
@@ -88,7 +88,7 @@ def migrate(app: Path, run=subprocess.run, home: Path | None = None, sleep=time.
             pending[path] = old
     if pending:                               # systemd reads ExecStart at the next start
         try:
-            _loaded(run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True), "systemd wouldn't reload")
+            _loaded(run(["systemctl", "--user", "daemon-reload"], **MANAGER_OUTPUT), "systemd wouldn't reload")
             done += [path.name for path in pending]
         except (OSError, RuntimeError) as e:
             for path, text in pending.items():

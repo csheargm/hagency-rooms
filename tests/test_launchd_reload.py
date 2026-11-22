@@ -71,6 +71,7 @@ class Reload(unittest.TestCase):
         launchd = FakeLaunchd(linger=0.5, busy_after_gone=1)
         self.assertEqual(self.load(launchd).returncode, 0)
         self.assertEqual([c[1] for c in launchd.calls].count("bootstrap"), 2)
+        self.assertEqual(launchd.options[-1].get("errors"), "replace")  # GPT review: bytes never raise
         self.assertIn(self.path.stem, launchd.loaded)
 
     def test_a_job_that_never_goes_is_waited_for_a_bounded_time_and_reported(self):
@@ -157,6 +158,7 @@ class MigrateAll(unittest.TestCase):
         launchd = FakeLaunchd()
         self.assertEqual(self.migrate("systemd", launchd, sleep=self.fail), sorted(u.name for u in units))
         self.assertEqual(launchd.calls, [["systemctl", "--user", "daemon-reload"]])
+        self.assertEqual(launchd.options[0].get("errors"), "replace")   # odd bytes still reach the put-back
         for unit in units:
             self.assertIn(f'"{APP}/bin/bridge.py"', unit.read_text())
 

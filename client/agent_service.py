@@ -35,6 +35,8 @@ GONE_POLL_S = 0.25
 BOOTSTRAP_TRIES = 3
 BOOTSTRAP_RETRY_S = 1.0
 LAUNCHD_BUSY = 5                              # "Bootstrap failed: 5: Input/output error"
+# how a reload is run: its output as text, never undecodable bytes that would skip the put-back (GPT review)
+MANAGER_OUTPUT = {"capture_output": True, "text": True, "errors": "replace"}
 
 
 def windows_task(agent_localpart: str) -> str:
@@ -224,7 +226,7 @@ def load_again(path: Path, job: str, run=subprocess.run, sleep=time.sleep, clock
         if attempt:
             sleep(BOOTSTRAP_RETRY_S)
         _wait_gone(target, run, sleep, clock, end)
-        r = run(["launchctl", "bootstrap", domain, str(path)], capture_output=True, text=True)
+        r = run(["launchctl", "bootstrap", domain, str(path)], **MANAGER_OUTPUT)
         if not _busy(r):
             break
     return r
