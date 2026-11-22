@@ -154,7 +154,8 @@ class SameComputer(unittest.TestCase):
     def test_no_notice_when_each_service_has_its_own_sign_in(self):
         self.run_connect("CODE-A")
         self.old_service(A, "cx")
-        self.assertEqual(signin_place.stranded(self.home, user_home=self.user_home), [])
+        with mock.patch.object(agent_service, "kind", return_value="launchd"):
+            self.assertEqual(signin_place.stranded(self.home, user_home=self.user_home), [])
 
     def test_notice_reads_systemd_units_too(self):
         connect.save(self.home / "credentials.json", B)
