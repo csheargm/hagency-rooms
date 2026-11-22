@@ -90,6 +90,7 @@ class Reports(flows.Base):
         self.assertNotIn("secret-path", registry.PATH.read_text())
         self.assertEqual(kind_report.from_credentials({"agent": "remote", "model": "m", "base_url": "https://openrouter.ai./v1"}),
                          {"agent_kind": "remote", "model": "m", "host": "openrouter.ai"})   # a root dot (GPT re-check)
+        self.assertIsNone(kind_report.from_credentials({"agent": "remote", "model": "m", "base_url": "https://openrouter.ai../v1"}))
         self.start_agent({**CX_CREDS, "agent": "ollama", "model": "Qwen3CoderNextInstruct"})   # a long local name (GPT review)
         self.assertEqual(self.card()["cx-agent"], "Ollama (a model on your computer): Qwen3CoderNextInstruct")
 
