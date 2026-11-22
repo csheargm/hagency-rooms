@@ -1,7 +1,9 @@
 """Adjust Synapse's generated homeserver.yaml for the public server (bootstrap.sh runs it every time;
 running it again changes nothing):
   - Postgres instead of SQLite (the database block is replaced);
-  - sign-up only with a registration token (an invite), no guests, no URL previews;
+  - sign-up with a registration token (an invite), or open to anyone with a confirmed email once SMTP
+    is set in .env (signup.py, ADR 0013); never without either; no guests, no URL previews;
+  - sign-in with Google and GitHub, each once its keys are in .env (sso_login.py);
   - every new account joins the private Welcome room, created by @pm, where @pm greets them
     (pm_welcome.py; @pm must exist before the first sign-up, or Synapse can't create the room);
   - the public URL; Synapse's own rate limits, except sign-ins per address (@pm's container signs in often);
@@ -20,6 +22,8 @@ from pathlib import Path
 
 import envfile
 import hostfiles
+import signup
+import sso_login
 
 MARKER = ".hagency-configured"
 WELCOME_LOCALPART = "welcome"                 # #welcome:<server>; pm_welcome.py looks for this room
@@ -86,7 +90,8 @@ def configure(text: str, e: dict) -> str:
     extra = {
         "public_baseurl": json.dumps(f"https://{e['MATRIX_DOMAIN']}/"),
         "enable_registration": "true",
-        "registration_requires_token": "true",       # an admin hands out tokens: invite-only
+        # An admin hands out tokens (invite-only), unless open sign-up requires a confirmed email instead.
+        "registration_requires_token": "false" if signup.is_open(e) else "true",
         "allow_guest_access": "false",
         "max_upload_size": "20M",                    # with media_retention: the disk and traffic stay free-tier
         "media_retention": "{local_media_lifetime: 90d, remote_media_lifetime: 30d}",
@@ -101,7 +106,9 @@ def configure(text: str, e: dict) -> str:
     }
     # Synapse refuses to start with this older key next to the two directory keys above (GPT re-check).
     text = re.sub(rf"(?m)^{LEGACY_DIRECTORY_KEY}:.*\n?", "", text)
-    return set_keys(text, extra)
+    # Closing sign-up (or removing a provider's keys) again removes what opened it.
+    text = signup.drop_keys(text, signup.stale_keys(e) + sso_login.stale_keys(e))
+    return set_keys(set_keys(text, extra), {**signup.settings(e), **sso_login.settings(e)})
 
 
 def install(path: Path, e: dict) -> bool:
@@ -121,4 +128,5 @@ if __name__ == "__main__":
     if envfile.validate(values):
         raise SystemExit("✗ run `python3 envfile.py check` first")
     changed = install(Path(sys.argv[1]), values)
-    print(f"✓ homeserver.yaml {'configured' if changed else 'unchanged'}: Postgres, invite-only sign-up, Welcome room, @pm moderator, chats open joined")
+    print(f"✓ homeserver.yaml {'configured' if changed else 'unchanged'}: Postgres, Welcome room, @pm moderator, chats open joined")
+    print(f"  {signup.describe(values)}; {sso_login.describe(values)}")

@@ -1,0 +1,60 @@
+# Configuration file for Synapse.
+#
+# This is a YAML file: see [1] for a quick introduction. Note in particular
+# that *indentation is important*: all the elements of a list or dictionary
+# should have the same indentation.
+#
+# [1] https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
+#
+# For more information on how to configure Synapse, including a complete accounting of
+# each option, go to docs/usage/configuration/config_documentation.md or
+# https://element-hq.github.io/synapse/latest/usage/configuration/config_documentation.html
+server_name: "matrix.example.org"
+pid_file: /data/homeserver.pid
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client, federation]
+        compress: false
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: "abababababababababababababababababababababababababababababababab"
+    database: synapse
+    host: postgres
+    cp_min: 5
+    cp_max: 10
+log_config: "/data/matrix.example.org.log.config"
+media_store_path: /data/media_store
+registration_shared_secret: "generated-registration-secret"
+report_stats: false
+macaroon_secret_key: "generated-macaroon-key"
+form_secret: "generated-form-secret"
+signing_key_path: "/data/matrix.example.org.signing.key"
+trusted_key_servers:
+  - server_name: "matrix.org"
+
+
+# vim:ft=yaml
+public_baseurl: "https://matrix.example.org/"
+enable_registration: true
+registration_requires_token: true
+allow_guest_access: false
+max_upload_size: 20M
+media_retention: {local_media_lifetime: 90d, remote_media_lifetime: 30d}
+rc_login: {address: {per_second: 0.02, burst_count: 20}}
+url_preview_enabled: false
+auto_join_rooms: ["#welcome:matrix.example.org"]
+autocreate_auto_join_rooms: true
+auto_join_mxid_localpart: pm
+autocreate_auto_join_room_preset: private_chat
+auto_join_rooms_for_guests: false
+modules: [{"module": "hagency_pm_moderator.PmModerator", "config": {"pm": "@pm:matrix.example.org"}}, {"module": "hagency_auto_accept.AutoAccept", "config": {"pm": "@pm:matrix.example.org", "server": "matrix.example.org"}}]
+default_room_version: "12"
+room_list_publication_rules: [{"user_id": "@pm:matrix.example.org", "action": "allow"}, {"action": "deny"}]
+allow_public_rooms_over_federation: true
+allow_public_rooms_without_auth: false

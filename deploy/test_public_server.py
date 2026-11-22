@@ -97,11 +97,15 @@ class Guard(unittest.TestCase):
 
 
 class Health(unittest.TestCase):
-    def test_sign_up_must_need_a_token_in_every_flow(self):
+    def test_sign_up_must_need_a_token_or_an_email_in_every_flow(self):
         tok = {"stages": ["m.login.registration_token", "m.login.dummy"]}
-        self.assertTrue(health.token_only(json.dumps({"flows": [tok]})))
-        self.assertFalse(health.token_only(json.dumps({"flows": [tok, {"stages": ["m.login.dummy"]}]})))
-        self.assertFalse(health.token_only(json.dumps({})))                         # no flows: not proof
+        mail = {"stages": ["m.login.email.identity"]}                              # open sign-up (signup.py)
+        self.assertTrue(health.verified_only(json.dumps({"flows": [tok]})))
+        self.assertTrue(health.verified_only(json.dumps({"flows": [mail]})))
+        self.assertTrue(health.verified_only(json.dumps({"flows": [tok, {"stages": ["m.login.registration_token", "m.login.email.identity"]}]})))
+        self.assertFalse(health.verified_only(json.dumps({"flows": [tok, {"stages": ["m.login.dummy"]}]})))
+        self.assertFalse(health.verified_only(json.dumps({"flows": [mail, {"stages": ["m.login.recaptcha"]}]})))
+        self.assertFalse(health.verified_only(json.dumps({})))                     # no flows: not proof
 
     def test_failures_and_errors_both_count(self):
         def boom():

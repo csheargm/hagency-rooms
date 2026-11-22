@@ -3,7 +3,8 @@
   python deploy/health.py --internal MATRIX_DOMAIN SERVER_NAME   # bootstrap.sh, inside the Docker network
   python3 deploy/health.py ROOMS_DOMAIN MATRIX_DOMAIN SERVER_NAME # deploy.sh, over HTTPS from outside
 
-Checks Element (page and config), Synapse's client API, that sign-up needs an invite token, @pm's
+Checks Element (page and config), Synapse's client API, that sign-up needs an invite token or a
+confirmed email (either mode of signup.py; never neither), @pm's
 account, and @pm's console serving /connect.sh, the Connect page and /connect.ps1 (it starts only
 after @pm has signed in and synced).
 From outside also .well-known, federation on 8448 and Element's home page (Caddy serves it). Prints ✓/✗ per check; exits 1 on any ✗.
@@ -27,10 +28,14 @@ def fetch(url: str, body: dict | None = None) -> tuple[int, str]:
         return e.code, e.read().decode(errors="replace")
 
 
-def token_only(text: str) -> bool:
-    """Every registration flow needs m.login.registration_token (invite-only)."""
+VERIFYING_STAGES = ("m.login.registration_token",   # invite-only sign-up
+                    "m.login.email.identity")       # open sign-up with a confirmed email (signup.py)
+
+
+def verified_only(text: str) -> bool:
+    """Every registration flow needs an invite token or a confirmed email: no flow signs up unchecked."""
     flows = json.loads(text).get("flows") or [{}]
-    return all("m.login.registration_token" in f.get("stages", []) for f in flows)
+    return all(any(s in f.get("stages", []) for s in VERIFYING_STAGES) for f in flows)
 
 
 def checks(rooms: str, matrix: str, console: str, domain: str, server: str, public: bool) -> list[tuple[str, object]]:
@@ -41,7 +46,7 @@ def checks(rooms: str, matrix: str, console: str, domain: str, server: str, publ
         ("Element points at this homeserver", lambda: json.loads(fetch(f"{rooms}/config.json")[1])
          ["default_server_config"]["m.homeserver"]["base_url"] == f"https://{domain}"),
         ("client API (/_matrix/client/versions)", lambda: "versions" in json.loads(fetch(f"{matrix}/_matrix/client/versions")[1])),
-        ("sign-up needs an invite token", lambda: token_only(fetch(f"{matrix}/_matrix/client/v3/register", {})[1])),
+        ("sign-up needs an invite token or a confirmed email", lambda: verified_only(fetch(f"{matrix}/_matrix/client/v3/register", {})[1])),
         ("@pm's account", lambda: json.loads(fetch(f"{matrix}/_matrix/client/v3/profile/{pm}")[1]).get("displayname")
          == "Product Manager"),
         ("@pm online: /connect.sh served", lambda: "bin/connect.py" in (t := fetch(f"{console}/connect.sh")[1])

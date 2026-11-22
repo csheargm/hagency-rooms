@@ -33,11 +33,27 @@ RULES = {
     "GITHUB_APP_SLUG": r"[a-z0-9][a-z0-9-]{0,62}",   # its github.com/apps/<slug> name, for install links
     "GITHUB_APP_CLIENT_ID": r"Iv[A-Za-z0-9.]{6,62}",  # its Client ID (public, not the secret): Connect GitHub
     "HAGENCY_REPOS": rf"{REPO}(,{REPO}){{0,49}}",   # optional: only these repos (empty: any; github.allowed_repo)
+    # Outgoing email for sign-up and password reset (signup.py, ADR 0013); the owner fills these.
+    "SMTP_HOST": DOMAIN, "SMTP_PORT": r"25|465|587|2525",
+    "SMTP_USER": r"[A-Za-z0-9._%+@=-]{1,254}",
+    "SMTP_PASS": r"[A-Za-z0-9!%&()*+,./:;<=>?@\[\]^_{|}~#-]{8,256}",   # no quotes, $, backslashes or spaces (.env rules)
+    "SMTP_FROM": rf"[A-Za-z0-9._%+-]{{1,64}}@{DOMAIN}",               # the address only; signup.py adds the name
+    "HAGENCY_OPEN_SIGNUP": r"[01]",            # 1: open sign-up once SMTP is set; 0: invite tokens only
+    # Sign-in with Google / GitHub (sso_login.py): each on once both of its keys are set.
+    "HAGENCY_GOOGLE_CLIENT_ID": r"[0-9]{6,30}-[a-z0-9]{8,64}\.apps\.googleusercontent\.com",
+    "HAGENCY_GOOGLE_CLIENT_SECRET": r"[A-Za-z0-9_-]{16,128}",
+    "HAGENCY_GITHUB_CLIENT_ID": r"[A-Za-z0-9.]{16,40}",
+    "HAGENCY_GITHUB_CLIENT_SECRET": r"[A-Za-z0-9_]{20,128}",
 }
-SECRETS = {"POSTGRES_PASSWORD"}
+SECRETS = {"POSTGRES_PASSWORD"}               # filled with a random value when empty
+PRIVATE = SECRETS | {"SMTP_USER", "SMTP_PASS",   # never printed (`get` refuses them)
+                     "HAGENCY_GOOGLE_CLIENT_SECRET", "HAGENCY_GITHUB_CLIENT_SECRET"}
 OPTIONAL = {"OPERATOR", "ALLOW_REMOTE", "REMOTE_PER_HOUR",     # OPERATOR: empty until the operator has an account
             "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID",   # the GitHub App: empty until
-            "HAGENCY_REPOS"}                                               # it is registered
+            "HAGENCY_REPOS",                                               # it is registered
+            "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",   # empty: sign-up by invite only
+            "HAGENCY_OPEN_SIGNUP", "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
+            "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
 
 
 def read() -> dict:
@@ -134,7 +150,7 @@ if __name__ == "__main__":
         problems = validate(values) + app_key_problems(values)
         print("\n".join(f"✗ {p} (edit ~/hagency/deploy/.env)" for p in problems) or "✓ .env ok")
         sys.exit(1 if problems else 0)
-    if cmd == ["get"] and len(sys.argv) == 3 and sys.argv[2] in RULES and sys.argv[2] not in SECRETS:
+    if cmd == ["get"] and len(sys.argv) == 3 and sys.argv[2] in RULES and sys.argv[2] not in PRIVATE:
         values = read()
         if validate(values):
             raise SystemExit("✗ run `python3 envfile.py check` first")

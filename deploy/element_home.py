@@ -12,13 +12,13 @@ import json
 from pathlib import Path
 
 from configure_synapse import PM_LOCALPART
+from signup import BRAND
 
 SOURCE = Path(__file__).resolve().parent / "element_page"   # the page's template and images, in git
 OUT = "element-home"                          # generated next to bootstrap.sh; Caddy mounts it read-only
 PREFIX = "/hagency"                           # where Caddy serves OUT's three files (Caddyfile: @hagency)
 PM_PLACEHOLDER = "__PM_ID__"
 STATIC = ("logo.svg", "background.svg")
-BRAND = "Hagency Rooms"
 # Our own panel's widget URL as @pm adds it (panel.widget_url; test_panel checks they agree). Element
 # matches it exactly against the widget's template URL: no other widget is pre-approved.
 PANEL_TEMPLATE = "/panel?room=$matrix_room_id"
