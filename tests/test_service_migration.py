@@ -2,7 +2,7 @@
 
 A background service written by an older connect.py names <app>/bridge.py (or hermes_local.py,
 or on Windows connect_win.py); after the update those are gone. The next connect run rewrites
-every such service of this installation to bin/ and loads it again (agent_service.migrate), and
+every such service of this installation to bin/ and loads it again (service_migration.migrate), and
 Windows' stop still recognises a keeper started from the old path.
 Run: .venv/bin/python -m unittest tests.test_service_migration"""
 import io
@@ -16,6 +16,8 @@ from unittest import mock
 
 from client import agent_service
 from client import connect
+from client import service_migration
+from tests.fake_launchd import FakeLaunchd
 from tests import ROOT
 
 APP = Path("/Users/a b/.hagency/app")        # a space, as a real home may have
@@ -56,20 +58,21 @@ class Migrate(unittest.TestCase):
         path.write_text(text)
         return path
 
-    def migrate(self, how: str, run: Recorder) -> list[str]:
+    def migrate(self, how: str, run) -> list[str]:
         with mock.patch.object(agent_service, "kind", return_value=how):
-            return agent_service.migrate(APP, run=run, home=self.home)
+            timing = {"sleep": run.sleep, "clock": run.clock} if isinstance(run, FakeLaunchd) else {}
+            return service_migration.migrate(APP, run=run, home=self.home, **timing)
 
     def test_an_old_launchd_service_is_rewritten_and_loaded_again(self):
         old = self.place("launchd", "anna-agent", old_service("launchd", APP, "codex", "anna-agent"))
         hermes = self.place("launchd", "anna-hermes-agent", old_service("launchd", APP, "hermes", "anna-hermes-agent"))
-        run = Recorder()
+        run = FakeLaunchd()
         self.assertEqual(sorted(self.migrate("launchd", run)), sorted([old.name, hermes.name]))
         self.assertEqual(old.read_text(), agent_service.plist(APP, "anna", "codex", "anna-agent", CREDS, LOGS))
         self.assertEqual(hermes.read_text(), agent_service.plist(APP, "anna", "hermes", "anna-hermes-agent", CREDS, LOGS))
         self.assertIn(f"<string>{APP}/bin/bridge.py</string>", old.read_text())
-        self.assertEqual([c[1] for c in run.calls], ["bootout", "bootstrap"] * 2)   # launchd keeps the loaded copy
-        self.assertEqual(self.migrate("launchd", Recorder()), [])                    # again: nothing left to do
+        self.assertEqual([c[1] for c in run.calls], ["bootout", "print", "bootstrap"] * 2)   # launchd keeps the loaded copy
+        self.assertEqual(self.migrate("launchd", FakeLaunchd()), [])                          # again: nothing left to do
 
     def test_an_old_systemd_unit_is_rewritten_with_its_quoting_kept(self):
         app = Path("/home/a%h$x/.hagency/app")          # systemd's % and $ stay doubled in the new path too
@@ -78,7 +81,7 @@ class Migrate(unittest.TestCase):
         unit = self.place("systemd", "anna-agent", text)
         run = Recorder()
         with mock.patch.object(agent_service, "kind", return_value="systemd"):
-            self.assertEqual(agent_service.migrate(app, run=run, home=self.home), [unit.name])
+            self.assertEqual(service_migration.migrate(app, run=run, home=self.home), [unit.name])
         self.assertEqual(unit.read_text(), agent_service.unit(app, "anna", "codex", "anna-agent", CREDS, LOGS))
         self.assertIn('"/home/a%%h$$x/.hagency/app/bin/bridge.py"', unit.read_text())
         self.assertEqual(run.calls, [["systemctl", "--user", "daemon-reload"]])
@@ -87,7 +90,7 @@ class Migrate(unittest.TestCase):
         new = self.place("launchd", "anna-agent", agent_service.plist(APP, "anna", "codex", "anna-agent", CREDS, LOGS))
         other = self.place("launchd", "cx-codex-agent", old_service("launchd", OTHER, "codex", "cx-codex-agent"))
         before = (new.read_text(), other.read_text())
-        run = Recorder()
+        run = FakeLaunchd()
         self.assertEqual(self.migrate("launchd", run), [])
         self.assertEqual((new.read_text(), other.read_text()), before)
         self.assertEqual(run.calls, [])
@@ -96,10 +99,10 @@ class Migrate(unittest.TestCase):
         """GPT review: a refused load must not leave a rewritten file the next run would skip."""
         old = old_service("launchd", APP, "codex", "anna-agent")
         path = self.place("launchd", "anna-agent", old)
-        with self.assertRaisesRegex(RuntimeError, "Bootstrap failed"):
-            self.migrate("launchd", Recorder(code=5))
+        with self.assertRaisesRegex(service_migration.MigrationError, "Bootstrap failed"):
+            self.migrate("launchd", FakeLaunchd(refuse={path.stem}))
         self.assertEqual(path.read_text(), old)                       # as it was: still to do
-        self.assertEqual(self.migrate("launchd", Recorder()), [path.name])
+        self.assertEqual(self.migrate("launchd", FakeLaunchd()), [path.name])
 
     def test_a_refused_systemd_reload_is_tried_again_next_time(self):
         old = old_service("systemd", APP, "codex", "anna-agent")
@@ -162,7 +165,7 @@ class ConnectRun(unittest.TestCase):
         home = Path(tempfile.mkdtemp())
         said, err = io.StringIO(), io.StringIO()
         with mock.patch.object(sys, "argv", ["connect.py", "--home", str(home), *argv]), \
-                mock.patch.object(agent_service, "migrate", migrate), redirect_stdout(said), redirect_stderr(err):
+                mock.patch.object(service_migration, "migrate", migrate), redirect_stdout(said), redirect_stderr(err):
             try:
                 connect.main()
                 ended = None
@@ -174,14 +177,25 @@ class ConnectRun(unittest.TestCase):
         migrate = mock.Mock(return_value=["xyz.hagencylabs.agent.anna-agent.plist"])
         said, _, ended = self.run_connect(migrate=migrate)          # not connected: it still fixed the services
         migrate.assert_called_once_with(connect.APP)
-        self.assertIn("updated 1 background service(s)", said)
+        self.assertIn("updated 1 background agent(s) to this version: anna-agent", said)
         self.assertIn("not connected yet", ended)
 
     def test_a_failed_migration_is_said_and_the_run_goes_on(self):
-        migrate = mock.Mock(side_effect=RuntimeError("launchd wouldn't load x.plist again"))
+        migrate = mock.Mock(side_effect=OSError("LaunchAgents: permission denied"))
         _, err, ended = self.run_connect("--stop", migrate=migrate)
-        self.assertIn("couldn't update an older background service (launchd wouldn't load x.plist again)", err)
+        self.assertIn("couldn't update your older background agents (LaunchAgents: permission denied); run this again", err)
         self.assertIn("nothing to stop", ended)                      # the run went on to what was asked
+
+    def test_which_agents_moved_and_which_need_another_run_are_named(self):
+        moved = [f"{agent_service.LABEL}.{a}.plist" for a in ("cx-agent", "cx-codex-agent")]
+        failed = {f"{agent_service.LABEL}.anna-agent.plist": "launchd wouldn't load it again: Bootstrap failed: 5"}
+        said, err, ended = self.run_connect("--stop", migrate=mock.Mock(
+            side_effect=service_migration.MigrationError(moved, failed)))
+        self.assertIn("updated 2 background agent(s) to this version: cx-agent, cx-codex-agent", said)
+        self.assertIn("couldn't update 1 background agent(s) yet: anna-agent. They may stay offline until you run "
+                      "this same connect line again.", err)
+        self.assertIn("Bootstrap failed: 5", err)                    # the details, for whoever helps
+        self.assertIn("nothing to stop", ended)
 
     def test_the_stop_hint_names_the_new_path(self):
         self.assertEqual(connect.CONNECT, connect.APP / "bin" / "connect.py")

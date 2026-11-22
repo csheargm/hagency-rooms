@@ -1437,3 +1437,29 @@ Rejected: charging the per-client "any sign-in" budget before a federation slot 
 - **Found by CI, after the re-check:** the deny list's "never looked up" (0) read as fresh while
   `time.monotonic()` was under 10 minutes, as on a freshly booted server: no own addresses refused
   for its first ten minutes. Fixed, with a test.
+
+## GPT review of the service migration race fix (R15)
+Two points, both verified in the code and adopted, with tests in test_launchd_reload:
+- **P2: a systemd rollback stopped at the first unit it couldn't write back**, leaving the later
+  ones rewritten (so the next run would skip them). Each unit is now put back on its own; one that
+  can't be is named, with both reasons.
+- **P2: a service file that isn't text** (UnicodeDecodeError) ended the connect run. It is now one
+  more failure named in the report, and the other agents still move.
+
+### Second GPT pass
+- Adopted, **P2: output launchctl or systemctl can't decode** raised before the exit status was
+  read, so the file wasn't put back. Both reloads now run with `errors="replace"`
+  (`agent_service.MANAGER_OUTPUT`); tested.
+- Rejected, P2: a persistent retry marker for a file that couldn't be put back after a failed
+  load. That needs a write to fail right after a write to the same file succeeded; the report
+  already names the file and says it couldn't be put back, and a launchd plist left rewritten
+  already names `bin/` and loads at the next login. A marker would be new state on disk for it.
+
+### Third GPT pass
+- Adopted, **P2: three bootstrap tries 1 s apart could give up 2 s after `print` let go**, with
+  most of the 10 s window unused. Error 5 is now tried again until the one deadline from the
+  bootout; tested with a job loadable only at the fourth try.
+
+### Fourth GPT pass
+No other open issues. Adopted, P3: the refused-start install test spun on the real clock for the
+whole 10 s deadline; it now uses FakeLaunchd's clock.
