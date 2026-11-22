@@ -1,7 +1,7 @@
 """Bring a person and their own agent into Hagency — one command per person:
 
-  python onboard.py anna --agent hermes      # anna brings her Hermes (two profiles, see below)
-  python onboard.py betty --agent claude     # betty brings Claude Code (or: codex)
+  python bin/onboard.py anna --agent hermes      # anna brings her Hermes (two profiles, see below)
+  python bin/onboard.py betty --agent claude     # betty brings Claude Code (or: codex)
 
 It creates the Matrix accounts <person> and <person>-agent (generated passwords go to the
 git-ignored .env and are never printed), opens a private DM between the person and their agent,

@@ -4,7 +4,8 @@
   adapters/agents/   imports only adapters/ and common/
   server/, client/   never import each other (both may use adapters/ and common/)
   mcp_tools/         imports neither server/ nor client/
-  the root           only launchers, under the paths installed agents and services already name
+  bin/               only launchers, each starting the code of the same name, from any folder
+  the root           only what must be there (docs/adr/0012-launchers-in-bin.md)
 
 and @pm's process never loads the agent adapter or anything of client/.
 """
@@ -13,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -27,6 +29,14 @@ MAY_IMPORT = {
     "client": {"client", "adapters", "common"},
     "mcp_tools": {"mcp_tools", "adapters", "common"},
 }
+BIN = ROOT / "bin"
+ROOT_ENTRIES = {"README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", "requirements.txt", ".github", ".gitignore",
+                "adapters", "bin", "client", "common", "deploy", "docs", "local", "mcp_tools", "server", "site",
+                "static", "tests"}
+# Run by path in a fresh Python from another folder, its target only looked up (never run: loop.py would start @pm).
+FIND_ONLY = ("import importlib.util, runpy, sys; path = sys.argv[1]; sys.path[0] = path.rpartition('/')[0]; "
+             "runpy.run_module = lambda mod, **_: print(importlib.util.find_spec(mod).origin); "
+             "exec(compile(open(path).read(), path, 'exec'), {'__name__': '__main__', '__file__': path})")
 LAUNCHER_RE = re.compile(r'runpy\.run_module\("(?P<mod>[a-z_.]+)", run_name="__main__", alter_sys=True\)')
 
 
@@ -73,14 +83,37 @@ class Layout(unittest.TestCase):
         names = Counter(p.name for package in PACKAGES for p in code_files(package) if p.name != "__init__.py")
         self.assertEqual([], [n for n, c in names.items() if c > 1])
 
-    def test_the_root_holds_only_launchers_and_each_starts_real_code(self):
-        for path in ROOT.glob("*.py"):
+    def test_the_root_holds_only_what_must_be_there(self):
+        tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        self.assertEqual(ROOT_ENTRIES, {name.split("/")[0] for name in tracked.split("\0") if name})
+
+    def test_bin_holds_only_launchers_and_each_starts_real_code(self):
+        launchers = sorted(BIN.glob("*.py"))
+        self.assertEqual(11, len(launchers))
+        for path in launchers:
             m = LAUNCHER_RE.search(path.read_text())
             self.assertIsNotNone(m, f"{path.name} is not a launcher")
             target = ROOT / (m["mod"].replace(".", "/") + ".py")
             self.assertTrue(target.is_file(), f"{path.name} starts {m['mod']}, which doesn't exist")
             self.assertEqual(path.stem, target.stem)       # same name as the code it starts
             self.assertIn('if __name__ == "__main__":', target.read_text())
+
+    def test_each_launcher_finds_its_code_from_any_folder(self):
+        """A service or a person runs bin/<name>.py by its full path, from wherever they are."""
+        elsewhere = tempfile.mkdtemp()
+        for path in sorted(BIN.glob("*.py")):
+            target = LAUNCHER_RE.search(path.read_text())["mod"].replace(".", "/") + ".py"
+            out = subprocess.run([sys.executable, "-c", FIND_ONLY, str(path)], cwd=elsewhere, capture_output=True,
+                                 text=True, timeout=PROBE_TIMEOUT_S)
+            self.assertEqual(0, out.returncode, f"{path.name}: {out.stderr}")
+            self.assertEqual(str(ROOT / target), str(Path(out.stdout.strip()).resolve()))
+
+    def test_a_launcher_runs_from_another_folder(self):
+        """The real thing, end to end: bin/connect.py --help from a folder outside the repo."""
+        out = subprocess.run([sys.executable, str(BIN / "connect.py"), "--help"], cwd=tempfile.mkdtemp(),
+                             capture_output=True, text=True, timeout=PROBE_TIMEOUT_S)
+        self.assertEqual(0, out.returncode, out.stderr)
+        self.assertIn("usage: connect.py", out.stdout)
 
 
 class PmProcess(unittest.TestCase):

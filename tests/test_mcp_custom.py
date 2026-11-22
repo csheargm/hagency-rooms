@@ -203,7 +203,7 @@ class Supervisor(unittest.TestCase):
         with mock.patch.object(hermes_profile, "HERMES_HOME", home):
             self.assertTrue(hermes_profile.set_code_dir("p", Path("/new")))
         text = cfg.read_text()
-        self.assertIn("    args: [/new/hagency_mcp.py]\n    timeout: 300", text)
+        self.assertIn("    args: [/new/bin/hagency_mcp.py]\n    timeout: 300", text)
         self.assertNotIn("/old/", text)
         cfg.write_text("mcp_servers:\n  other:\n    args: [x.py]\n")
         with mock.patch.object(hermes_profile, "HERMES_HOME", home):
@@ -219,7 +219,7 @@ class Supervisor(unittest.TestCase):
             hermes_profile.set_code_dir("p", Path("/new"))
             hermes_profile.set_code_dir("p", Path("/new"))
         text = cfg.read_text()
-        self.assertIn("args: [/new/hagency_mcp.py]", text)
+        self.assertIn("args: [/new/bin/hagency_mcp.py]", text)
         self.assertEqual(text.count("HAGENCY_HOME:"), 1)
 
 

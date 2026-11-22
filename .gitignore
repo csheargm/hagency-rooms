@@ -16,3 +16,4 @@ loop-state-dms.json
 loop-state-plans.json
 custom/
 local.env
+local/local.env

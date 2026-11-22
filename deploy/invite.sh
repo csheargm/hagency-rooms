@@ -14,7 +14,7 @@ case "${1:-}" in
   token)
     uses="${2:-1}"
     [[ "$uses" =~ ^[1-9][0-9]{0,2}$ ]] || { echo "uses: a number from 1 to 999"; exit 2; }
-    dc exec -T pm .venv/bin/python local_signup.py token "$uses" ;;
+    dc exec -T pm .venv/bin/python bin/local_signup.py token "$uses" ;;
   owner-password)
     dc exec pm .venv/bin/python deploy/admin_user.py password owner ;;
   admin)

@@ -6,7 +6,7 @@ Each repo's owner installs it on their repo with one click. People's agents keep
 accounts on their own computers. The App never pushes, opens PRs or merges.
 
 Without `GITHUB_APP_ID`, @pm reads with the host's own `gh` login, as before. That is how local dev
-works (`./start.sh`).
+works (`local/start.sh`).
 
 ## 1. Register the App (the owner, in the browser, once)
 

@@ -6,7 +6,7 @@ Watches open `agent-ok` issues on each room's own repo, per room level (xyz.hage
   "ready — a person merges", Autonomous asks the builder agent to merge.
 pm holds no GitHub credentials: it only reads (ambient gh) and talks to agents.
 
-Usage: python loop.py
+Usage: python bin/loop.py
 """
 import asyncio
 import json

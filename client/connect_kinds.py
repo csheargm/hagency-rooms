@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from common import agent_kinds
+from common import paths
 from adapters.agents import cli_path
 from adapters.agents import codex_provider
 from client import ollama_local
@@ -134,7 +135,7 @@ def settings(kind: str, pending: dict, flags, folder: Path, ask=None, secret=Non
 
 def setup_hermes(app: Path, creds_path: Path, run=None) -> None:
     """Write the Hermes profiles in a process of its own: it reads the sign-in from the file."""
-    r = (run or subprocess.run)([sys.executable, str(app / "hermes_local.py"), "--setup"], cwd=app,
+    r = (run or subprocess.run)([sys.executable, str(paths.launcher(app, "hermes_local.py")), "--setup"], cwd=app,
             env={**os.environ, "HAGENCY_CREDENTIALS": str(creds_path)})
     if r.returncode != 0:
         raise SystemExit("✗ Hermes isn't set up for your agent yet (see above); your sign-in is saved: "

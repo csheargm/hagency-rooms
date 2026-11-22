@@ -26,7 +26,7 @@ from common import paths
 
 ROOT = paths.ROOT.resolve()
 STATIC = ROOT / "static"
-WINDOWS_INSTALLER = ROOT / "connect.ps1"
+WINDOWS_INSTALLER = ROOT / "client" / "connect.ps1"
 PAGE_PATH = "/connect/start"
 STATUS_PATH = "/connect/status"
 KINDS_MARK = "__HAGENCY_KINDS__"

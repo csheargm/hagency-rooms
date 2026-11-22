@@ -1,9 +1,9 @@
-# Local-only prototype stack. Ports 8648 (Synapse) and 8649 (Element Web) bind to 127.0.0.1.
+# Local-only prototype stack (local/start.sh runs it; paths are relative to this folder). Ports 8648 (Synapse) and 8649 (Element Web) bind to 127.0.0.1.
 name: hagency-bridge          # Docker project name kept: renaming it would orphan the Synapse data volume
 services:
   synapse:
     image: matrixdotorg/synapse:latest
-    volumes: ["./data:/data", "./deploy/synapse_modules:/modules:ro"]   # @pm moderates new rooms
+    volumes: ["../data:/data", "../deploy/synapse_modules:/modules:ro"]   # @pm moderates new rooms
     environment:
       PYTHONPATH: /modules
     ports: ["127.0.0.1:8648:8008"]

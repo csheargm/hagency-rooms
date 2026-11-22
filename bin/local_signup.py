@@ -1,5 +1,8 @@
-"""Starts common/local_signup.py (an operator tool). This path stays the same: docs and deploy/invite.sh name it
-(docs/adr/0011-repo-layout.md)."""
+"""Starts common/local_signup.py (an operator tool).
+Run it by path from any folder (docs/adr/0012-launchers-in-bin.md)."""
 import runpy
+import sys
+from pathlib import Path
 
+sys.path[0] = str(Path(__file__).resolve().parent.parent)   # the repo, not bin/: its packages import from there
 runpy.run_module("common.local_signup", run_name="__main__", alter_sys=True)

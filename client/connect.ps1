@@ -22,6 +22,9 @@ $Repo = if ($env:HAGENCY_REPO) { $env:HAGENCY_REPO } else { 'https://github.com/
 $App = if ($env:HAGENCY_APP) { $env:HAGENCY_APP } else { Join-Path $env:LOCALAPPDATA 'Hagency\app' }
 $HagencyHome = if ($env:HAGENCY_DIR) { $env:HAGENCY_DIR } else { Join-Path $env:USERPROFILE '.hagency' }
 $HagencyHome = [IO.Path]::GetFullPath($HagencyHome)   # one absolute folder for this script and both Python entry points
+# The keeper a task or shortcut runs; the root one is what tasks made before the launchers moved into
+# bin\ name (docs/adr/0012-launchers-in-bin.md). TODO(remove after 2027-02-01): the root entry.
+$Keepers = @((Join-Path $App 'bin\connect_win.py'), (Join-Path $App 'connect_win.py'))
 $CodePattern = '^[A-Za-z0-9-]{4,32}$'          # what pairing.py codes look like; nothing else reaches python
 
 function Say([string]$Text) { Write-Host $Text }
@@ -53,7 +56,8 @@ function Invoke-Checked([string]$What, [scriptblock]$Run) {
 function Test-Ours([string]$Text) {
     # Does this command line (a task's, a shortcut's) run this installation's keeper for this folder?
     $has = { param($part) $Text.IndexOf($part, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
-    [bool]($Text -and (& $has ('"{0}"' -f (Join-Path $App 'connect_win.py'))) -and (& $has ('--home "{0}"' -f $HagencyHome)))
+    $keeper = @($Keepers | Where-Object { & $has ('"{0}"' -f $_) })
+    [bool]($Text -and $keeper.Count -and (& $has ('--home "{0}"' -f $HagencyHome)))
 }
 
 function Get-OurTasks {
@@ -79,7 +83,7 @@ function Stop-OldAgent {
         ForEach-Object { $shell.CreateShortcut($_.FullName) } | Where-Object { Test-Ours $_.Arguments })
     $pidFile = Join-Path $HagencyHome 'agent.pid'
     if (-not (Test-Path $pidFile)) { return }
-    $ours = @((Join-Path $App 'connect_win.py'), (Join-Path $App 'bridge.py'))
+    $ours = @($Keepers) + @((Join-Path $App 'bin\bridge.py'), (Join-Path $App 'bridge.py'))
     foreach ($line in Get-Content $pidFile) {
         $id = 0
         if (-not [int]::TryParse($line.Trim(), [ref]$id)) { continue }
@@ -186,7 +190,7 @@ function Protect-Home {
 
 function Register-Agent([string]$VenvPy) {
     $pyw = Join-Path $App '.venv\Scripts\pythonw.exe'
-    $runner = Join-Path $App 'connect_win.py'
+    $runner = Join-Path $App 'bin\connect_win.py'
     $runArgs = '"{0}" --home "{1}"' -f $runner, $HagencyHome
     $name = ([string](& $VenvPy $runner --home $HagencyHome --task-name)).Trim()
     if ($LASTEXITCODE -ne 0 -or -not $name) { throw 'could not read the saved sign-in' }
@@ -238,7 +242,7 @@ try {
     $venvPy = Install-Venv $python
     Protect-Home
     Invoke-Checked 'connecting' {
-        & $venvPy (Join-Path $App 'connect.py') --server $Console --home $HagencyHome $Code @kindArgs --pair-only
+        & $venvPy (Join-Path $App 'bin\connect.py') --server $Console --home $HagencyHome $Code @kindArgs --pair-only
     }
     Register-Agent $venvPy
     $state.Stopped = @()

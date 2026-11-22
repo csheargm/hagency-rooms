@@ -1,6 +1,6 @@
 """Run every agent adapter and @pm, and restart them by themselves when the code changes.
 
-  python supervise.py [--agent codex|claude] [--allow-members]
+  python bin/supervise.py [--agent codex|claude] [--allow-members]
 
 Every second it checks the .py files here. On a change it first compiles them (a syntax error
 keeps the old processes running), then sends SIGTERM: each process hands off its Matrix sync
@@ -26,6 +26,7 @@ from common import paths
 
 ROOT = paths.ROOT
 PY = str(ROOT / ".venv" / "bin" / "python")
+BRIDGE = str(Path(paths.LAUNCHERS) / "bridge.py")   # relative: run in the child's cwd (an owner's own version too)
 CHILD_ENV = {**os.environ, "HAGENCY_HOME": str(ROOT)}   # an agent adapter running a custom version still finds this folder
 WATCH_S = 1.0
 BACKOFF_S = (2, 5, 15, 60)       # restart delays after successive crashes
@@ -35,8 +36,8 @@ DRAIN_LIMIT_S = lifecycle.DRAIN_TIMEOUT_S + 60   # a child drains itself; this i
 
 
 def code_files() -> dict[Path, float]:
-    """The launchers at the root and the code in paths.CODE_DIRS: a change to any restarts the children."""
-    found = [*ROOT.glob("*.py"), *(p for d in paths.CODE_DIRS for p in (ROOT / d).rglob("*.py"))]
+    """The code in paths.CODE_DIRS, the launchers included: a change to any restarts the children."""
+    found = [p for d in paths.CODE_DIRS for p in (ROOT / d).rglob("*.py")]
     return {p: p.stat().st_mtime for p in found if not p.name.startswith("test_")}
 
 
@@ -116,10 +117,10 @@ def children(agent: str, allow_members: bool) -> list[Child]:
         if choice == registry.REMOTE or not person:   # runs on the person's own computer (connect.py), not here
             continue
         if choice == "hermes":
-            kids += hermes_children(person, person, f"onboard.py {person} --agent hermes")
+            kids += hermes_children(person, person, f"bin/onboard.py {person} --agent hermes")
         else:
-            kids.append(Child(f"{person}-agent", [PY, "bridge.py", person, "--agent", choice, *extra], owner=person))
-    return [*kids, Child("pm", [PY, "loop.py"])]
+            kids.append(Child(f"{person}-agent", [PY, BRIDGE, person, "--agent", choice, *extra], owner=person))
+    return [*kids, Child("pm", [PY, str(Path(paths.LAUNCHERS) / "loop.py")])]
 
 
 def hermes_children(person: str, owner: str, fix: str) -> list[Child]:
@@ -133,7 +134,7 @@ def hermes_children(person: str, owner: str, fix: str) -> list[Child]:
             continue
         hermes_profile.set_repos(profile)    # its MCP server works on this run's repos
         kids.append(Child(f"{person}-{name}", ["hermes", "-p", profile, "gateway", "run"], owner=person, profile=profile))
-    return [*kids, Child(f"{person}-buttons", [PY, "bridge.py", owner, "--buttons-only"])]   # always official
+    return [*kids, Child(f"{person}-buttons", [PY, BRIDGE, owner, "--buttons-only"])]   # always official
 
 
 def compiles(paths: list[Path]) -> bool:

@@ -47,6 +47,7 @@ class Flow(unittest.TestCase):
                 mock.patch("builtins.input", lambda _: next(replies)), \
                 mock.patch.object(sys.stdin, "isatty", lambda: tty), \
                 mock.patch.object(agent_service, "install", return_value="launchd") as install, \
+                mock.patch.object(agent_service, "migrate", return_value=[]), \
                 mock.patch.object(connect.os, "execve"), redirect_stdout(said), redirect_stderr(err):
             try:
                 connect.main()
@@ -191,11 +192,11 @@ class Flow(unittest.TestCase):
             install, _, _, failed = self.run_connect("ABCDE-FGHJK", answer={**SIGN_IN, "agent_kind": "hermes"})
         self.assertIsNone(failed)
         (argv, kw), = runs
-        self.assertEqual(argv[1:], [str(connect.APP / "hermes_local.py"), "--setup"])
+        self.assertEqual(argv[1:], [str(connect.APP / "bin" / "hermes_local.py"), "--setup"])
         self.assertEqual(kw["env"]["HAGENCY_CREDENTIALS"], str(self.home / "credentials.json"))
         self.assertFalse(any(SIGN_IN["password"] in a for a in argv))
         self.assertEqual(install.args[2], "hermes")
-        self.assertEqual(agent_service.command(connect.APP, "newbie1", "hermes")[1:], [str(connect.APP / "hermes_local.py")])
+        self.assertEqual(agent_service.command(connect.APP, "newbie1", "hermes")[1:], [str(connect.APP / "bin" / "hermes_local.py")])
 
     def test_hermes_missing_keeps_the_sign_in_and_says_what_to_do(self):
         with mock.patch.object(connect_kinds, "problem", lambda k: "install Hermes Agent first" if k == "hermes" else None):

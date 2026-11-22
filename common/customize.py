@@ -96,7 +96,7 @@ def code_dir(owner: str) -> tuple[Path, str | None]:
     sha = in_use().get(owner)
     if sha and why_not_use(owner):            # the operator took the opt-in back: official until it's given again
         return ROOT, None
-    if sha and (live_dir(owner, sha) / "bridge.py").exists():
+    if sha and paths.launcher(live_dir(owner, sha), "bridge.py").exists():   # older than ADR 0012: official
         return live_dir(owner, sha), sha
     return ROOT, None
 

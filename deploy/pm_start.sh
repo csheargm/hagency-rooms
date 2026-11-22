@@ -9,5 +9,5 @@ umask 077
 until .venv/bin/python -c 'import os, urllib.request; urllib.request.urlopen(os.environ["HAGENCY_HOMESERVER"] + "/_matrix/client/versions", timeout=3)' 2>/dev/null; do
   echo "waiting for Synapse"; sleep 3
 done
-.venv/bin/python setup_accounts.py --pm-only
-exec .venv/bin/python loop.py
+.venv/bin/python bin/setup_accounts.py --pm-only
+exec .venv/bin/python bin/loop.py

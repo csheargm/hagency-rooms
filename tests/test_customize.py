@@ -31,9 +31,10 @@ class Sandbox(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         root = self.tmp / "official"
         root.mkdir()
-        for name, text in (("test_x.py", PASSING), ("caption.py", "CAPTION = 'Transcript'\n"), ("bridge.py", ""),
+        for name, text in (("test_x.py", PASSING), ("caption.py", "CAPTION = 'Transcript'\n"), ("bin/bridge.py", ""),
                            (".gitignore", ".env\ndata/\ncustom/\nagents.json\n"), (".env", "PW=secret\n"),
                            ("agents.json", json.dumps({"betty": {}}))):
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
             (root / name).write_text(text)
         (root / "data").mkdir()
         subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -109,6 +110,14 @@ class PrivateCopy(Sandbox):
         self.assertTrue((live / ".env").is_symlink())                       # shares passwords and state
         (customize.work_dir("betty") / "caption.py").write_text("CAPTION = 'later edit'\n")
         self.assertEqual((live / "caption.py").read_text(), "CAPTION = '📝'\n")   # later edits never go live
+
+    def test_a_version_from_before_the_launchers_moved_runs_official(self):
+        """ADR 0012: a chosen version with no bin/bridge.py (made before the move) can't be started
+        as bin/bridge.py; the official version runs instead of a crash loop."""
+        sha = self.change("CAPTION = 'old'\n")
+        asyncio.run(customize.use("betty", sha))
+        (customize.live_dir("betty", sha) / "bin" / "bridge.py").unlink()
+        self.assertEqual(customize.code_dir("betty"), (customize.ROOT, None))
 
     def test_a_new_version_gets_a_new_folder_and_old_ones_are_cleaned(self):
         first = self.change("CAPTION = 'one'\n")

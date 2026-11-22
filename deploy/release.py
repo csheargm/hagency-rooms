@@ -56,7 +56,7 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
     names = {n for n in sys.stdin.read().split("\0") if n}
-    if "loop.py" not in names:
+    if "bin/loop.py" not in names:
         raise SystemExit("✗ that isn't Hagency Rooms' file list; nothing removed")
     clash = sorted(n for n in names if n.split("/")[0] in STATE or STATE_FILE_RE.match(n.split("/")[0]))
     if clash:

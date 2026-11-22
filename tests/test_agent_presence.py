@@ -32,7 +32,7 @@ class Service(unittest.TestCase):
                      agent_service.unit(Path("/app"), NEW, "codex", AGENT, CREDS, Path("/logs"))):
             self.assertIn(str(CREDS), text)                    # the sign-in is read from the 0600 file
             self.assertNotIn("password", text.lower())
-            self.assertIn("bridge.py", text)
+            self.assertIn("/app/bin/bridge.py", text)
             self.assertIn("/logs/newbie1-agent.log", text)
         plist = agent_service.plist(Path("/app"), "@a&b:x.org", "codex", AGENT, CREDS, Path("/logs"))
         self.assertIn("<key>RunAtLoad</key><true/>", plist)
@@ -119,6 +119,7 @@ class Connect(unittest.TestCase):
                                                                     "password": "pw", "owner": "newbie1", "agent": "codex"}))
         with mock.patch.object(sys, "argv", ["connect.py", "--home", str(home), *argv]), \
                 mock.patch.object(connect.cli_path.shutil, "which", lambda b: True), \
+                mock.patch.object(agent_service, "migrate", return_value=[]), \
                 mock.patch.object(connect.os, "execve") as execve, mock.patch("builtins.print") as out:
             connect.main()
         return execve, " ".join(str(c.args[0]) for c in out.call_args_list)

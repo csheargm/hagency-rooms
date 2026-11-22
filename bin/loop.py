@@ -1,5 +1,8 @@
-"""Starts server/loop.py, which runs on the server. This path stays the same:
-installed agents, services and settings name it (docs/adr/0011-repo-layout.md)."""
+"""Starts server/loop.py, which runs on the server.
+Run it by path from any folder (docs/adr/0012-launchers-in-bin.md)."""
 import runpy
+import sys
+from pathlib import Path
 
+sys.path[0] = str(Path(__file__).resolve().parent.parent)   # the repo, not bin/: its packages import from there
 runpy.run_module("server.loop", run_name="__main__", alter_sys=True)

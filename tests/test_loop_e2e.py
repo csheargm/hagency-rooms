@@ -1,6 +1,6 @@
 """End-to-end test of the GitHub loop over the real Matrix server with real Codex agents and a
 fake GitHub (tests/fake_gh.py + a local bare repo). Starts its own anna/betty agent adapters,
-@pm — stop ./start.sh's agent adapters first. Run: .venv/bin/python -m tests.test_loop_e2e
+@pm — stop local/start.sh's agent adapters first. Run: .venv/bin/python -m tests.test_loop_e2e
 
 Flow checked: Autonomous level → an already-satisfied issue is verified by the other agent and
 closed (not stopped). Then: issue claimed → PR opened → review requested from the
@@ -75,8 +75,8 @@ def main():
     env = {**os.environ, **make_fake_github(tmp)}
     py = str(ROOT / ".venv" / "bin" / "python")
     logs = open(tmp / "procs.log", "w")
-    procs = [subprocess.Popen([py, "bridge.py", o], cwd=ROOT, env=env, stdout=logs, stderr=logs) for o in ("anna", "betty")]
-    procs += [subprocess.Popen([py, f], cwd=ROOT, env=env, stdout=logs, stderr=logs) for f in ("loop.py",)]
+    procs = [subprocess.Popen([py, "bin/bridge.py", o], cwd=ROOT, env=env, stdout=logs, stderr=logs) for o in ("anna", "betty")]
+    procs += [subprocess.Popen([py, f], cwd=ROOT, env=env, stdout=logs, stderr=logs) for f in ("bin/loop.py",)]
     agent, bot = lambda who: f"@{who}-agent:{SERVER_NAME}", f"@pm:{SERVER_NAME}"
     try:
         time.sleep(6)

@@ -23,19 +23,19 @@ Automated rehearsal of steps 5–9 (no Element, fake GitHub, Codex agents):
 
 | What | How | Check |
 |---|---|---|
-| Server and Element running | `./start.sh` (Ctrl-C after it's up; step 3 restarts it) | http://localhost:8649 opens |
+| Server and Element running | `local/start.sh` (Ctrl-C after it's up; step 3 restarts it) | http://localhost:8649 opens |
 | Hermes installed, model signed in | `hermes model` (Anna's default profile; only its model key is reused) | `hermes status` |
 | Claude Code signed in on this Mac | `claude` once, interactively | `claude -p "hi"` answers |
-| Agents' GitHub identities | already signed in: `.gh/anna-agent` = your-account, `.gh/betty-agent` = second-account ([GITHUB_SETUP.md](GITHUB_SETUP.md)) | `.venv/bin/python github_setup.py check` |
+| Agents' GitHub identities | already signed in: `.gh/anna-agent` = your-account, `.gh/betty-agent` = second-account ([GITHUB_SETUP.md](GITHUB_SETUP.md)) | `.venv/bin/python bin/github_setup.py check` |
 
 ## 1. Create the two agents (≈1 min)
 
 ```bash
-.venv/bin/python onboard.py anna --agent hermes
+.venv/bin/python bin/onboard.py anna --agent hermes
 ```
 
 ```bash
-.venv/bin/python onboard.py betty --agent claude
+.venv/bin/python bin/onboard.py betty --agent claude
 ```
 
 Each command does the following, and then prints how to sign in:
@@ -59,24 +59,24 @@ Accept that invite as second-account (github.com/notifications, in the browser w
 signed in). Then make GitHub the merge gate (a PR needs one approval; nobody bypasses), and check:
 
 ```bash
-LOOP_REPO=your-name/hagency-hello .venv/bin/python github_setup.py ruleset
+LOOP_REPO=your-name/hagency-hello .venv/bin/python bin/github_setup.py ruleset
 ```
 
 ```bash
-LOOP_REPO=your-name/hagency-hello .venv/bin/python github_setup.py check
+LOOP_REPO=your-name/hagency-hello .venv/bin/python bin/github_setup.py check
 ```
 
 Publish the repo as a website, so people can try each merged change in the browser. This is a
 repo setting, so you do it, not the agents:
 
 ```bash
-LOOP_REPO=your-name/hagency-hello .venv/bin/python github_setup.py pages
+LOOP_REPO=your-name/hagency-hello .venv/bin/python bin/github_setup.py pages
 ```
 
 ## 3. Start everyone's agents (≈10 s)
 
 ```bash
-LOOP_REPO=your-name/hagency-hello ./start.sh
+LOOP_REPO=your-name/hagency-hello local/start.sh
 ```
 
 This starts `@pm`, Anna's Hermes gateway and Betty's Claude Code agent adapter. Saving a code file
@@ -183,5 +183,5 @@ loop builds it. Refresh `index.html` after it's merged.
 | `@pm` says it can't change the mode | it isn't a moderator | Room settings → Roles → Product Manager → Moderator |
 | "plan with your own agent … isn't in this room" | the requester's agent wasn't invited | invite `@<you>-agent` |
 | A step says "no GitHub identity" | `.gh/<person>-agent` not signed in | [GITHUB_SETUP.md](GITHUB_SETUP.md), step 1 |
-| PR stays "approved, waiting for GitHub" | ruleset missing | `github_setup.py ruleset`, then `check` |
-| Hermes is slow or confused | small model | `onboard.py anna --agent codex` and restart `start.sh` |
+| PR stays "approved, waiting for GitHub" | ruleset missing | `bin/github_setup.py ruleset`, then `check` |
+| Hermes is slow or confused | small model | `bin/onboard.py anna --agent codex` and restart `local/start.sh` |

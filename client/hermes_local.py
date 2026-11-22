@@ -1,8 +1,8 @@
 """The hermes kind on a person's own computer (docs/adr/0008-agent-kinds.md): connect.py's set-up of
 the two Hermes profiles (ADR 0006), and what its background service runs.
 
-  python hermes_local.py --setup   # connect.py: write the profiles from the saved sign-in
-  python hermes_local.py           # the service: both gateways + the code-change buttons, kept running
+  python bin/hermes_local.py --setup   # connect.py: write the profiles from the saved sign-in
+  python bin/hermes_local.py           # the service: both gateways + the code-change buttons, kept running
 
 Both read the sign-in from HAGENCY_CREDENTIALS (never from argv). As on the server
 (supervise.hermes_children), "<name>room" obeys only its owner and "<name>loop" only @pm's loop

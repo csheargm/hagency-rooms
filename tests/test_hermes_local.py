@@ -125,7 +125,7 @@ class Service(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(Path, "exists", lambda self: True), mock.patch.object(hermes_profile, "set_repos"):
             kids = supervise.hermes_children("newbie1", "newbie1", "connect.py again")
         self.assertEqual([k.argv[:3] for k in kids[:2]], [["hermes", "-p", "newbie1room"], ["hermes", "-p", "newbie1loop"]])
-        self.assertEqual(kids[2].argv[1:], ["bridge.py", "newbie1", "--buttons-only"])
+        self.assertEqual(kids[2].argv[1:], ["bin/bridge.py", "newbie1", "--buttons-only"])
 
     async def test_a_clean_exit_stops_it_instead_of_restarting(self):
         kid = supervise.Child("newbie1-buttons", ["x"])

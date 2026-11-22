@@ -100,6 +100,7 @@ class Connect(unittest.TestCase):
         home = tempfile.mkdtemp()
         with mock.patch.object(sys, "argv", ["connect.py", "ABCDE-FGHJK", "--home", home]), \
                 mock.patch.object(connect.cli_path.shutil, "which", lambda b: None), \
+                mock.patch.object(connect.agent_service, "migrate", return_value=[]), \
                 mock.patch.object(connect, "redeem") as redeem, self.assertRaises(SystemExit):
             connect.main()
         redeem.assert_not_called()

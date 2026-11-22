@@ -1,7 +1,7 @@
 """The agent adapter (bring your own agent): logs in as the owner's agent and answers @mentions/DMs
 by running the owner's local agent CLI (Codex or Claude Code) per room.
 
-Usage: python bridge.py anna [--agent codex|claude]     (or a full ID: @alice:matrix.org)
+Usage: python bin/bridge.py anna [--agent codex|claude]     (or a full ID: @alice:matrix.org)
 """
 import argparse
 import asyncio

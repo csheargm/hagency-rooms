@@ -1,7 +1,7 @@
 """Let newcomers sign up on this local server, like they will on the public one:
 
-  python local_signup.py setup         # once: sign-up with a token, new accounts join #welcome
-  python local_signup.py token [uses]  # an invite token for Element's sign-up page (default 1 use, 7 days)
+  python bin/local_signup.py setup         # once: sign-up with a token, new accounts join #welcome
+  python bin/local_signup.py token [uses]  # an invite token for Element's sign-up page (default 1 use, 7 days)
 
 `setup` edits data/homeserver.yaml with the same settings the public server gets
 (deploy/configure_synapse.py) and restarts this folder's Synapse only if something changed.

@@ -1,7 +1,7 @@
 """Keep your agent running on Windows: what the Scheduled Task "Hagency agent <name>" runs.
 
-  pythonw connect_win.py [--home DIR]  # run the agent hidden, and again whenever it fails
-  python connect_win.py --task-name    # print the task's name (connect.ps1 uses it)
+  pythonw bin/connect_win.py [--home DIR]  # run the agent hidden, and again whenever it fails
+  python bin/connect_win.py --task-name    # print the task's name (connect.ps1 uses it)
 
 connect.ps1 has connect.py save the sign-in first (--pair-only), then registers this to run at
 logon: the Windows counterpart of agent_service.py (launchd / systemd on macOS / Linux). It reads
@@ -106,7 +106,7 @@ def child_python() -> str:
 
 def bridge_command(creds: dict, creds_path: Path) -> tuple[list[str], dict]:
     """argv and environment for the agent adapter: the sign-in travels by file path, never in argv."""
-    argv = [child_python(), str(APP / "bridge.py"), creds["owner"], "--agent", creds.get("agent") or "codex"]
+    argv = [child_python(), str(paths.launcher(APP, "bridge.py")), creds["owner"], "--agent", creds.get("agent") or "codex"]
     # utf-8: its log is a file, which on Windows would otherwise be cp1252 and choke on a check mark
     return argv, {**os.environ, "HAGENCY_CREDENTIALS": str(creds_path), "PYTHONIOENCODING": "utf-8"}
 
