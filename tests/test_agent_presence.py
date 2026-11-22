@@ -45,14 +45,17 @@ class Service(unittest.TestCase):
     def test_install_replaces_and_starts_stop_removes(self):
         home = Path(tempfile.mkdtemp())
         runs = []
-        run = lambda args, **k: (runs.append(args), SimpleNamespace(returncode=0, stdout="", stderr=""))[1]
+        gone = 113                                   # launchctl print: "Could not find service"
+        run = lambda args, **k: (runs.append(args), SimpleNamespace(returncode=gone if args[1] == "print" else 0,
+                                                                     stdout="", stderr=""))[1]
         with mock.patch.object(agent_service, "kind", return_value="launchd"), \
                 mock.patch.object(agent_service.Path, "home", return_value=home):
-            how = agent_service.install(Path("/app"), NEW, "codex", AGENT, home / ".hagency" / "credentials.json", run=run)
+            how = agent_service.install(Path("/app"), NEW, "codex", AGENT, home / ".hagency" / "credentials.json", run=run,
+                                        sleep=self.fail)  # gone at once: no waiting
             path = agent_service.service_file("launchd", AGENT, home)
             self.assertEqual(how, "launchd")
             self.assertTrue(path.exists())
-            self.assertEqual([r[1] for r in runs], ["bootout", "bootstrap"])
+            self.assertEqual([r[1] for r in runs], ["bootout", "print", "bootstrap"])
             self.assertTrue(agent_service.stop(AGENT, run=run))
             self.assertFalse(path.exists())
             self.assertFalse(agent_service.stop(AGENT, run=run))
@@ -62,7 +65,8 @@ class Service(unittest.TestCase):
         with mock.patch.object(agent_service, "kind", return_value="launchd"), \
                 mock.patch.object(agent_service, "service_file", return_value=Path(tempfile.mkdtemp()) / "x.plist"):
             with self.assertRaisesRegex(RuntimeError, "Bootstrap failed"):
-                agent_service.install(Path("/app"), NEW, "codex", AGENT, Path(tempfile.mkdtemp()) / "c.json", run=run)
+                agent_service.install(Path("/app"), NEW, "codex", AGENT, Path(tempfile.mkdtemp()) / "c.json", run=run,
+                                      sleep=lambda s: None)
 
 
 class WindowsTask(unittest.TestCase):
@@ -119,7 +123,7 @@ class Connect(unittest.TestCase):
                                                                     "password": "pw", "owner": "newbie1", "agent": "codex"}))
         with mock.patch.object(sys, "argv", ["connect.py", "--home", str(home), *argv]), \
                 mock.patch.object(connect.cli_path.shutil, "which", lambda b: True), \
-                mock.patch.object(agent_service, "migrate", return_value=[]), \
+                mock.patch.object(connect.service_migration, "migrate", return_value=[]), \
                 mock.patch.object(connect.os, "execve") as execve, mock.patch("builtins.print") as out:
             connect.main()
         return execve, " ".join(str(c.args[0]) for c in out.call_args_list)

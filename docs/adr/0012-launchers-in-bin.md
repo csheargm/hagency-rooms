@@ -36,12 +36,14 @@ docs/     also REVIEWS.md, TIMELOG.md and github-ruleset.json (beside GITHUB_SET
 A background service written before this names `~/.hagency/app/bridge.py` or `hermes_local.py`
 (launchd, systemd), or a Windows task runs `…\app\connect_win.py`. The only update path is the
 connect line (`git pull`, then `bin/connect.py`), so the rewrite happens there:
-- `bin/connect.py` first calls `agent_service.migrate(APP)`: every launchd plist / systemd unit of
+- `bin/connect.py` first calls `service_migration.migrate(APP)`: every launchd plist / systemd unit of
   **this installation** (all agents, further ones too) whose arguments name an old root launcher is
   rewritten to `bin/` with the same escaping/quoting, then loaded again (launchd: bootout + bootstrap,
-  since it keeps the loaded copy; systemd: daemon-reload). Other installations' services are left
-  alone. If the service manager refuses, the file is put back as it was (so the next run tries again),
-  the failure is printed and the run goes on (it installs this agent's own service afresh anyway).
+  since it keeps the loaded copy; systemd: daemon-reload). bootout returns before the job is gone, so
+  bootstrap waits (bounded) until `launchctl print` no longer finds it, and retries its error 5.
+  Other installations' services are left alone. If the service manager refuses one, that file is put
+  back as it was (so the next run tries again) and the rest still move; the run then says which
+  agents moved and which didn't, and goes on (it installs this agent's own service afresh anyway).
 - Windows: `connect.ps1` recognises keepers at both the old and the new path (`$Keepers`), so it
   stops and replaces the old task; new tasks run `bin\connect_win.py`. Right after the update,
   `Move-OldKeepers` points the stopped task or shortcut at `bin\`, so a run that then fails (an
@@ -57,8 +59,7 @@ Compatibility stubs at the old root names were considered and not kept: the rewr
 (it replaces only the argument strings the old code wrote for this installation's own path) and
 runs on the one path every update takes.
 
-TODO(remove after 2027-02-01): `agent_service.OLD_ROOT_LAUNCHERS`, the old half of `keeper_paths`
-and `migrate`, the root entry of `$Keepers` and `Move-OldKeepers` in `connect.ps1`, and the `./local.env` fallback in
+TODO(remove after 2027-02-01): `client/service_migration.py`, the old half of `keeper_paths`, the root entry of `$Keepers` and `Move-OldKeepers` in `connect.ps1`, and the `./local.env` fallback in
 `local/start.sh`.
 
 ## Consequences

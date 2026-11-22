@@ -33,6 +33,7 @@ from common import agent_kinds
 from client import agent_service
 from adapters.agents import cli_path
 from client import connect_kinds
+from client import service_migration
 from common import identity
 from client.ask_line import ask_line
 from common.bridge_config import credentials_match
@@ -228,14 +229,22 @@ def connect_here(args, home: Path, path: Path, saved: dict) -> tuple[dict, Path]
 
 def migrate_services() -> None:
     """Services written before the launchers moved into bin/ (ADR 0012) run them from there again.
-    A failure is said and the connect goes on: it installs this agent's own service afresh anyway."""
+    What moved and what didn't is said, and the connect goes on: it installs this agent's own service
+    afresh anyway."""
     try:
-        moved = agent_service.migrate(APP)
+        moved, failed = service_migration.migrate(APP), {}
+    except service_migration.MigrationError as e:
+        moved, failed = e.moved, e.failed
     except (OSError, RuntimeError) as e:
-        print(f"note: couldn't update an older background service ({e}); run this again", file=sys.stderr)
+        print(f"note: couldn't update your older background agents ({e}); run this again", file=sys.stderr)
         return
+    name = service_migration.agent_of
     if moved:
-        print(f"✓ updated {len(moved)} background service(s) to this version's paths")
+        print(f"✓ updated {len(moved)} background agent(s) to this version: {', '.join(map(name, moved))}")
+    if failed:
+        print(f"note: couldn't update {len(failed)} background agent(s) yet: {', '.join(map(name, failed))}. They may stay "
+              f"offline until you run this same connect line again.\n  why: {'; '.join(failed.values())}",
+              file=sys.stderr)
 
 
 def main() -> None:

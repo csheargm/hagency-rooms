@@ -15,6 +15,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path, PureWindowsPath
 from xml.sax.saxutils import escape
 
@@ -24,10 +25,16 @@ LABEL = "xyz.hagencylabs.agent"
 RESTART_S = 30
 WINDOWS = "schtasks"
 WINDOWS_KEEPERS = ("connect_win.py", "bridge.py")   # what a Python of ours on Windows runs
-# TODO(remove after 2027-02-01): services and keepers written before the launchers moved into bin/
-# (docs/adr/0012-launchers-in-bin.md) name these (and WINDOWS_KEEPERS) at the installation's root;
-# migrate() rewrites them, keeper_paths() still recognises the old ones.
-OLD_ROOT_LAUNCHERS = ("bridge.py", "hermes_local.py")
+# TODO(remove after 2027-02-01): keepers started before the launchers moved into bin/
+# (docs/adr/0012-launchers-in-bin.md) name WINDOWS_KEEPERS at the installation's root: keeper_paths()
+# still recognises them; client/service_migration.py rewrites the old services.
+
+# launchctl bootout returns before the job is gone; a bootstrap meanwhile fails with error 5
+GONE_TIMEOUT_S = 10.0                         # how long to wait for a booted-out job to go
+GONE_POLL_S = 0.25
+BOOTSTRAP_TRIES = 3
+BOOTSTRAP_RETRY_S = 1.0
+LAUNCHD_BUSY = 5                              # "Bootstrap failed: 5: Input/output error"
 
 
 def windows_task(agent_localpart: str) -> str:
@@ -110,7 +117,8 @@ def _write(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def install(app: Path, owner: str, backend: str, agent: str, creds: Path, run=subprocess.run) -> str | None:
+def install(app: Path, owner: str, backend: str, agent: str, creds: Path, run=subprocess.run,
+            sleep=time.sleep, clock=time.monotonic) -> str | None:
     """Install (or replace) and start the service; the service manager's name, or None if none."""
     how = kind()
     if how is None:
@@ -126,11 +134,9 @@ def install(app: Path, owner: str, backend: str, agent: str, creds: Path, run=su
     logs = creds.parent / "logs"
     logs.mkdir(mode=0o700, parents=True, exist_ok=True)
     path = service_file(how, agent)
-    if how == "launchd":
-        domain = f"gui/{os.getuid()}"
-        run(["launchctl", "bootout", f"{domain}/{label(agent)}"], capture_output=True)   # an older one: replaced
+    if how == "launchd":                      # an older one is replaced
         _write(path, plist(app, owner, backend, agent, creds, logs))
-        r = run(["launchctl", "bootstrap", domain, str(path)], capture_output=True, text=True)
+        r = load_again(path, label(agent), run, sleep, clock)
     else:
         _write(path, unit(app, owner, backend, agent, creds, logs))
         r = run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True)
@@ -195,50 +201,30 @@ def stop(agent: str, run=subprocess.run, home: Path | None = None, app: Path | N
     return existed
 
 
-def _moved(text: str, app: Path, how: str) -> str:
-    """The service file's text with each old root launcher of `app` named at its place in bin/."""
-    token = (lambda p: f"<string>{escape(str(p))}</string>") if how == "launchd" else (lambda p: _quote(str(p)))
-    for name in OLD_ROOT_LAUNCHERS:
-        text = text.replace(token(app / name), token(paths.launcher(app, name)))
-    return text
+def _wait_gone(target: str, run, sleep, clock, end: float) -> None:
+    """Wait, until `end` at most, until launchd no longer knows the job (gui/<uid>/<label>)."""
+    while run(["launchctl", "print", target], capture_output=True).returncode == 0 and clock() < end:
+        sleep(GONE_POLL_S)
 
 
-def migrate(app: Path, run=subprocess.run, home: Path | None = None) -> list[str]:
-    """Rewrite this installation's background services (every agent's, further ones too) that still
-    run a launcher from the root, and load them again; the names of those rewritten. Windows: none
-    here (connect.ps1 moves its task). If anything fails, every file not yet loaded again is put back
-    as it was, so the next connect run tries it again (GPT review), and RuntimeError says why."""
-    how = kind()
-    if how not in ("launchd", "systemd"):
-        return []
-    folder = service_file(how, "x", home).parent
-    pattern = f"{LABEL}.*.plist" if how == "launchd" else "hagency-agent-*.service"
-    done, pending = [], {}                    # pending: rewritten, not yet loaded again
-    try:
-        for path in sorted(folder.glob(pattern)):
-            text = path.read_text()
-            new = _moved(text, app, how)
-            if new == text:
-                continue
-            pending[path] = text
-            _write(path, new)
-            if how == "launchd":              # launchd keeps the loaded arguments: load the file again
-                run(["launchctl", "bootout", f"gui/{os.getuid()}/{path.stem}"], capture_output=True)
-                _loaded(run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(path)], capture_output=True, text=True),
-                        f"launchd wouldn't load {path.name} again")
-                pending.pop(path)
-                done.append(path.name)
-        if pending:                           # systemd reads ExecStart at the next start
-            _loaded(run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True), "systemd wouldn't reload")
-            done += [path.name for path in pending]
-            pending = {}
-    except (OSError, RuntimeError) as e:
-        for path, text in pending.items():
-            _write(path, text)
-        raise RuntimeError(str(e)) from e
-    return done
+def _busy(r) -> bool:
+    """launchd refused a load because the old job is still being torn down."""
+    return r.returncode == LAUNCHD_BUSY or "Input/output error" in (r.stderr or "")
 
 
-def _loaded(r, what: str) -> None:
-    if r.returncode != 0:
-        raise RuntimeError(f"{what}: {(r.stderr or r.stdout or '').strip()[:200]}")
+def load_again(path: Path, job: str, run=subprocess.run, sleep=time.sleep, clock=time.monotonic):
+    """Unload the launchd job (if loaded), wait until it is gone, and load its file again; launchd keeps
+    the arguments it loaded. bootout returns before the job is gone, so the wait (GONE_TIMEOUT_S in all,
+    for every try) comes first and a load refused while it is still going is tried again."""
+    domain = f"gui/{os.getuid()}"
+    target = f"{domain}/{job}"
+    run(["launchctl", "bootout", target], capture_output=True)
+    end = clock() + GONE_TIMEOUT_S
+    for attempt in range(BOOTSTRAP_TRIES):
+        if attempt:
+            sleep(BOOTSTRAP_RETRY_S)
+        _wait_gone(target, run, sleep, clock, end)
+        r = run(["launchctl", "bootstrap", domain, str(path)], capture_output=True, text=True)
+        if not _busy(r):
+            break
+    return r
