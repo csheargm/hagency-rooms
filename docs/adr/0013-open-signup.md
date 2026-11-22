@@ -19,7 +19,7 @@ providers have already verified the person, and most newcomers have one of the t
 
 ## Decision
 - `deploy/signup.py`: once all five `SMTP_*` keys in the VM's `deploy/.env` are set and valid, and
-  `HAGENCY_OPEN_SIGNUP=1` (the default), Synapse gets `registration_requires_token: false`,
+  `HAGENCY_OPEN_SIGNUP=1` (the default is 0; a missing line is 0 too), Synapse gets `registration_requires_token: false`,
   `registrations_require_3pid: [email]`, an `email:` block (STARTTLS required, or TLS on port 465;
   `Hagency Rooms <SMTP_FROM>`), `disable_msisdn_registration: true` and rate limits
   (`rc_registration` 3 then one per ~5.5 min per address; `rc_3pid_validation` 3 then one per ~8 min).
@@ -46,7 +46,10 @@ providers have already verified the person, and most newcomers have one of the t
 - Secrets live only in the VM's git-ignored `.env` (mode 600) and in `homeserver.yaml` (mode 600,
   Synapse's own). `envfile.py get` refuses them; bootstrap prints only which mode is on and the
   names of missing keys. A malformed sign-up or sign-in value turns that feature off instead of
-  stopping the deploy (`envfile.FAIL_CLOSED`), so a typo made while closing sign-up still closes it.
+  stopping the deploy (`envfile.FAIL_CLOSED`), so a typo made while closing sign-up still closes it;
+  only characters Docker Compose would misread (quotes, `$`, backslash, space) stop it, by name, before
+  anything changes. A missing `HAGENCY_OPEN_SIGNUP` is 0. Synapse logs OAuth callback URLs (a one-time
+  `code`) at INFO and token responses only at DEBUG; the generated log config stays at INFO.
   `deploy/health.py` checks that every registration flow needs exactly what bootstrap configured
   (`signup.py mode`: token or email); from outside, a token or an email, never neither.
 

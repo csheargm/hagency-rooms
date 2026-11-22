@@ -41,6 +41,8 @@ def verified_only(text: str, mode: str | None = None) -> bool:
     With a mode (signup.py's), every flow needs exactly that one: closing sign-up must have taken effect."""
     flows = json.loads(text).get("flows") or [{}]
     needed = (SIGNUP_STAGE[mode],) if mode else VERIFYING_STAGES
+    if mode == "open" and not any(SIGNUP_STAGE["token"] not in f.get("stages", []) for f in flows):
+        return False                          # open, yet every flow still wants a token (GPT review)
     return all(any(s in f.get("stages", []) for s in needed) for f in flows)
 
 

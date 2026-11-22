@@ -116,6 +116,8 @@ class Health(unittest.TestCase):
         self.assertFalse(health.verified_only(json.dumps(mail), "token"))           # still open: fails
         self.assertTrue(health.verified_only(json.dumps(mail), "open"))
         self.assertFalse(health.verified_only(json.dumps({"flows": tok["flows"][:1]}), "open"))
+        both = {"flows": [{"stages": ["m.login.registration_token", "m.login.email.identity"]}]}
+        self.assertFalse(health.verified_only(json.dumps(both), "open"))          # open, yet a token needed
         with mock.patch.object(health, "run", return_value=True) as ran:
             self.assertEqual(health.main(["--internal", "m", "m", "token"]), 0)
             self.assertIn("an invite token", ran.call_args[0][0][3][0])

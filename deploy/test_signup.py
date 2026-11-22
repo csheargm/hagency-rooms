@@ -29,7 +29,7 @@ SMTP = {"SMTP_HOST": "smtp.example.net", "SMTP_PORT": "587", "SMTP_USER": "postm
 OPEN = {**BASE, **SMTP, "HAGENCY_OPEN_SIGNUP": "1"}
 # What a VM's .env holds once envfile.py has merged .env.example's defaults in, before the owner fills SMTP.
 EXAMPLE_DEFAULTS = {**BASE, "SMTP_HOST": "", "SMTP_PORT": "587", "SMTP_USER": "", "SMTP_PASS": "",
-                    "SMTP_FROM": "no-reply@hagencylabs.xyz", "HAGENCY_OPEN_SIGNUP": "1",
+                    "SMTP_FROM": "no-reply@hagencylabs.xyz", "HAGENCY_OPEN_SIGNUP": "0",
                     "HAGENCY_GOOGLE_CLIENT_ID": "", "HAGENCY_GOOGLE_CLIENT_SECRET": "",
                     "HAGENCY_GITHUB_CLIENT_ID": "", "HAGENCY_GITHUB_CLIENT_SECRET": ""}
 
@@ -101,11 +101,31 @@ class StaysClosed(unittest.TestCase):
     def test_a_bad_value_never_stops_the_deploy_that_closes_sign_up(self):
         """GPT review: envfile.py check failing would leave the old, open config running."""
         opened = configure(GENERATED, OPEN)
-        closing = {**OPEN, "HAGENCY_OPEN_SIGNUP": "0", "SMTP_PASS": "typo with spaces"}
+        closing = {**OPEN, "HAGENCY_OPEN_SIGNUP": "0", "SMTP_PASS": "short"}
         full = {**closing, "PM_UID": "1001", "ADMIN_DOMAIN": "admin.example.org"}
         self.assertEqual(envfile.validate(full), [])                      # bootstrap goes on
         self.assertEqual(configure(opened, closing), TOKEN_ONLY)
         self.assertIn("SMTP_PASS doesn't look right", run_main(full))
+
+    def test_what_docker_compose_would_misread_stops_the_deploy_first_by_name(self):
+        """GPT re-check: Compose reads .env before Synapse is reconfigured; say which key, never its value."""
+        for bad in ("pa$$word12", 'pass"word12', "pass word12", "back\\slash12"):
+            problems = envfile.validate({**OPEN, "PM_UID": "1001", "ADMIN_DOMAIN": "admin.example.org", "SMTP_PASS": bad})
+            self.assertEqual(problems, ["SMTP_PASS has a quote, $, backslash or space (Docker Compose would misread it)"])
+
+    def test_a_missing_switch_is_closed(self):
+        """GPT re-check: deleting the line must not bring back an open default from .env.example."""
+        e = {k: v for k, v in OPEN.items() if k != signup.SWITCH}
+        self.assertEqual(value(configure(GENERATED, e), "registration_requires_token"), "true")
+        self.assertIn(f"\n{signup.SWITCH}=0\n", envfile.EXAMPLE.read_text())
+
+    def test_malformed_lines_are_reported_by_number_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = Path(d) / ".env"
+            env.write_text("ROOMS_DOMAIN=rooms.example.org\nmy-pasted-secret-value\n")
+            with mock.patch.object(envfile, "ENV", env), self.assertRaises(SystemExit) as stop:
+                envfile.read()
+        self.assertEqual(str(stop.exception), "✗ .env line 2: not NAME=value")
 
     def test_signup_mode_for_the_health_check(self):
         for e, want in ((BASE, "token"), (OPEN, "open"), ({**OPEN, "HAGENCY_OPEN_SIGNUP": "0"}, "token")):

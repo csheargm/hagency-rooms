@@ -151,7 +151,7 @@ owner in `~/hagency/app/deploy/.env` on the VM and nowhere else (never in git, n
 
 | Keys in `.env` | What it turns on |
 |----------------|------------------|
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (all five) and `HAGENCY_OPEN_SIGNUP=1` (the default) | anyone may create an account with an email address they confirm (a link Synapse emails them); no token needed; password reset by email |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (all five) and `HAGENCY_OPEN_SIGNUP=1` (the default is 0; a missing line is 0 too) | anyone may create an account with an email address they confirm (a link Synapse emails them); no token needed; password reset by email |
 | `HAGENCY_GOOGLE_CLIENT_ID`, `HAGENCY_GOOGLE_CLIENT_SECRET` | "Continue with Google" on the sign-in and sign-up pages |
 | `HAGENCY_GITHUB_CLIENT_ID`, `HAGENCY_GITHUB_CLIENT_SECRET` | "Continue with GitHub" |
 
@@ -159,12 +159,14 @@ Each one is independent. Anything missing, partial or malformed leaves that part
 `bootstrap.sh` prints which (setting names, never values), e.g. `sign-up by invite token only:
 SMTP not ready (SMTP_PASS is empty); sign-in with google on, github off`. Registration is never
 opened without verification: password sign-up always needs a token or a confirmed email
-(`deploy/health.py` checks it on every deploy).
+(`deploy/health.py` checks it on every deploy). A malformed value only turns its part off, so a
+typo can't keep sign-up open; the one exception is a quote, `$`, backslash or space, which Docker
+Compose would misread: `envfile.py check` stops the deploy first and names the key.
 
 **Apply** (after editing `.env`; nothing else on the VM is edited by hand):
 
 ```
-ssh -t hagency-vm 'nano ~/hagency/app/deploy/.env'      # fill the keys; keep mode 600
+ssh -t hagency-vm 'nano ~/hagency/app/deploy/.env'      # fill the keys (and HAGENCY_OPEN_SIGNUP=1); keep mode 600
 deploy/deploy.sh                                       # from your computer: re-runs bootstrap, restarts Synapse
 ```
 
