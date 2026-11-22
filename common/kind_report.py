@@ -37,7 +37,7 @@ def from_credentials(creds: dict) -> dict | None:
     if kind in agent_kinds.MODEL_KINDS and creds.get("model"):
         report["model"] = creds["model"]
     if kind == "remote" and agent_kinds.valid_base_url(creds.get("base_url")):
-        report["host"] = urllib.parse.urlsplit(creds["base_url"]).hostname
+        report["host"] = urllib.parse.urlsplit(creds["base_url"]).hostname.rstrip(".")   # "x.example." is x.example
     return report if pm_kinds.reported(report) is not None else None
 
 

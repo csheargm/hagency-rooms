@@ -5,6 +5,7 @@ message as nio parses it, records it on the sender's own entry. Never an API key
 Run: .venv/bin/python -m unittest tests.test_kind_report"""
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
 from unittest import mock
 
@@ -15,6 +16,7 @@ from common import pm_kinds
 from common import registry
 from server import console
 from server import pm_kind_reports
+from server import registry_removal
 from tests import test_more_agents_flows as flows
 from tests.test_more_agents_flows import BA, CX, CXA, CXC, PM, S
 
@@ -86,6 +88,8 @@ class Reports(flows.Base):
         self.assertEqual(self.card(), {"cx-agent": "Ollama (a model on your computer): llama3.2",
                                        "cx-codex-agent": "Remote: openai/gpt-4o at openrouter.ai"})
         self.assertNotIn("secret-path", registry.PATH.read_text())
+        self.assertEqual(kind_report.from_credentials({"agent": "remote", "model": "m", "base_url": "https://openrouter.ai./v1"}),
+                         {"agent_kind": "remote", "model": "m", "host": "openrouter.ai"})   # a root dot (GPT re-check)
         self.start_agent({**CX_CREDS, "agent": "ollama", "model": "Qwen3CoderNextInstruct"})   # a long local name (GPT review)
         self.assertEqual(self.card()["cx-agent"], "Ollama (a model on your computer): Qwen3CoderNextInstruct")
 
@@ -139,6 +143,23 @@ class Reports(flows.Base):
             self.report(sender, {"agent_kind": "codex"})
         self.assertEqual(self.card()["cx-agent"], pm_kinds.NOT_REPORTED)
         self.assertEqual(registry.find(flows.BETTY, None)["reported"], {"agent_kind": "codex"})   # Betty's agent: its own entry
+
+    def test_a_remove_racing_a_report_waits_and_never_raises(self):
+        registry.add_agent(CX, "codex")
+        real_find, remover = registry.find, []
+
+        def remove_meanwhile(person, agent):              # a Remove starts between the lookup and the write
+            found = real_find(person, agent)
+            if not remover:
+                remover.append(threading.Thread(target=registry_removal.forget_agent, args=(CX, "cx-codex-agent")))
+                remover[0].start()
+                remover[0].join(0.2)                       # without the lock it would finish here
+            return found
+        with mock.patch.object(registry, "find", remove_meanwhile):
+            self.assertTrue(pm_kind_reports.record(CXC, {"agent_kind": "codex"}))   # no ValueError
+        remover[0].join()
+        self.assertIsNone(registry.find(CX, "codex"))
+        self.assertFalse(pm_kind_reports.record(CXC, {"agent_kind": "codex"}))       # removed: ignored
 
     def test_not_reported_yet_only_for_agents_on_a_persons_computer(self):
         registry.update(CX, None, agent="server")

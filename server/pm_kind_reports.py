@@ -27,19 +27,20 @@ def record(sender: str, content: object) -> bool:
     suffix = f":{SERVER_NAME}"
     if not (isinstance(sender, str) and sender.startswith("@") and sender.endswith(suffix)):
         return False
-    agent = sender[1:-len(suffix)]
-    owner = registry.owner_of(agent)
-    found = registry.find(owner, agent) if owner else None
-    if found is None or found["localpart"] != agent or found["agent"] != registry.REMOTE:
-        log.info("ignored an AI report from %s: not an agent on a person's computer", sender)
-        return False
     said = pm_kinds.reported(content)
-    if said is None:                        # never logged: a refused report may hold what looked like a key
+    if said is None:                          # never logged: a refused report may hold what looked like a key
         log.warning("ignored %s's AI report: it isn't one this server takes", sender)
         return False
-    if found.get(registry.REPORTED) == said:
-        return False                          # every start reports: unchanged, nothing written
-    registry.update(owner, None if found["first"] else agent, **{registry.REPORTED: said})   # whole: an old model goes
+    agent = sender[1:-len(suffix)]
+    with registry.LOCK:                       # a Remove in between can't make the write miss (GPT re-check)
+        owner = registry.owner_of(agent)
+        found = registry.find(owner, agent) if owner else None
+        if found is None or found["localpart"] != agent or found["agent"] != registry.REMOTE:
+            log.info("ignored an AI report from %s: not an agent on a person's computer", sender)
+            return False
+        if found.get(registry.REPORTED) == said:
+            return False                      # every start reports: unchanged, nothing written
+        registry.update(owner, None if found["first"] else agent, **{registry.REPORTED: said})   # whole: an old model goes
     log.info("%s runs %s (its own report)", sender, said["agent_kind"])
     return True
 
