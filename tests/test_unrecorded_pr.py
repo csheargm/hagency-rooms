@@ -41,6 +41,8 @@ class UnrecordedPR(unittest.TestCase):
         self.lp.pr_open = mock.AsyncMock(return_value=False)
         self.room = SimpleNamespace(room_id="!r")
         self.listed: list = []
+        self.heads: dict = {}             # a branch asked by name → GitHub's answer for it
+        self.asked: list = []
 
     def github(self, prs):
         self.listed = prs
@@ -48,9 +50,12 @@ class UnrecordedPR(unittest.TestCase):
 
     async def answer(self, args, agent=None):
         assert args[:2] == ["pr", "list"] and args[args.index("-R") + 1] == REPO, args
-        if isinstance(self.listed, Exception):
-            raise self.listed
-        return self.listed
+        self.asked.append(args)
+        head = args[args.index("--head") + 1] if "--head" in args else None
+        listed = self.heads.get(head, []) if head else self.listed
+        if isinstance(listed, Exception):
+            raise listed
+        return listed
 
     def retry(self, n):
         asyncio.run(self.lp.retry(self.room, ANNA, n))
@@ -120,6 +125,23 @@ class UnrecordedPR(unittest.TestCase):
             self.assertIn("isn't paused anymore", self.retry(9))
         self.assertEqual("building", self.lp.state[issue_key(REPO, 9)]["stage"])
 
+    def test_the_builders_branch_is_asked_by_name(self):
+        """GPT review: a paged list can skip a PR when another closes between pages; the builder's own
+        branch is then asked by name."""
+        self.lp.state[issue_key(REPO, 9)]["builder"] = "@cx-agent:bridge.localhost"
+        self.heads["agent/cx-agent/issue-9"] = [pr(21, "agent/cx-agent/issue-9")]
+        with self.github([]):
+            self.assertIn("PR #21 for #9 is still open", self.retry(9))
+        self.heads["agent/cx-agent/issue-9"] = [pr(22, "agent/cx-agent/issue-9", fork=True)]
+        with self.github([]):
+            self.assertIn("back in the queue", self.retry(9))
+
+    def test_switching_with_nothing_paused_asks_github_nothing(self):
+        self.lp.state = {}
+        with self.github([pr(21, "agent/cx-agent/issue-9")]):
+            self.assertEqual("", asyncio.run(pm_paused.retry_all(self.lp, "!r")))
+        self.assertEqual([], self.asked)
+
 
 class ListedThroughTheApp(AppCase):
     """The public server reads GitHub through the App: "gh pr list" has the same shape there."""
@@ -130,10 +152,15 @@ class ListedThroughTheApp(AppCase):
     def test_open_prs_with_branch_and_fork(self):
         self.fake.pulls[APP_REPO] = [self.raw(1, "agent/x/issue-4"), self.raw(2, "agent/x/issue-5", "eve/hello"),
                                      self.raw(3, "agent/x/issue-6", None), self.raw(4, "agent/x/issue-8", state="closed")]
-        self.assertEqual(asyncio.run(pm_paused.agent_prs(APP_REPO)), {4: 1})
+        self.assertEqual(asyncio.run(pm_paused.agent_prs(APP_REPO, {5: "x"})), {4: 1})
         out = asyncio.run(github.run_json(["pr", "list", "-R", APP_REPO, "--json", "number,isCrossRepository"]))
         self.assertEqual(out, [{"number": 1, "isCrossRepository": False}, {"number": 2, "isCrossRepository": True},
                                {"number": 3, "isCrossRepository": True}])
+
+    def test_a_named_branch_is_this_repos_own(self):
+        self.fake.pulls[APP_REPO] = [self.raw(1, "agent/x/issue-4", "eve/hello"), self.raw(2, "agent/x/issue-4")]
+        out = asyncio.run(github.run_json(["pr", "list", "-R", APP_REPO, "--head", "agent/x/issue-4", "--json", "number"]))
+        self.assertEqual(out, [{"number": 2}])
 
     def test_only_open_prs_are_listed(self):
         with self.assertRaises(github.GitHubError):

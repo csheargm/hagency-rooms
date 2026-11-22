@@ -49,15 +49,20 @@ def next_steps(n: int, agent: str | None = None) -> str:
     return "**What you can do:**\n\n" + "\n".join(steps)
 
 
-async def agent_prs(repo: str) -> dict[int, int]:
-    """Open PRs on an agent's branch for an issue (issue number → PR number), recorded or not. Raises
-    github.GitHubError when GitHub can't say. A fork's PR doesn't count: agents push to the repo itself."""
-    prs = await github.run_json(["pr", "list", "-R", repo, "--state", "open", "--json",
+async def _open_list(repo: str, *head: str) -> list:
+    """GitHub's open PRs (on one head branch, when named). Raises github.GitHubError when it can't say."""
+    prs = await github.run_json(["pr", "list", "-R", repo, "--state", "open", *head, "--json",
                                  "number,headRefName,isCrossRepository", "--limit", str(MAX_OPEN_PRS)])
     if not isinstance(prs, list):
         raise github.GitHubError("GitHub's list of open PRs wasn't a list")
     if len(prs) >= MAX_OPEN_PRS:     # GPT review: the issue's PR may be past the end, so absent proves nothing
         raise github.GitHubError(f"{repo} has {MAX_OPEN_PRS} or more open PRs")
+    return prs
+
+
+def _matched(prs: list) -> dict[int, int]:
+    """Issue number → PR number, for PRs on an agent's issue branch. A fork's PR doesn't count: agents push
+    to the repo itself."""
     found: dict[int, int] = {}
     for pr in prs:
         m = AGENT_BRANCH.fullmatch(str(pr.get("headRefName") or "")) if isinstance(pr, dict) else None
@@ -66,11 +71,28 @@ async def agent_prs(repo: str) -> dict[int, int]:
     return found
 
 
+async def agent_prs(repo: str, builders: dict[int, str]) -> dict[int, int]:
+    """Open PRs on an agent's branch for an issue (issue number → PR number), recorded or not. One list
+    covers every agent; each issue's own builder's branch is then asked by name (GPT review: a paged list
+    can skip a PR when another closes between pages). Raises github.GitHubError when GitHub can't say."""
+    found = _matched(await _open_list(repo))
+    for n, agent in builders.items():
+        if n not in found and agent:
+            mine = _matched(await _open_list(repo, "--head", f"agent/{agent}/issue-{n}"))
+            found.update({n: mine[n]} if n in mine else {})
+    return found
+
+
+def _builder(item: dict) -> str:
+    """The builder's name as its branch spells it ("@cx-agent:server" → "cx-agent"; loop.py does the same)."""
+    return str(item.get("builder") or "").split(":")[0].lstrip("@")
+
+
 async def open_prs(loop, items: dict[str, dict], repo: str) -> dict[str, int | None]:
     """The paused issues a fresh build would race, each with its open PR (key → PR number; None when
     GitHub can't tell: that one stays paused too, never a second PR blind). The others may go back."""
     try:
-        found: dict[int, int] | None = await agent_prs(repo)
+        found: dict[int, int] | None = await agent_prs(repo, {num(k): _builder(i) for k, i in items.items()})
     except github.GitHubError:
         found = None          # can't tell: each stays paused, and still_open() says why to the person
     held: dict[str, int | None] = {}
@@ -134,7 +156,7 @@ async def retry_all(loop, rid: str) -> str:
     async with loop.lock:
         repo, paused = await loop.paused_here(rid)
         seen = {k: loop.state[k] for k in paused}   # these very pauses: a retried-and-paused-again one is new
-    held_prs = await open_prs(loop, seen, repo)
+    held_prs = await open_prs(loop, seen, repo) if seen else {}   # GPT review: nothing paused, nothing to ask
     async with loop.lock:                          # never between a poll and its results
         if await loop.level(rid) != "autonomous":  # GPT review: someone said "stop" (or assist) meanwhile
             return ""

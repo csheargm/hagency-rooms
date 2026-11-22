@@ -121,7 +121,10 @@ async def pr_list(args: list[str]) -> list:
     repo, fields, limit = _repo(args), _fields(args, PR_LIST_FIELDS), _limit(args)
     if (_opt(args, "--state") or "open").lower() != "open":
         raise github.GitHubError("@pm lists only open PRs through the GitHub App")
-    return [_pr_listed(raw, repo, fields) for raw in await _pages(repo, "/pulls", {"state": "open"}, limit)]
+    query = {"state": "open"}
+    if _opt(args, "--head"):          # REST's head filter names the owner: a fork's same-named branch isn't it
+        query["head"] = f"{repo.split('/', 1)[0]}:{_opt(args, '--head')}"
+    return [_pr_listed(raw, repo, fields) for raw in await _pages(repo, "/pulls", query, limit)]
 
 
 async def label_list(args: list[str]) -> list:

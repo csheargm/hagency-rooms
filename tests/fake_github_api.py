@@ -134,7 +134,9 @@ class FakeGitHub:
             return (200, found[0]) if found else (404, {"message": "Not Found"})
         if rest == ["pulls"]:
             page, per = int(q.get("page", 1)), int(q.get("per_page", 30))
-            items = [p for p in self.pulls.get(repo, []) if p["state"] == q.get("state", "open")]
+            head = urllib.parse.unquote(q.get("head", ""))
+            items = [p for p in self.pulls.get(repo, []) if p["state"] == q.get("state", "open")
+                     and (not head or head == f"{(p['head']['repo'] or {}).get('full_name', '').split('/')[0]}:{p['head']['ref']}")]
             return 200, items[(page - 1) * per:page * per]
         if rest == ["labels"]:
             page, per = int(q.get("page", 1)), int(q.get("per_page", 30))
