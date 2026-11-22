@@ -126,6 +126,23 @@ function Install-App {
     }
 }
 
+function Move-OldKeepers {
+    # Right after the update: a task or shortcut Stop-OldAgent stopped may still run the root keeper,
+    # which the update just removed (docs/adr/0012-launchers-in-bin.md). Point it at bin\ before
+    # anything can fail, so the catch below starts a keeper that exists. TODO(remove after 2027-02-01).
+    $old = '"{0}"' -f (Join-Path $App 'connect_win.py')
+    $new = '"{0}"' -f (Join-Path $App 'bin\connect_win.py')
+    foreach ($task in $state.Stopped) {
+        if (-not @($task.Actions | Where-Object { $_.Arguments -and $_.Arguments.Contains($old) }).Count) { continue }
+        $actions = @($task.Actions | ForEach-Object {
+            New-ScheduledTaskAction -Execute $_.Execute -Argument ([string]$_.Arguments).Replace($old, $new) -WorkingDirectory $_.WorkingDirectory })
+        Set-ScheduledTask -TaskName $task.TaskName -Action $actions | Out-Null
+    }
+    foreach ($link in $state.Relaunch) {
+        if ($link.Arguments.Contains($old)) { $link.Arguments = $link.Arguments.Replace($old, $new); $link.Save() }
+    }
+}
+
 function Install-Venv([string]$Python) {
     $venvPy = Join-Path $App '.venv\Scripts\python.exe'
     if (Test-Path $venvPy) {
@@ -239,6 +256,7 @@ try {
     $kindArgs = Get-KindArgs
     Stop-OldAgent
     Install-App
+    Move-OldKeepers
     $venvPy = Install-Venv $python
     Protect-Home
     Invoke-Checked 'connecting' {

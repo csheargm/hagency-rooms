@@ -92,10 +92,22 @@ class Migrate(unittest.TestCase):
         self.assertEqual((new.read_text(), other.read_text()), before)
         self.assertEqual(run.calls, [])
 
-    def test_a_refused_reload_is_said_not_swallowed(self):
-        self.place("launchd", "anna-agent", old_service("launchd", APP, "codex", "anna-agent"))
+    def test_a_refused_reload_is_said_and_tried_again_next_time(self):
+        """GPT review: a refused load must not leave a rewritten file the next run would skip."""
+        old = old_service("launchd", APP, "codex", "anna-agent")
+        path = self.place("launchd", "anna-agent", old)
         with self.assertRaisesRegex(RuntimeError, "Bootstrap failed"):
             self.migrate("launchd", Recorder(code=5))
+        self.assertEqual(path.read_text(), old)                       # as it was: still to do
+        self.assertEqual(self.migrate("launchd", Recorder()), [path.name])
+
+    def test_a_refused_systemd_reload_is_tried_again_next_time(self):
+        old = old_service("systemd", APP, "codex", "anna-agent")
+        unit = self.place("systemd", "anna-agent", old)
+        with self.assertRaisesRegex(RuntimeError, "systemd wouldn't reload"):
+            self.migrate("systemd", Recorder(code=1))
+        self.assertEqual(unit.read_text(), old)
+        self.assertEqual(self.migrate("systemd", Recorder()), [unit.name])
 
     def test_windows_and_no_service_manager_have_nothing_to_rewrite(self):
         for how in (agent_service.WINDOWS, None):
@@ -116,6 +128,16 @@ class WindowsKeeper(unittest.TestCase):
         ps1 = (ROOT / "client" / "connect.ps1").read_text()
         self.assertIn("$Keepers = @((Join-Path $App 'bin\\connect_win.py'), (Join-Path $App 'connect_win.py'))", ps1)
         self.assertIn("$runner = Join-Path $App 'bin\\connect_win.py'", ps1)   # new tasks run the new one
+
+    def test_after_the_update_a_stopped_old_task_is_moved_before_anything_can_fail(self):
+        """GPT review: a failed pairing starts the stopped task again; it must not name the removed root keeper."""
+        ps1 = (ROOT / "client" / "connect.ps1").read_text()
+        body = ps1[ps1.index("function Move-OldKeepers"):ps1.index("function Install-Venv")]
+        self.assertIn("Set-ScheduledTask -TaskName $task.TaskName -Action $actions", body)
+        self.assertIn("$link.Save()", body)
+        flow = ps1[ps1.index("    Stop-OldAgent\n"):]
+        self.assertLess(flow.index("Install-App"), flow.index("Move-OldKeepers"))
+        self.assertLess(flow.index("Move-OldKeepers"), flow.index("Invoke-Checked 'connecting'"))
 
 
 class ConnectRun(unittest.TestCase):

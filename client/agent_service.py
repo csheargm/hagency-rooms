@@ -206,26 +206,31 @@ def _moved(text: str, app: Path, how: str) -> str:
 def migrate(app: Path, run=subprocess.run, home: Path | None = None) -> list[str]:
     """Rewrite this installation's background services (every agent's, further ones too) that still
     run a launcher from the root, and load them again; the names of those rewritten. Windows: none
-    here (connect.ps1 registers its task afresh). A service that won't load again raises RuntimeError."""
+    here (connect.ps1 moves its task). A service manager that refuses raises RuntimeError, with that
+    file put back as it was, so the next connect run tries it again (GPT review)."""
     how = kind()
     if how not in ("launchd", "systemd"):
         return []
     folder = service_file(how, "x", home).parent
     pattern = f"{LABEL}.*.plist" if how == "launchd" else "hagency-agent-*.service"
-    done = []
+    done = {}
     for path in sorted(folder.glob(pattern)):
         text = path.read_text()
         new = _moved(text, app, how)
         if new == text:
             continue
         _write(path, new)
+        done[path] = text
         if how == "launchd":                  # launchd keeps the loaded arguments: load the file again
-            name = f"gui/{os.getuid()}/{path.stem}"
-            run(["launchctl", "bootout", name], capture_output=True)
+            run(["launchctl", "bootout", f"gui/{os.getuid()}/{path.stem}"], capture_output=True)
             r = run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(path)], capture_output=True, text=True)
             if r.returncode != 0:
+                _write(path, text)
                 raise RuntimeError(f"launchd wouldn't load {path.name} again: {(r.stderr or r.stdout or '').strip()[:200]}")
-        done.append(path.name)
     if done and how == "systemd":             # systemd reads ExecStart at the next start
-        run(["systemctl", "--user", "daemon-reload"], capture_output=True)
-    return done
+        r = run(["systemctl", "--user", "daemon-reload"], capture_output=True, text=True)
+        if r.returncode != 0:
+            for path, text in done.items():
+                _write(path, text)
+            raise RuntimeError(f"systemd wouldn't reload: {(r.stderr or r.stdout or '').strip()[:200]}")
+    return [path.name for path in done]

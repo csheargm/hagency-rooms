@@ -40,10 +40,12 @@ connect line (`git pull`, then `bin/connect.py`), so the rewrite happens there:
   **this installation** (all agents, further ones too) whose arguments name an old root launcher is
   rewritten to `bin/` with the same escaping/quoting, then loaded again (launchd: bootout + bootstrap,
   since it keeps the loaded copy; systemd: daemon-reload). Other installations' services are left
-  alone. A failure is printed and the run goes on (it installs this agent's own service afresh anyway).
+  alone. If the service manager refuses, the file is put back as it was (so the next run tries again),
+  the failure is printed and the run goes on (it installs this agent's own service afresh anyway).
 - Windows: `connect.ps1` recognises keepers at both the old and the new path (`$Keepers`), so it
-  stops and replaces the old task; new tasks run `bin\connect_win.py`. `agent_service._ours` (stop)
-  recognises both too.
+  stops and replaces the old task; new tasks run `bin\connect_win.py`. Right after the update,
+  `Move-OldKeepers` points the stopped task or shortcut at `bin\`, so a run that then fails (an
+  expired code) starts a keeper that exists. `agent_service._ours` (stop) recognises both too.
 - Hermes profiles' `hagency_mcp.py` path is rewritten by `hermes_profile.set_code_dir` every time the
   supervisor starts a Hermes gateway, and by the connect run's set-up.
 - An owner's own version (customize) made before the move has no `bin/bridge.py`: it runs the
@@ -55,8 +57,8 @@ Compatibility stubs at the old root names were considered and not kept: the rewr
 (it replaces only the argument strings the old code wrote for this installation's own path) and
 runs on the one path every update takes.
 
-TODO(remove after 2027-02-01): `agent_service.OLD_ROOT_LAUNCHERS` / `OLD_ROOT_LAUNCHERS_WIN` and
-`migrate`, the root entry of `$Keepers` in `connect.ps1`, and the `./local.env` fallback in
+TODO(remove after 2027-02-01): `agent_service.OLD_ROOT_LAUNCHERS`, the old half of `keeper_paths`
+and `migrate`, the root entry of `$Keepers` and `Move-OldKeepers` in `connect.ps1`, and the `./local.env` fallback in
 `local/start.sh`.
 
 ## Consequences
@@ -67,5 +69,11 @@ TODO(remove after 2027-02-01): `agent_service.OLD_ROOT_LAUNCHERS` / `OLD_ROOT_LA
   the update: it is now `~/.hagency/app/bin/connect.py --stop`; Disconnect in the panel still works.
 - A local `start.sh` supervisor that was already running when its checkout is updated starts its
   children by the old relative path: start it again as `local/start.sh`.
+- The installer comes from the deployed server, the code from master. Between this merge and its
+  deploy, the previous server's installer pulls the new tree and then can't find the root
+  `connect.py`: deploy right after merging. For the same reason, don't roll the public server back
+  to a commit from before this change; fix forward instead. Root stubs would cover this window, at
+  the cost of a root with 11 files kept for one release. We chose not to keep them, given very few
+  installs and a window of minutes.
 - `deploy/release.py` and `bootstrap.sh` now look for `bin/loop.py`; deploying a commit from before
   this change uses that commit's own copies, so a rollback still works.

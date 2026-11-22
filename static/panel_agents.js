@@ -24,7 +24,7 @@ function stopButton(a) {
 }
 function stopHint(a) {
   if (a.stopped) return '<div class="hint">Stopped: it ignores messages and tasks until you click Start.</div>';
-  return a.hermes && a.online === true ? '<div class="hint">To stop a Hermes agent, run <code>connect.py --stop</code> on its computer.</div>' : "";
+  return a.hermes && a.online === true ? '<div class="hint">To stop a Hermes agent, run <code>~/.hagency/app/.venv/bin/python ~/.hagency/app/bin/connect.py --stop</code> on its computer.</div>' : "";
 }
 // Remove is for good, so it asks twice in the page (Element's widget frame may block confirm()).
 let removeArmed = {agent: "", until: 0};

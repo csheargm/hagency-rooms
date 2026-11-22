@@ -27,7 +27,7 @@ def running_dir(owner: str) -> Path:
     folder, or for Hermes the folder of the hagency_mcp.py it started."""
     if registry.load().get(registry.person_id(owner), {}).get("agent") == "hermes":
         cmds = subprocess.run(["pgrep", "-fl", "hagency_mcp.py"], capture_output=True, text=True).stdout.split()
-        return Path(next(c for c in cmds if c.endswith("hagency_mcp.py"))).resolve().parent
+        return Path(next(c for c in cmds if c.endswith("hagency_mcp.py"))).resolve().parent.parent   # <dir>/bin/
     pid = subprocess.run(["pgrep", "-f", f"bridge.py {owner} --agent"], capture_output=True, text=True).stdout.split()[0]
     out = subprocess.run(["lsof", "-a", "-p", pid, "-d", "cwd", "-Fn"], capture_output=True, text=True).stdout
     return Path(next(line[1:] for line in out.splitlines() if line.startswith("n"))).resolve()

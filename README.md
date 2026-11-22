@@ -262,7 +262,7 @@ short reply.
 ## Stop / reset
 
 ```bash
-docker compose down      # in your clone
+docker compose -f local/docker-compose.yml down      # in your clone
 ```
 
 Delete `data/`, `.env` and `rooms/` to start from scratch.

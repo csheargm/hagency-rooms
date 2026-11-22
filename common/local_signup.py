@@ -23,6 +23,7 @@ sys.path.append(str(ROOT / "deploy"))           # the public server's settings, 
 from configure_synapse import WELCOME_LOCALPART, module_settings, set_keys, welcome_settings  # noqa: E402
 
 CONFIG = ROOT / "data" / "homeserver.yaml"
+COMPOSE = ["docker", "compose", "-f", str(ROOT / "local" / "docker-compose.yml")]   # local/start.sh's stack
 ADMIN = "admin-bot"                    # a -bot: never treated as a person (no welcome, no agent)
 TOKEN_DAYS = 7
 SIGNUP = {"enable_registration": "true", "registration_requires_token": "true", "allow_guest_access": "false"}
@@ -43,16 +44,20 @@ def setup() -> bool:
     tmp.write_text(new)
     tmp.chmod(CONFIG.stat().st_mode & 0o777)
     tmp.replace(CONFIG)
-    # up, not restart: a container made before the module mount (compose) must be recreated with it
-    subprocess.run(["docker", "compose", "up", "-d", "synapse"], cwd=ROOT, check=True)   # this folder's compose only
-    subprocess.run(["docker", "compose", "restart", "synapse"], cwd=ROOT, check=True)
+    try:
+        # up, not restart: a container made before the module mount (compose) must be recreated with it
+        subprocess.run([*COMPOSE, "up", "-d", "synapse"], cwd=ROOT, check=True)   # this folder's compose only
+        subprocess.run([*COMPOSE, "restart", "synapse"], cwd=ROOT, check=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        CONFIG.write_text(old)            # not applied: the next `setup` tries again (GPT review)
+        raise SystemExit(f"couldn't restart Synapse ({e}); nothing changed, run setup again") from e
     for _ in range(60):
         try:
             with urllib.request.urlopen(f"{HS}/_matrix/client/versions", timeout=2):
                 return True
         except OSError:
             time.sleep(1)                 # still starting
-    raise SystemExit("Synapse didn't come back within 60 s: docker compose logs synapse")
+    raise SystemExit("Synapse didn't come back within 60 s: docker compose -f local/docker-compose.yml logs synapse")
 
 
 def admin_call(method: str, path: str, body: dict) -> dict:
