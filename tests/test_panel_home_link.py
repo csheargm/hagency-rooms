@@ -73,12 +73,13 @@ class Link(unittest.TestCase):
 class Click(unittest.TestCase):
     def click(self, scenario: str, modifier: str = "") -> dict:
         page = re.search(r"<script>(.*)</script>", panel.PAGE.replace("__EMBEDDERS__", "[]"), re.S).group(1)
-        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as h:
-            h.write(HARNESS)
+        fd, script = tempfile.mkstemp(suffix=".js")
         try:
-            done = subprocess.run([NODE, h.name, page, scenario, modifier], capture_output=True, text=True, timeout=30)
+            with os.fdopen(fd, "w") as h:
+                h.write(HARNESS)
+            done = subprocess.run([NODE, script, page, scenario, modifier], capture_output=True, text=True, timeout=30)
         finally:
-            os.unlink(h.name)
+            os.unlink(script)
         self.assertEqual(done.returncode, 0, done.stderr[-800:])
         return json.loads(done.stdout)
 
