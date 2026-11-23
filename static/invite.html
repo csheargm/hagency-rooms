@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="hagency-homeserver" content="__HAGENCY_HOMESERVER__">
+<meta name="hagency-element" content="__HAGENCY_ELEMENT__">
+<title>Join a room on Hagency Rooms</title>
+<link rel="stylesheet" href="/invite/page.css">
+<script src="/invite/page.js" defer></script>
+</head>
+<body>
+<main>
+  <h1 id="title">Join a room on Hagency Rooms</h1>
+  <p id="lead" class="lead">Checking your invite link…</p>
+  <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+  <section id="signin" hidden>
+    <div id="sso"></div>
+    <form id="password" autocomplete="on">
+      <h2>Sign in with your username and password</h2>
+      <label for="user">Username</label>
+      <input id="user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      <label for="pass">Password</label>
+      <input id="pass" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit" class="primary">Sign in and join</button>
+    </form>
+    <h2>New to Hagency Rooms?</h2>
+    <p id="new-sso" class="small" hidden>With Google or GitHub, your account is made as you sign in above.</p>
+    <p class="small">Or <a id="register" target="_blank" rel="noopener">create an account</a>
+      (it opens in a new tab). When it's done, come back to this tab and sign in above: this link will
+      still work. If sign-up asks for a registration token, ask the person who sent you this link for one.</p>
+    <p class="small">Your password goes straight to Hagency Rooms' own sign-in, the same one the app uses.</p>
+  </section>
+</main>
+</body>
+</html>

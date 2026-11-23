@@ -185,6 +185,8 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         return await loop.github_action(user, value)
     if action in console_repo.ACTIONS:    # the room's repo: choose, remove, check readiness
         return await console_repo.act(loop, room, user, action, value)
+    if action == "invite_link":           # pm_invite.py: the link goes to our private chat
+        return await loop.make_invite_link(room, user)
     if action == "visibility":            # pm_projects.py: who can find and join this room
         answer = await loop.set_visibility(room, user, value)
         await loop.say(room_id, answer)
@@ -229,7 +231,7 @@ NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 def routes(loop, panel_html_fn) -> list:
-    from server import connect_page                       # here, not at the top: it uses this module (an import cycle)
+    from server import connect_page, invite_page          # here, not at the top: they use this module (an import cycle)
     global panel_html
     panel_html = panel_html_fn
 
@@ -273,7 +275,7 @@ def routes(loop, panel_html_fn) -> list:
                                           str(body.get("value", "")), str(body.get("agent", ""))[:120])})
     return [web.post("/auth/openid", auth_openid), web.post("/auth/link", auth_link),
             web.get("/console/state", state), web.post("/console/action", action),
-            *connect_page.routes()]                # the Connect page and the Windows installer
+            *connect_page.routes(), *invite_page.routes(loop)]   # the Connect page and installer; invite links
 
 
 panel_html = None                             # set by routes(): panel.render, kept out of an import cycle

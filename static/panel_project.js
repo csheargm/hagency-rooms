@@ -15,7 +15,9 @@ function projectCard(s) {
       : esc(s.runs_in.name)}: this room discusses it, and its mode stays off.</div></section>`;
   const vis = s.visibility || "private";
   h += `<section class="card"><h2>Who can join</h2>${buttons("visibility", ["private", "listed", "open"], vis, s.moderator)}
-    <div class="hint">${esc(VISIBILITY[vis] || "")}${s.moderator ? "" : " Only the owner or a maintainer can change it."}</div></section>`;
+    <div class="hint">${esc(VISIBILITY[vis] || "")}${s.moderator ? "" : " Only the owner or a maintainer can change it."}</div>
+    ${s.moderator ? `<div class="hint"><button data-a="invite_link">Make an invite link</button> I'll send it to our private
+      chat. It lets one person in, once, within 7 days, even if they don't have an account yet.</div>` : ""}</section>`;
   return h;
 }
 let unrepoArmed = {repo: "", until: 0};   // the repo a first click armed, until when (GPT review: never

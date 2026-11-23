@@ -47,6 +47,7 @@ HELP = ("Talk to me in plain words, for example:\n"
         "- **@pm this room works on owner/name**: the GitHub repo for this room (one room per repo); "
         "**@pm remove the repo** takes it off\n"
         "- **@pm make me a project room**, **@pm find a project**, **@pm ask to join owner/name**\n"
+        "- **@pm invite link**: a link that lets one person in, even without an account yet (owner or maintainer)\n"
         "- **@pm make this room listed** (or private, or open): who can find and join it (owner or maintainer)\n"
         "The pinned **Project status** and the **Hagency** panel show progress live.")
 

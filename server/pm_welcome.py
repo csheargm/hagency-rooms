@@ -32,6 +32,7 @@ from common import intents
 from server.pm_address import unaddressed
 from server.pm_first import BRING, HOUSE, FirstAgent, picked_from
 from server.pm_github import GitHubLink
+from server.pm_invite import InviteLinks
 from server.pm_lobby import WELCOME_NAME, WELCOME_TOPIC, Lobby
 from server.pm_presence import DISCONNECT_RE
 from server.pm_stop import STOP_RE, wants_stop
@@ -64,7 +65,7 @@ def pointer(person: str) -> str:
     return (POINTER if identity.split(person)[1] == SERVER_NAME else POINTER_REMOTE).format(person=person)
 
 
-class Welcome(Lobby, GitHubLink, FirstAgent):   # pm_github.py: Connect GitHub, answered first; pm_first.py: 🔌
+class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Connect GitHub, answered first; pm_first.py: 🔌; pm_invite.py
     def welcomes(self) -> dict:
         """person → {"dm", "offer" (event id), "done" (buttons used)}, on disk: welcomed once."""
         if "_welcomes" not in self.__dict__:
@@ -180,8 +181,8 @@ class Welcome(Lobby, GitHubLink, FirstAgent):   # pm_github.py: Connect GitHub, 
 
     async def on_welcome_text(self, room: MatrixRoom, event: RoomMessageText) -> bool:
         """True if the message was about getting an agent (answered here)."""
-        if await self.on_github_text(room, event) or await self.on_add_text(room, event) \
-                or await self.on_project_text(room, event):   # pm_github, pm_agents, pm_projects
+        if await self.on_invite_text(room, event) or await self.on_github_text(room, event) or await self.on_add_text(room, event) \
+                or await self.on_project_text(room, event):   # pm_invite, pm_github, pm_agents, pm_projects
             return True
         entry = self.welcomes().get(event.sender) or {}
         in_dm = room.room_id == entry.get("dm") or self.is_one_to_one(room, event.sender)   # pm_address.py
