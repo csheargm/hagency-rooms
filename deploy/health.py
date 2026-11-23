@@ -78,6 +78,7 @@ def checks(rooms: str, matrix: str, console: str, domain: str, server: str, publ
              lambda: f"#/user/@pm:{server}?action=chat" in fetch(f"{rooms}/hagency/home.html")[1]),
             ("Element's home page has the step ① and ③ buttons",
              lambda: all(f'<a href="{p}"' in fetch(f"{rooms}/hagency/home.html")[1] for p in ("/connect/new", "/invite/new"))),
+            ("the privacy policy served", lambda: "<h1>Privacy</h1>" in fetch(f"{rooms}/hagency/privacy.html")[1]),
         ]
     return items
 

@@ -105,7 +105,7 @@ class HomePage(unittest.TestCase):
         self.assertEqual(steps, sorted(steps))
         self.assertIn("What is this?", self.text)
         self.assertEqual(self.page.links, ["#/user/@pm:matrix.example.org?action=chat", "/connect/new", "#/new", "#/directory",
-                                           "/invite/new"])
+                                           "/invite/new", "/privacy"])
 
     def test_steps_one_and_three_are_buttons_to_pms_sign_in_pages(self):
         """Owner request (ADR 0015): step ① gets the install line and step ③ an invite link right from
@@ -127,7 +127,7 @@ class HomePage(unittest.TestCase):
         """Element keeps #/ links as they are (same tab, its router): #/user/<id>?action=chat opens or
         starts the chat with that user (MatrixChat.viewUser → chatCreateOrReuse), #/new the new-room dialog."""
         for link in self.page.links:
-            self.assertTrue(link.startswith("#/") or link in ("/connect/new", "/invite/new"), link)   # or @pm's pages
+            self.assertTrue(link.startswith("#/") or link in ("/connect/new", "/invite/new", "/privacy"), link)   # or @pm's pages, the policy
         self.assertNotIn(element_home.PM_PLACEHOLDER, self.text)
 
     def test_survives_elements_sanitiser(self):
@@ -170,7 +170,7 @@ class Written(unittest.TestCase):
                 os.umask(old)
             site = Path(d) / element_home.OUT
             self.assertEqual(site.stat().st_mode & 0o777, 0o755)
-            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "home.html", "logo.svg"])
+            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "home.html", "logo.svg", "privacy.html"])
             for f in site.iterdir():
                 self.assertEqual(f.stat().st_mode & 0o777, 0o644, f.name)
             self.assertIn("#/user/@pm:matrix.example.org", (site / "home.html").read_text())
@@ -201,6 +201,19 @@ class Served(unittest.TestCase):
         self.assertIn("Element's home page links to @pm", names)
         self.assertIn("Element's home page has the step ① and ③ buttons", names)
         self.assertIn("Get your agent and Make an invite link served (ADR 0015)", names)
+        self.assertIn("the privacy policy served", names)
+
+    def test_privacy_has_a_short_address_and_is_linked_from_home(self):
+        rooms = (HERE / "Caddyfile").read_text().split("{$ROOMS_DOMAIN} {")[1].split("\n}")[0]
+        self.assertIn("redir /privacy /hagency/privacy.html 308", rooms)
+        self.assertLess(rooms.index("redir /privacy"), rooms.index("reverse_proxy element:80"))
+        self.assertIn('<a href="/privacy"', (element_home.SOURCE / "home.html").read_text())
+
+    def test_privacy_page_is_written_out_with_the_rest(self):
+        page = element_home.files(VALUES)["privacy.html"]
+        self.assertIn("<h1>Privacy</h1>", page)
+        self.assertIn("90 days", page)          # must match configure_synapse's media_retention:
+        self.assertIn("local_media_lifetime: 90d", (HERE / "configure_synapse.py").read_text())
 
 
 if __name__ == "__main__":

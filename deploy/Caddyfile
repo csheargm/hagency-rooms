@@ -11,9 +11,10 @@
 	handle @pm {
 		reverse_proxy pm:8650
 	}
-	# Hagency's home page for Element and its login logo and background (element_home.py writes them).
-	# Only these three names: nothing else that might sit in the folder is ever served.
-	@hagency path /hagency/home.html /hagency/logo.svg /hagency/background.svg
+	# Hagency's home page for Element, its login logo and background, and the privacy policy (element_home.py
+	# writes them). Only these names: nothing else that might sit in the folder is ever served.
+	redir /privacy /hagency/privacy.html 308
+	@hagency path /hagency/home.html /hagency/logo.svg /hagency/background.svg /hagency/privacy.html
 	handle @hagency {
 		uri strip_prefix /hagency
 		root * /srv/element-home
