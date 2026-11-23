@@ -75,7 +75,8 @@ class Planner:
         for ev in reversed(events):
             content = ev.get("content", {})
             body = content.get("body", "")
-            if not include_self and ev.get("sender") == self.user_id and FILED_RE.match(body):
+            if (not include_self and ev.get("sender") == self.user_id and FILED_RE.match(body)
+                    and "format" in content):     # a model's reply is sent plain (say(plain=True)): never this line
                 lines = []                    # filed already: only what was said since is a new ask (live test)
                 continue
             if (ev.get("type") != "m.room.message" or (ev.get("sender") == self.user_id and not include_self)

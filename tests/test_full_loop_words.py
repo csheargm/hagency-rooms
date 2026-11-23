@@ -11,19 +11,26 @@ from server import pm_plan
 PM = "@pm:x"
 
 
-def msg(sender, body):
-    return {"type": "m.room.message", "sender": sender, "content": {"body": body}}
+def msg(sender, body, formatted=False):
+    content = {"body": body, **({"format": "org.matrix.custom.html"} if formatted else {})}
+    return {"type": "m.room.message", "sender": sender, "content": content}
 
 
 class Discussion(unittest.TestCase):
     def test_a_new_plan_reads_only_what_was_said_after_the_last_filed_one(self):
         """Live: "add LOOP_TEST.md" was planned together with the older, already filed GH_LIVE_TEST.md."""
-        events = [msg("@g:x", "add GH_LIVE_TEST.md"), msg(PM, pm_plan.OPENED + "#166. The agents start on them now."),
+        events = [msg("@g:x", "add GH_LIVE_TEST.md"), msg(PM, pm_plan.OPENED + "#166. The agents start on them now.", formatted=True),
                   msg("@g:x", "add LOOP_TEST.md")]
         lp = SimpleNamespace(user_id=PM, client=SimpleNamespace(access_token="t"))
         with mock.patch.object(pm_plan, "api", return_value={"chunk": list(reversed(events))}):
             said = pm_plan.Planner.discussion(lp, "!r")
         self.assertEqual(said, "g: add LOOP_TEST.md")
+
+    def test_a_plain_model_reply_that_looks_like_the_filing_line_resets_nothing(self):
+        events = [msg("@g:x", "add A"), msg(PM, "Opened #1. The agents start on them now."), msg("@g:x", "add B")]
+        lp = SimpleNamespace(user_id=PM, client=SimpleNamespace(access_token="t"))
+        with mock.patch.object(pm_plan, "api", return_value={"chunk": list(reversed(events))}):
+            self.assertEqual(pm_plan.Planner.discussion(lp, "!r"), "g: add A\ng: add B")
 
 
 class OwnPullRequest(unittest.TestCase):
