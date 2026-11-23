@@ -6,6 +6,7 @@ opens the issues under its own GitHub identity → the loop picks them up.
 the writing, so planning runs on the requester's model and account. Mixed into loop.Loop.
 """
 import asyncio
+import re
 import time
 import urllib.parse
 import uuid
@@ -30,6 +31,8 @@ AFTER_APPROVAL = {"autonomous": "Then the room runs on its own: build → review
 
 # Live test 2026-11-23 (a 3B local model): "⚠️ plan didn't work: the plan wasn't valid JSON: Expecting ','
 # delimiter…" told a newcomer nothing they could act on.
+OPENED = "Opened "                   # @pm's line after filing a plan: a new plan's discussion starts after it
+FILED_RE = re.compile(r"^Opened #\d+(, #\d+)*\. ")   # exactly that line (GPT review: not any reply starting "Opened")
 PLAN_FAILED = ("⚠️ {agent} couldn't turn the discussion into a plan ({why}). Small local models often can't. "
                "Say \"@pm let's build it\" to try again; I plan with the first agent of whoever asks, so someone "
                "whose first agent runs a stronger AI can ask instead.")
@@ -72,6 +75,10 @@ class Planner:
         for ev in reversed(events):
             content = ev.get("content", {})
             body = content.get("body", "")
+            if (not include_self and ev.get("sender") == self.user_id and FILED_RE.match(body)
+                    and "format" in content):     # a model's reply is sent plain (say(plain=True)): never this line
+                lines = []                    # filed already: only what was said since is a new ask (live test)
+                continue
             if (ev.get("type") != "m.room.message" or (ev.get("sender") == self.user_id and not include_self)
                     or not body or body.lstrip("* ").startswith("📋")
                     or github.TASK_KEY in content or github.RESULT_KEY in content or "m.new_content" in content
@@ -99,7 +106,7 @@ class Planner:
             nxt = ("The agents start on them now." if await self.level(rid) != "off" else
                    'Say "take it all the way" or "let us approve each change" to start building.')
             self.note_outcome(plan.get("proposal"), f"approved, and I opened {numbers}")
-            await self.say(rid, f"Opened {numbers}. {nxt}")
+            await self.say(rid, f"{OPENED}{numbers}. {nxt}")
 
     async def propose(self, rid: str, plan: dict, items: object) -> None:
         try:

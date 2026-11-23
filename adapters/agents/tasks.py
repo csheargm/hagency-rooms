@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from adapters.agents import agents
+from adapters.agents import own_account
 from common import github
 from adapters.agents import planning
 from common.redact import public_safe, room_safe
@@ -142,8 +143,14 @@ async def review(agent: str, backend: str, base: Path, task: dict) -> dict:
 
 async def submit_review(agent: str, n: int, pr: int, head: str, verdict: str, text: str, repo: str) -> dict:
     # Pinned to the commit that was reviewed: a later push isn't covered by this approval.
-    await run(["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", f"event={verdict}",
-               "-f", f"commit_id={head}", "-f", f"body=`{agent}` review:\n\n{text[:3000]}"], agent)
+    body = f"`{agent}` review:\n\n{public_safe(text)[:3000]}"
+    try:
+        await run(["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", f"event={verdict}",
+                   "-f", f"commit_id={head}", "-f", f"body={body}"], agent)
+    except GitHubError as e:
+        if "422" in str(e) and await own_account.opened_it(agent, pr, repo):
+            raise TaskError(own_account.SAME_ACCOUNT.format(agent=agent, pr=pr)) from e
+        raise
     word = "approved" if verdict == "APPROVE" else "changes requested on"
     return {"kind": "review", "issue": n, "pr": pr, "sha": head, "verdict": verdict.lower(),
             "reasons": room_safe(text, MAX_FEEDBACK), "line": f"{word} PR #{pr}"}
