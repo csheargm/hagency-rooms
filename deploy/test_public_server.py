@@ -216,8 +216,18 @@ class Deploy(unittest.TestCase):
         boot = (here / "bootstrap.sh").read_text()
         self.assertIn('[ "$(get PM_UID)" = "$(id -u)" ]', boot)
         self.assertIn("not root", boot)
-        self.assertIn("env -u PM_UID docker compose", boot)                       # the shell can't override .env
+        self.assertIn("env -u PM_UID HAGENCY_BIND_IP=", boot)                     # the shell can't override .env
         self.assertIn('user: "${PM_UID}:${PM_UID}"', (here / "docker-compose.yml").read_text())
+
+    def test_caddy_binds_the_default_routes_address_not_every_address(self):
+        """Live 2026-11-23: after a reboot tailscale serve held :443 on tailscale0, and Caddy's 0.0.0.0:443 failed."""
+        here = Path(__file__).parent
+        compose = (here / "docker-compose.yml").read_text()
+        for port in ("80", "443", "8448"):
+            self.assertIn(f'"${{HAGENCY_BIND_IP:-0.0.0.0}}:{port}:{port}"', compose)
+        boot = (here / "bootstrap.sh").read_text()
+        self.assertIn("ip -4 route get 1.1.1.1", boot)
+        self.assertIn('HAGENCY_BIND_IP="$BIND_IP" docker compose', boot)
 
     def test_the_site_is_not_served_here_any_more(self):
         here = Path(__file__).parent
