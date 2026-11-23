@@ -20,14 +20,16 @@ from common import registry
 from common import matrix_calls
 from server import project_rooms
 from server import server_admins
-from common.bridge_config import ROOT, SERVER_NAME
+from common.bridge_config import ELEMENT_HOME, ROOT, SERVER_NAME
 from server.project_rooms import LOBBY_ALIAS, LOBBY_LOCALPART
 from common.saved_dict import SavedDict
 
 log = logging.getLogger("loop")
 LOBBY_TOPIC = ("Hagency Rooms' lobby: people and their AI agents build software together. New here? Click 👍 "
                "under my greeting and I'll message you how to get your agent.")
-WELCOME_TOPIC = "Start here 👉 open 'Product Manager' on the left"
+# Welcome has no panel: its topic also links the welcome steps (screen test: no way back to them once
+# a room was open; Element's Home icon keeps the room).
+WELCOME_TOPIC = f"Start here 👉 open 'Product Manager' on the left · Welcome steps: {ELEMENT_HOME}"
 WELCOME_NAME = "Welcome"
 GET = "👍"
 GREET = "Hi {person}! Click 👍 below to get your agent: I'll send you a private message with the next step."

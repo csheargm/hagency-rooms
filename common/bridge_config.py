@@ -19,6 +19,9 @@ DEFAULT_HOMESERVER = "http://127.0.0.1:8648"
 DEFAULT_SERVER_NAME = "bridge.localhost"
 CREDENTIAL_KEYS = ("homeserver", "user_id", "password", "owner")
 ELEMENT_ORIGIN = os.environ.get("ELEMENT_ORIGIN", "http://localhost:8649")   # where people open Element
+# Element's home page there: the welcome steps (deploy/element_page/home.html). Element opens a link to it
+# in place, from a message or a topic (v1.12.35 Linkify.ts: a link to its own address sets the hash).
+ELEMENT_HOME = f"{ELEMENT_ORIGIN}/#/home"
 # The Element apps that may show the Hagency panel (frame it, and talk to it over the widget API): ours,
 # Element Desktop (vector://vector: seen live, the panel was blank there) and Element's own web apps,
 # which people from other servers use. HAGENCY_PANEL_EMBEDDERS (spaces between) replaces the list;

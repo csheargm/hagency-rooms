@@ -14,7 +14,7 @@ import markdown
 from aiohttp import web
 
 from server import console
-from common.bridge_config import ELEMENT_ORIGIN, panel_embedders
+from common.bridge_config import ELEMENT_HOME, ELEMENT_ORIGIN, panel_embedders
 from server import remote_agent
 from common import github
 from common import identity
@@ -61,6 +61,7 @@ log = logging.getLogger("loop")
 
 PAGE = (STATIC / "panel.html").read_text(encoding="utf-8").replace("__REFRESH_MS__", str(REFRESH_MS))
 PAGE = PAGE.replace("__SIGNIN_MS__", str(SIGNIN_MS))
+PAGE = PAGE.replace("__ELEMENT_HOME__", html.escape(ELEMENT_HOME, quote=True))
 PAGE = PAGE.replace("__SCRIPTS__", "".join(f'<script src="{name}"></script>' for name in SCRIPTS))
 
 

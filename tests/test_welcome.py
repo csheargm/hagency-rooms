@@ -176,7 +176,7 @@ class Greeting(Base):
         self.run_(self.lp.ensure_welcome_room())
         kw = self.lp.client.room_create.call_args_list[0].kwargs
         self.assertEqual((kw["alias"], kw["preset"].value), ("welcome", "private_chat"))
-        self.assertEqual(kw["topic"], "Start here 👉 open 'Product Manager' on the left")
+        self.assertEqual(kw["topic"], pm_welcome.WELCOME_TOPIC)   # its text: test_panel_home_link
         matrix_calls.room_of_alias.return_value = "!w"
         self.lp.client.room_create.reset_mock()
         self.lp.client.rooms = {}
