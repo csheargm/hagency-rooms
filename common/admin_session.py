@@ -42,9 +42,12 @@ def read() -> dict | None:
         return None
     at = kept.get("at") if isinstance(kept, dict) else None
     if not isinstance(kept, dict) or not isinstance(kept.get("token"), str) or not isinstance(at, (int, float)) \
-            or isinstance(at, bool) or not math.isfinite(at):
+            or isinstance(at, bool):
         return None
-    return kept
+    try:
+        return kept if math.isfinite(at) else None
+    except OverflowError:                     # a huge integer (GPT review): damaged, replaced like any other
+        return None
 
 
 def retire(token: str) -> None:
@@ -54,29 +57,53 @@ def retire(token: str) -> None:
 
 
 def write(token: str) -> None:
-    fd, tmp = tempfile.mkstemp(dir=FILE.parent, prefix=".admin-bot-session.", suffix=".tmp")   # O_EXCL, mode 600
+    tmp = None
     try:
+        fd, tmp = tempfile.mkstemp(dir=FILE.parent, prefix=".admin-bot-session.", suffix=".tmp")   # O_EXCL, mode 600
         with os.fdopen(fd, "w") as f:
             json.dump({"token": token, "at": time.time()}, f)
         os.replace(tmp, FILE)
     except OSError:
-        with contextlib.suppress(OSError):
+        with contextlib.suppress(OSError, TypeError):
             os.unlink(tmp)
         retire(token)                         # not kept: never left signed in untracked
         raise
 
 
+class Limited(Exception):
+    """Synapse asked admin-bot's sign-in to wait (try_login's sleep, turned into a way out of the lock)."""
+
+
+def limited(pause: float) -> None:
+    raise Limited(pause)
+
+
 def current(user: str, password: str, failed: str | None = None) -> str:
-    """The kept token if young enough and not the one that just failed; else sign in, under the lock."""
-    with locked():
-        kept = read()
-        if kept and kept["token"] != failed and 0 <= time.time() - kept["at"] < MAX_AGE_S:
-            return kept["token"]              # another process may have replaced it meanwhile: use theirs
-        if kept and kept["token"] != failed:
-            retire(kept["token"])             # an hour old
-        token = setup_accounts.login(user, password)
-        write(token)
-        return token
+    """The kept token if young enough and not the one that just failed; else sign in, under the lock.
+    A sign-in Synapse holds back is waited out OUTSIDE the lock (GPT review: other admin calls queued for
+    up to LOGIN_WAIT_S), then the file is read again: another process may have signed in meanwhile."""
+    waited = 0.0
+    while True:
+        with locked():
+            kept = read()
+            if kept and kept["token"] != failed and 0 <= time.time() - kept["at"] < MAX_AGE_S:
+                return kept["token"]          # another process may have replaced it meanwhile: use theirs
+            if kept and kept["token"] != failed:
+                retire(kept["token"])         # an hour old
+            try:
+                token = setup_accounts.try_login(user, password, sleep=limited)
+            except Limited as e:
+                pause = e.args[0]
+            else:
+                if not token:
+                    raise SystemExit(f"login failed for {user}")
+                write(token)
+                return token
+        if waited >= setup_accounts.LOGIN_WAIT_S:
+            raise setup_accounts.AccountError(f"Synapse is still limiting @{user}'s sign-ins; try again later")
+        log.warning("Synapse limits %s's sign-ins: waiting %.0fs", user, pause)
+        time.sleep(pause)
+        waited += pause
 
 
 def caller(user: str, password: str):

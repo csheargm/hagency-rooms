@@ -20,7 +20,12 @@ class Kept(unittest.TestCase):
         self.tokens = iter(["t1", "t2", "t3"])
         self.unknown = set()
 
-        def login(user, password):
+        self.limited = 0                                     # how many sign-ins Synapse holds back first
+
+        def login(user, password, sleep=None):
+            if self.limited:
+                self.limited -= 1
+                sleep(0.01)                                  # try_login's wait: admin_session turns it into a way out
             self.logins.append(user)
             return next(self.tokens)
 
@@ -32,7 +37,7 @@ class Kept(unittest.TestCase):
                 return {"_status": 403, "errcode": "M_FORBIDDEN"}
             return {"ok": True}
         for p in (mock.patch.object(admin_session, "FILE", self.file),
-                  mock.patch.object(admin_session.setup_accounts, "login", login),
+                  mock.patch.object(admin_session.setup_accounts, "try_login", login),
                   mock.patch.object(admin_session, "api", api)):
             p.start()
             self.addCleanup(p.stop)
@@ -64,7 +69,8 @@ class Kept(unittest.TestCase):
     def test_a_damaged_or_future_dated_file_means_a_fresh_sign_in(self):
         self.file.parent.mkdir(parents=True)
         for bad in ("{not json", json.dumps({"token": 5}), json.dumps({"token": "x", "at": None}),
-                    json.dumps({"token": "x", "at": "bad"}), json.dumps({"token": "x", "at": True})):
+                    json.dumps({"token": "x", "at": "bad"}), json.dumps({"token": "x", "at": True}),
+                    '{"token": "x", "at": 1' + "0" * 400 + '}'):
             self.file.write_text(bad)
             self.assertIsNone(admin_session.read(), bad)    # GPT review: a bad "at" never breaks every admin call
         self.file.write_text(json.dumps({"token": "x", "at": time.time() + 999}))
@@ -83,12 +89,12 @@ class Kept(unittest.TestCase):
     def test_two_callers_at_once_share_one_sign_in(self):
         """GPT review: both saw no session and both signed in, leaving one untracked."""
         import threading
-        slow = admin_session.setup_accounts.login
+        slow = admin_session.setup_accounts.try_login
 
-        def login(user, password):
+        def login(user, password, sleep=None):
             time.sleep(0.2)                                  # the window where the other caller looks
-            return slow(user, password)
-        with mock.patch.object(admin_session.setup_accounts, "login", login):
+            return slow(user, password, sleep)
+        with mock.patch.object(admin_session.setup_accounts, "try_login", login):
             got = []
             threads = [threading.Thread(target=lambda: got.append(admin_session.current("admin-bot", "pw")))
                        for _ in range(2)]
@@ -97,6 +103,25 @@ class Kept(unittest.TestCase):
             for t in threads:
                 t.join()
         self.assertEqual((self.logins, got), (["admin-bot"], ["t1", "t1"]))
+
+    def test_a_held_back_sign_in_waits_outside_the_lock_and_uses_a_session_made_meanwhile(self):
+        """GPT review: the lock was held through Synapse's sign-in wait (up to 15 minutes)."""
+        self.limited = 1
+        free = []
+
+        def sleep(pause):
+            with admin_session.locked():                     # would deadlock if the wait held the lock
+                free.append(pause)
+                admin_session.write("made-meanwhile")       # another process signed in
+        with mock.patch.object(admin_session.time, "sleep", sleep):
+            self.assertEqual(admin_session.current("admin-bot", "pw"), "made-meanwhile")
+        self.assertEqual((free, self.logins), ([0.01], []))
+
+    def test_a_temp_file_that_cant_be_made_signs_the_session_out(self):
+        with mock.patch.object(admin_session.tempfile, "mkstemp", side_effect=OSError("no inodes")), \
+                self.assertRaises(OSError):
+            admin_session.current("admin-bot", "pw")
+        self.assertIn(("/_matrix/client/v3/logout", "t1"), self.calls)
 
     def test_other_errors_are_returned_not_retried(self):
         call = admin_session.caller("admin-bot", "pw")
