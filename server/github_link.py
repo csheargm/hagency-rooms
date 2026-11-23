@@ -81,6 +81,14 @@ def _change(user: str, entry: dict | None) -> bool:
     return before is not None
 
 
+TAKEN = "That GitHub account is already someone else's here, so I didn't link it to you."
+
+
+def taken(user: str, github_id: int) -> bool:
+    """This GitHub account is already linked to someone else here (one account, one person: ADR 0017)."""
+    return any(u != user and isinstance(e, dict) and e.get("id") == github_id for u, e in links().items())
+
+
 def save_link(user: str, login: str, github_id: int) -> None:
     _change(user, {"login": login, "id": github_id, "at": time.time()})
 

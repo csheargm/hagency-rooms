@@ -161,6 +161,8 @@ class GitHubLink:
             login, gid = await github_link.wait_for_login(flow)
             if github_link.FLOWS.get(person) is not flow:   # disconnected or deactivated meanwhile: never saved
                 return
+            if github_link.taken(person, gid):            # one account, one person (ADR 0017; GPT re-check)
+                raise github_link.LinkFailed(github_link.TAKEN)
             github_link.save_link(person, login, gid)
         except github_link.LinkFailed as e:
             said = str(e)

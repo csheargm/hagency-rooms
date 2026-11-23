@@ -15,6 +15,7 @@ from aiohttp import web
 
 from server import console
 from common.bridge_config import ELEMENT_HOME, ELEMENT_ORIGIN, panel_embedders
+from server import github_proof
 from server import remote_agent
 from common import github
 from common import identity
@@ -124,7 +125,8 @@ async def start(loop) -> web.AppRunner | None:
     app.add_routes([web.get("/panel", page), web.get("/console", page),
                     *(web.get(f"/{name}", script(path)) for name, path in SCRIPTS.items()),
                     *console.routes(loop, render),
-                    *remote_agent.routes()])     # bring-your-own pairing (remote_agent.py)
+                    *remote_agent.routes(),      # bring-your-own pairing (remote_agent.py)
+                    *github_proof.routes()])     # one GitHub sign-in for a person and their agent (ADR 0017)
     runner = web.AppRunner(app, access_log=None)        # the widget polls every 3 s: don't flood the log
     await runner.setup()
     try:

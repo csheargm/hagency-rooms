@@ -1,4 +1,5 @@
-"""Sign a just-connected agent in to GitHub, right in the connect line's Terminal (owner's ask, 2026-11-23).
+"""Sign a just-connected agent in to GitHub, right in the connect line's Terminal (owner's ask, 2026-11-23);
+the same sign-in then counts for its owner too (github_check.py, ADR 0017).
 
 Live test: an agent could plan but not open issues or pull requests until someone ran `gh auth login`
 for it by hand (common/github.NO_IDENTITY), and nothing during setup said so. Now connect.py offers it
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import sys
 
+from client import github_check
 from client.ask_line import ask_line
 from common import github
 
@@ -23,10 +25,15 @@ LATER = ("  Later, in {app}: GH_CONFIG_DIR=.gh/{agent} GIT_CONFIG_GLOBAL=.gh/{ag
          + " ".join(LOGIN))
 
 
-def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, interactive=None) -> bool:
-    """True if the agent is signed in to GitHub when this returns. Asks only at a terminal (connect.sh
-    gives it one); with nobody to answer, it says how to do it later."""
-    if github.identity_dir(agent) is not None:
+def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, interactive=None,
+          creds: dict | None = None, server: str | None = None, prove=github_check.prove) -> bool:
+    """True if the agent is signed in to GitHub when this returns, and then (given creds and server) its
+    account is linked to the person too: one sign-in for both (ADR 0017). Asks only at a terminal
+    (connect.sh gives it one); with nobody to answer, it says how to do it later."""
+    if github.identity_dir(agent) is not None:   # signed in before: linked to the person only on their yes
+        if creds and server and (sys.stdin.isatty() if interactive is None else interactive) and _yes(
+                "Your agent is signed in to GitHub. Use that account for you too? [Y/n]", ask):
+            return link(creds, server, prove)
         return True
     if which("gh") is None:
         print("note: to let your agent open issues and pull requests, install the GitHub CLI "
@@ -35,12 +42,8 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
     if not (sys.stdin.isatty() if interactive is None else interactive):
         print("note: to let your agent open issues and pull requests, sign it in to GitHub:\n" + LATER.format(app=app, agent=agent))
         return False
-    try:
-        answer = ask_line("Sign your agent in to GitHub now, so it can open issues and pull requests? "
-                          "Use the GitHub account it should work as. [Y/n]", ask).lower()
-    except (EOFError, OSError):               # Ctrl-D, a lost terminal: a no (GPT review: never keeps the agent from starting)
-        answer = "n"
-    if answer not in ("", "y", "yes"):
+    if not _yes("Sign in to GitHub? You and your agent will both use this account. [Y/n]" if creds and server else
+                "Sign your agent in to GitHub, so it can open issues and pull requests? [Y/n]", ask):
         print(LATER.format(app=app, agent=agent))
         return False
     folder = github.IDENTITY_ROOT / agent
@@ -54,7 +57,21 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
         print(f"note: couldn't sign it in here ({e})")
         done = False
     if done and github.identity_dir(agent) is not None:
-        print("✓ your agent is signed in to GitHub")
-        return True
+        return link(creds, server, prove)
     print("note: your agent isn't signed in to GitHub yet." + "\n" + LATER.format(app=app, agent=agent))
     return False
+
+
+def link(creds: dict | None, server: str | None, prove) -> bool:
+    """The agent is signed in: link its account to the person as well (one sign-in for both)."""
+    login = prove(creds, server) if creds and server else None
+    print(f"✓ Signed in to GitHub as @{login}. You and your agent both use it." if login else
+          "✓ your agent is signed in to GitHub")
+    return True
+
+
+def _yes(question: str, ask) -> bool:
+    try:
+        return ask_line(question, ask).lower() in ("", "y", "yes")
+    except (EOFError, OSError):               # Ctrl-D, a lost terminal: a no (never keeps the agent from starting)
+        return False
