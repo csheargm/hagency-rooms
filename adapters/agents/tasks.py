@@ -142,8 +142,15 @@ async def review(agent: str, backend: str, base: Path, task: dict) -> dict:
 
 async def submit_review(agent: str, n: int, pr: int, head: str, verdict: str, text: str, repo: str) -> dict:
     # Pinned to the commit that was reviewed: a later push isn't covered by this approval.
-    await run(["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", f"event={verdict}",
-               "-f", f"commit_id={head}", "-f", f"body=`{agent}` review:\n\n{text[:3000]}"], agent)
+    body = f"`{agent}` review:\n\n{public_safe(text)[:3000]}"
+    post = ["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", f"commit_id={head}"]
+    try:
+        await run([*post, "-f", f"event={verdict}", "-f", f"body={body}"], agent)
+    except GitHubError as e:   # GitHub refuses an approval of a PR its own account opened (live test: one
+        if "422" not in str(e):  # account for both agents); the verdict still counts here, posted as a comment
+            raise
+        await run([*post, "-f", "event=COMMENT", "-f", f"body=Verdict: {verdict} (as a comment: GitHub doesn't let an "
+                                                       f"account approve its own pull request)\n\n{body}"], agent)
     word = "approved" if verdict == "APPROVE" else "changes requested on"
     return {"kind": "review", "issue": n, "pr": pr, "sha": head, "verdict": verdict.lower(),
             "reasons": room_safe(text, MAX_FEEDBACK), "line": f"{word} PR #{pr}"}
