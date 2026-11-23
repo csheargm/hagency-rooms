@@ -12,7 +12,7 @@ from adapters.agents import agents
 from common import github
 from common import room_state
 from common.redact import markup_safe as safe
-from server.pm_paused import next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
+from server.pm_paused import finish_merged, next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
 
 log = logging.getLogger("loop")
 
@@ -75,6 +75,7 @@ class Progress:
                 continue
             self.open_issues[room_id] = sorted((i for i in issues_of[repo] if issue_key(repo, i["number"]) not in self.state),
                                                key=lambda i: i["number"])   # "Next" on the board, even while stopped
+            await finish_merged(self, room_id, repo)   # a paused PR a person merged: done
             lvl = await self.level(room_id)
             if lvl == "off":
                 continue
@@ -177,10 +178,11 @@ class Progress:
         except RuntimeError as e:             # loop.SendError: just the announcement; the fix is already on its way
             log.warning("couldn't announce the fix round in %s: %s", room_id, e)
 
-    async def stop(self, room_id: str, key: str, item: dict, why: str) -> bool:
+    async def stop(self, room_id: str, key: str, item: dict, why: str, steps: str | None = None) -> bool:
         item.update(stage="stopped", why=why)
         self.save()
-        await self.say(room_id, f"⏸ #{num(key)} is paused: {safe(why).rstrip('.')}.\n\n{next_steps(num(key), item.get('agent'))}")
+        await self.say(room_id, f"⏸ #{num(key)} is paused: {safe(why).rstrip('.')}.\n\n"
+                                f"{steps or next_steps(num(key), item.get('agent'))}")
         return True
 
     async def paused_here(self, rid: str) -> tuple[str | None, list[str]]:

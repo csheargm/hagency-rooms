@@ -12,10 +12,14 @@ Both ways back in the queue (this and "@pm retry #N") first ask GitHub for the i
 the one recorded, or one on an agent's branch for the issue that was never recorded (the agent crashed
 after pushing; a retry then built a second, duplicate PR).
 """
+import logging
 import re
+import time
 
 from common import github
 from common.redact import room_safe, secret_safe
+
+log = logging.getLogger("loop")
 
 MAX_REASON = 200      # characters of an agent's own error kept in the pause reason
 MAX_OPEN_PRS = 1000   # open PRs read in one look (the GitHub App read's own ceiling); a full list can't tell
@@ -47,6 +51,36 @@ def next_steps(n: int, agent: str | None = None) -> str:
                      "~/.hagency).")
     steps.append(f"- **Do it yourself:** make the change on GitHub and close #{n}. I'll move on.")
     return "**What you can do:**\n\n" + "\n".join(steps)
+
+
+def no_reviewer_steps(n: int, repo: str, pr: int) -> str:
+    """Live test 2026-11-23: alone in a room, a finished PR paused with "retry / make it clearer / read the
+    log", none of which helps. The one thing to do is a click: review and merge it; finish_merged then marks
+    #n done. The link's label never says "PR #N" (say()'s linkify would nest a link in it: GPT review)."""
+    return f"**[Review and merge it on GitHub](https://github.com/{repo}/pull/{pr})**. Once it's merged, #{n} is done."
+
+
+PAUSED_CHECK_S = 300
+
+
+async def finish_merged(loop, room_id: str, repo: str) -> None:
+    """A paused issue whose PR a person merged on GitHub is done (no_reviewer_steps says so; GPT review:
+    paused items weren't checked at all). Each is asked about at most every PAUSED_CHECK_S."""
+    now = time.time()
+    for key, item in list(loop.state.items()):
+        if (item["room"] != room_id or item.get("repo") != repo or item["stage"] != "stopped" or not item.get("pr")
+                or now - item.get("checked", 0) < PAUSED_CHECK_S):
+            continue
+        item["checked"] = now
+        try:
+            info = await github.run_json(["pr", "view", str(item["pr"]), "-R", repo, "--json", "state"])
+        except github.GitHubError as e:          # asked again at a later poll
+            log.warning("couldn't check paused PR #%s on %s: %s", item["pr"], repo, str(e)[:200])
+            continue
+        if isinstance(info, dict) and info.get("state") == "MERGED":
+            item.update(stage="done", ended=time.time())   # done now, not when it paused (the board's last 24 h)
+            loop.save()
+            await loop.say(room_id, f"PR #{item['pr']} merged by a person; #{num(key)} done")
 
 
 async def _open_list(repo: str, *head: str) -> list:

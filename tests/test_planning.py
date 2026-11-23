@@ -88,7 +88,7 @@ class Flow(unittest.TestCase):
         items = [{"title": "Add index.html", "criteria": ["exists"]}]
         self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "plan", "task_id": task["task_id"], "items": items}))
         self.assertIn("**Issue 1: Add index.html**", self.sent[-1][0])
-        self.assertIn("to open these 1 issue(s)", self.sent[-1][0])
+        self.assertIn("to open this issue.", self.sent[-1][0])
         self.assertTrue(self.run_(self.lp.confirm(self.room, ANNA)))
         _, to, filing = self.sent[-1]
         self.assertEqual((to, filing["kind"], filing["items"], filing["approved_by"]),

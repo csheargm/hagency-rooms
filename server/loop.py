@@ -27,7 +27,7 @@ from server import panel
 from common.redact import room_safe
 from common import room_state
 from server.loop_progress import GITHUB_STAGES, Progress, migrate, num
-from server.pm_paused import failure  # TODO(R4): loop.py is over 300 lines; split the result handling (on_result) out
+from server.pm_paused import failure, no_reviewer_steps  # TODO(R4): loop.py is over 300 lines; split the result handling (on_result) out
 from server.pm_chat import Chat
 from server.pm_settings import Settings
 from server.pm_follow import Follow
@@ -230,7 +230,8 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
         """Choose a DIFFERENT person's agent as the checker; stop the item if there is none."""
         others = routing.checkers_for(routing.available(self.agents_in(room), self.agent_online), item["builder"], ownership.owner_id)
         if not others:
-            await self.stop(room.room_id, key, item, f"there's no second person's agent here to {what.split()[0]} it")
+            steps = no_reviewer_steps(num(key), item["repo"], item["pr"]) if item.get("pr") and item.get("repo") else None
+            await self.stop(room.room_id, key, item, f"there's no second person's agent here to {what.split()[0]} it", steps)
             return False
         item["reviewer"] = others[num(key) % len(others)]
         await self.say(room.room_id, f"{what.split()[0]} requested from {item['reviewer'].split(':')[0][1:]}")
