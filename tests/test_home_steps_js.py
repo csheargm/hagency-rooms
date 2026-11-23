@@ -67,5 +67,32 @@ class Scripts(unittest.TestCase):
         self.assertIn("within 1 day.", self.js("invite.aboutText(1, 'x')"))
 
 
+MAKING = r"""
+const vm = require("vm"), fs = require("fs");
+const els = {}, el = () => ({hidden: true, disabled: false, textContent: "", value: "!a", addEventListener() {},
+  selectedOptions: [{textContent: "Alpha"}]});
+let answer;
+const ctx = {Number, String, JSON, Promise, document: {getElementById: id => (els[id] = els[id] || el()), addEventListener() {}},
+  SignIn: {post: () => new Promise(r => { answer = r; })}};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), ctx);
+const pending = ctx.go();
+const during = ["go", "room", "days"].map(id => els[id].disabled);
+answer({status: 200, data: {state: "ok", link: "https://r.example/invite#" + "a".repeat(43), id: "1a2b3c4d", days: 7}});
+pending.then(() => process.stdout.write(JSON.stringify({during, after: ["go", "room", "days"].map(id => els[id].disabled),
+  title: els["made-title"].textContent, shown: !els.made.hidden})));
+"""
+
+
+@unittest.skipUnless(NODE, "node isn't installed: the page's script is not exercised")
+class MakingALink(unittest.TestCase):
+    def test_the_room_is_held_while_its_link_is_made_and_the_link_names_it(self):
+        """GPT re-check: switching rooms while a link was being made showed room A's link under room B."""
+        out = subprocess.run([NODE, "-e", MAKING, str(STATIC / "invite_new.js")], capture_output=True, text=True,
+                             timeout=30, check=True)
+        self.assertEqual(json.loads(out.stdout), {"during": [True, True, True], "after": [False, False, False],
+                                                  "title": "Your invite link to Alpha", "shown": True})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -48,10 +48,12 @@ async function signedIn(body) {
 }
 
 async function go() {
-  $("go").disabled = true; $("made").hidden = true;   // never another room's link on show (GPT re-check)
+  const pickers = [$("go"), $("room"), $("days")];   // held while asking: the answer is for this room (GPT re-check)
+  pickers.forEach(el => { el.disabled = true; });
+  $("made").hidden = true;                           // never another room's link on show
   const room = $("room").selectedOptions[0];
   const r = await ask("/invite/new/make", {room: $("room").value, days: Number($("days").value)});
-  $("go").disabled = false;
+  pickers.forEach(el => { el.disabled = false; });
   if (r.status === 401) return signInAgain(SAYS.not_signed_in);
   const link = r.data.state === "ok" ? shownLink(r.data.link) : "";
   if (!link) return say(why(r));
