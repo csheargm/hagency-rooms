@@ -7,7 +7,12 @@
 "use strict";
 const meta = n => document.querySelector(`meta[name="${n}"]`).content;
 const HS = meta("hagency-homeserver"), ELEMENT = meta("hagency-element");
-const KEY = "hagency-invite", IDP_KEY = "hagency-invite-idp";
+const KEY = "hagency-invite", IDP_KEY = "hagency-invite-idp", SSO_MS = 10 * 60 * 1000;
+function startedSso() {                  // the sign-in this tab started, if recent; used up by reading it
+  let mark = null; try { mark = JSON.parse(store.get(IDP_KEY) || "null"); } catch (e) { /* damaged: none */ }
+  store.drop(IDP_KEY);
+  return mark && typeof mark.idp === "string" && Date.now() < mark.until ? mark.idp : null;
+}
 const $ = id => document.getElementById(id);
 const store = {get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },   // blocked: just this visit
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* blocked: the link stays in this visit only */ } },
@@ -45,14 +50,15 @@ async function ssoChoices() {
     const b = document.createElement("button");
     b.textContent = "Continue with " + String(p.name || p.id).slice(0, 40);
     b.className = "primary";
-    b.addEventListener("click", () => { store.set(IDP_KEY, p.id); location.assign(ssoUrl(p.id, location.origin + location.pathname)); });
+    b.addEventListener("click", () => { store.set(IDP_KEY, JSON.stringify({idp: p.id, until: Date.now() + SSO_MS}));
+      location.assign(ssoUrl(p.id, location.origin + location.pathname)); });
     $("sso").appendChild(b);
   }
   $("new-sso").hidden = !idps.length;
 }
 const ssoUrl = (idp, back) => `${HS}/_matrix/client/v3/login/sso/redirect/${encodeURIComponent(idp)}?redirectUrl=${encodeURIComponent(back)}`;
 
-async function signIn(login) {
+async function signIn(login, idp) {
   $("signin").hidden = true; say("Signing you in…", true);
   let r;
   try { r = await hs("/login", {...login, initial_device_display_name: "Hagency invite link"}); } catch (e) { return retry(SAYS.offline); }
@@ -61,9 +67,9 @@ async function signIn(login) {
   const {access_token: session, user_id: user} = r.data;
   let room = null;
   try { room = await join(session, user); } catch (e) { retry(SAYS.offline); } finally { await hs("/logout", {}, session).catch(() => null); }   // this page's session, gone
-  if (room) openElement(room);                     // only after the sign-out: leaving the page would cut it short
+  if (room) openElement(room, idp);                     // only after the sign-out: leaving the page would cut it short
 }
-function retry(text) { say(text); $("signin").hidden = false; store.drop(IDP_KEY); }
+function retry(text) { say(text); $("signin").hidden = false; }
 
 async function join(session, user) {              // the room's ID once they're in, else nothing (the page says why)
   const id = await hs(`/user/${encodeURIComponent(user)}/openid/request_token`, {}, session);
@@ -81,9 +87,8 @@ async function join(session, user) {              // the room's ID once they're 
   return room;
 }
 
-function openElement(room) {
+function openElement(room, idp) {
   const target = `${ELEMENT}/#/room/${encodeURIComponent(room)}`;
-  const idp = store.get(IDP_KEY); store.drop(IDP_KEY);
   let signedIn = true;
   if (elementHere()) { try { signedIn = !!localStorage.getItem("mx_user_id"); } catch (e) { /* blocked: assume signed in */ } }
   if (idp && elementHere() && !signedIn) {   // the app finishes this sign-in itself (its own SSO hand-back)
@@ -94,6 +99,7 @@ function openElement(room) {
 }
 
 async function start() {
+  const idp = startedSso();             // read and used up first, whatever happens next (a new link clears it too)
   const fromLink = location.hash.slice(1);
   const back = new URLSearchParams(location.search).get("loginToken");
   if (fromLink || back) history.replaceState(null, "", location.pathname);   // neither stays in the address bar
@@ -108,7 +114,7 @@ async function start() {
   $("register").href = `${ELEMENT}/#/register`;
   // Only a sign-in this tab started (GPT review: a crafted link carrying someone else's login
   // token is ignored; a new tab has no IDP_KEY). The token is never used twice.
-  if (back && !fromLink && store.get(IDP_KEY)) return signIn({type: "m.login.token", token: back});
+  if (back && !fromLink && idp) return signIn({type: "m.login.token", token: back}, idp);
   $("signin").hidden = false;
   await ssoChoices();
 }

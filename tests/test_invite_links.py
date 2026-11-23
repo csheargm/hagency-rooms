@@ -110,7 +110,7 @@ class Flow(Base):
     def test_a_failed_invite_gives_the_link_back(self):
         self.ask(ANNA, "@pm invite link")
         token = self.token()
-        self.lp.client.room_invite.return_value = RoomInviteError("banned")
+        self.lp.client.room_invite.return_value = RoomInviteError("banned", "M_FORBIDDEN")
         self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "failed"})
         self.lp.client.room_invite.return_value = RoomInviteResponse()
         self.assertEqual(run(self.lp.redeem_invite(token, NEW))["state"], "ok")
@@ -137,9 +137,9 @@ class Flow(Base):
 
         async def refused_after_a_cancel(room_id, user):
             self.assertTrue(invite_links.cancel(link_id, lambda link: True))
-            return RoomInviteError("banned")
+            return RoomInviteError("banned", "M_FORBIDDEN")
         self.lp.client.room_invite.side_effect = refused_after_a_cancel
-        self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "failed"})
+        self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "cancelled"})   # said as it is (GPT re-check)
         self.assertEqual(invite_links.look_up(token)[0], "cancelled")
 
     def test_no_answer_from_the_server_keeps_the_link_used(self):
@@ -150,6 +150,26 @@ class Flow(Base):
         self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "unsure"})
         self.lp.client.room_invite.side_effect = None
         self.assertEqual(run(self.lp.redeem_invite(token, BETTY + "x")), {"state": "used"})
+
+    def test_an_error_that_isnt_a_plain_no_keeps_the_link_used(self):
+        """GPT re-check: a proxy's 502 page has no Matrix error code; the invite may have gone through."""
+        self.ask(ANNA, "@pm invite link")
+        token = self.token()
+        self.lp.client.room_invite.return_value = RoomInviteError("Bad gateway", None)
+        self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "unsure"})
+        self.assertEqual(invite_links.look_up(token)[0], "used")
+        self.assertTrue(pm_invite.refused(RoomInviteError("banned", "M_FORBIDDEN")))
+
+    def test_a_hung_invite_is_given_up_on_and_kept_used(self):
+        self.ask(ANNA, "@pm invite link")
+        token = self.token()
+
+        async def never(*a):
+            await asyncio.sleep(60)
+        self.lp.client.room_invite.side_effect = never
+        with mock.patch.object(pm_invite, "INVITE_WAIT_S", 0.05):
+            self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "unsure"})
+        self.assertEqual(invite_links.look_up(token)[0], "used")
 
     def test_a_link_from_someone_who_left_stops_working(self):
         """GPT review: a power level left behind by a maker who left the room counts for nothing."""

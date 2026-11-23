@@ -82,6 +82,16 @@ class Page(IsolatedAsyncioTestCase):
         del self.room.users[ANNA]
         self.assertEqual(await self.post("check", {"token": self.token}), (200, {"state": "closed"}))
 
+    async def test_a_link_cancelled_during_the_check_names_no_room(self):
+        """GPT re-check: the check awaits the room's state; a cancel meanwhile must win."""
+        stands = self.lp.link_stands
+
+        async def cancelled_meanwhile(room, link):
+            invite_links.cancel_room("!a")
+            return await stands(room, link)
+        self.lp.link_stands = cancelled_meanwhile
+        self.assertEqual(await self.post("check", {"token": self.token}), (200, {"state": "cancelled"}))
+
     async def test_a_newcomer_signs_in_and_is_invited_once(self):
         status, body = await self.post("redeem", {"token": self.token, "openid": "good-openid"})
         self.assertEqual((status, body), (200, {"state": "ok", "room": "!a"}))

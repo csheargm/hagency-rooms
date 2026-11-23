@@ -93,6 +93,8 @@ def routes(loop) -> list:
         state, found = invite_links.look_up(body.get("token"))
         if found and not await loop.link_stands(loop.client.rooms.get(found["room"]), found):
             return reply({"state": "closed"})          # the room's name only while its maker may still invite
+        if found:                                      # looked up again after that await (GPT re-check)
+            state, found = invite_links.look_up(body.get("token"))
         return reply(describe(loop, found) if found else {"state": state})
 
     async def redeem(request):

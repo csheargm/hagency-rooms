@@ -12,7 +12,7 @@ import logging
 import re
 
 from aiohttp import ClientError
-from nio import MatrixRoom, RoomInviteResponse, RoomMessageText
+from nio import MatrixRoom, RoomInviteError, RoomInviteResponse, RoomMessageText
 
 from common import identity
 from common import room_state
@@ -33,7 +33,22 @@ LINK_DM = ("Here's an invite link to **{room}**. It lets one person in, once, wi
            "Send it only to the person you're inviting. When they open it, they create an account or sign in, "
            "and they're in the room.\n\nTo cancel it, say \"cancel invite link {id}\" here.")
 HELLO = "👋 Welcome, {person}! {by} invited you here with a link."
+INVITE_WAIT_S = 30
 NO_ROOM = "This room no longer takes invite links. Ask the person who sent it for a new one."
+
+
+def invited(resp) -> bool:
+    """A real success: nio's empty-body success, and HTTP 200 when the transport is known (GPT re-check)."""
+    transport = getattr(resp, "transport_response", None)
+    return isinstance(resp, RoomInviteResponse) and (transport is None or getattr(transport, "status", None) == 200)
+
+
+def refused(resp) -> bool:
+    """A definite no: a Matrix error code (M_FORBIDDEN, ...), never a proxy's 5xx page or a parse failure."""
+    transport = getattr(resp, "transport_response", None)
+    status = getattr(transport, "status", None) if transport is not None else None
+    return (isinstance(resp, RoomInviteError) and str(resp.status_code or "").startswith("M_")
+            and (status is None or 400 <= status < 500))
 
 
 def days_in(text: str) -> int | None:
@@ -120,15 +135,17 @@ class InviteLinks:
         state, link = invite_links.take(token, user)               # once: checked and marked with no await between
         if link is None:
             return {"state": state}
-        try:
-            resp = await self.client.room_invite(room.room_id, user)
+        try:                                              # nio retries timeouts without end by default: bounded here
+            resp = await asyncio.wait_for(self.client.room_invite(room.room_id, user), INVITE_WAIT_S)
         except (ClientError, asyncio.TimeoutError) as e:   # it may have gone through: never reopened (GPT review)
             log.warning("invite link %s: no answer inviting %s (%s); kept used", link["id"], user, type(e).__name__)
             return {"state": "unsure"}
-        if not isinstance(resp, RoomInviteResponse):    # the server said no: nobody was invited
-            invite_links.give_back(token)
+        if not invited(resp):
+            if refused(resp):                             # the server plainly said no: nobody was invited
+                invite_links.give_back(token)
             log.warning("invite link %s: couldn't invite %s: %s", link["id"], user, getattr(resp, "message", resp))
-            return {"state": "failed"}
+            state = invite_links.look_up(token)[0]        # reopened, or cancelled meanwhile (GPT re-check)
+            return {"state": "failed" if state == invite_links.OK else "unsure" if state == invite_links.USED else state}
         invite_links.settle(token)
         log.info("invite link %s used by %s", link["id"], user)
         by = room.user_name(link["by"]) or identity.split(link["by"])[0].lstrip("@")

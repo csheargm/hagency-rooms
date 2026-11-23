@@ -94,6 +94,13 @@ a server, so it is not in Caddy's or @pm's request logs, and it never leaks in a
 - Left: a link is a bearer credential for one join. Whoever has it first gets in, so owners send it
   privately; cancelling is one sentence. People from other servers can't use a link (their OpenID
   isn't checked here); they're invited by ID as before. Email newcomers take two steps, as above.
+- Google/GitHub sign-in comes back as `/invite?loginToken=...` (Synapse puts it in the query). Nothing
+  logs request addresses (no Caddy `log` directive, @pm's `access_log=None`), but if @pm is down at
+  that very moment Caddy's error line for the 502 includes the address. That token lives about two
+  minutes, works once, and the log is on the VM only; accepted (GPT re-check).
+- If Synapse doesn't plainly answer an invite (a timeout, a proxy's error page), the link stays used:
+  the invite may have gone through, so it is never reopened for someone else. The owner makes a new one.
+- Cancelling stops every later use. An invite already on its way when the owner cancels still lands.
 
 ## Consequences
 - Caddy sends `/invite` and `/invite/*` to @pm. The page's Content-Security-Policy allows requests to
