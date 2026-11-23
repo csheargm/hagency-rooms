@@ -224,6 +224,9 @@ class FollowAndConsole(Base):
             self.kicked.append(user)
         self.lp.client = SimpleNamespace(room_invite=invite, room_kick=kick, rooms={})
         self.lp.is_welcome_room = lambda r: False
+        p = mock.patch("common.matrix_calls.presence", mock.AsyncMock(return_value=None))   # pm_presence.online_now: no live answer
+        p.start()
+        self.addCleanup(p.stop)
 
     def room(self, *users):
         return SimpleNamespace(room_id="!r", users={u: 0 for u in users}, invited_users={}, name="Project", display_name="Project")

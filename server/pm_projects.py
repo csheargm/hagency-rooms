@@ -120,13 +120,14 @@ class Projects(Finding, Joining, RepoRemoval):
         await self.say(resp.room_id, f"This is **{plain(name)}**. Next:\n" + ROOM_STEPS
                        + "\n" + panel.browser_note(resp.room_id).strip())   # its own line: only some apps need it
         await self.say(origin.room_id, f"Made **{plain(name)}**: accept its invite on the left (under Invites), then pick "
-                                       f"its GitHub repo in the Hagency panel at the top.{self.agent_note(person)}")
+                                       f"its GitHub repo in the Hagency panel at the top.{await self.agent_note(person)}")
 
-    def agent_note(self, person: str) -> str:
+    async def agent_note(self, person: str) -> str:
         """"comes along" only for an agent that can join (one run here, or theirs connected at least once:
         pm_presence.py, as the panel's Add an agent); screen test: said to someone whose agent never connected."""
         mine = [a for a in registry.agents_of(person) if a["follow"] != "never"]   # their own setting (GPT review)
-        ready = [a for a in mine if a["agent"] != registry.REMOTE or self.ever_connected(a["localpart"])]
+        ready = [a for a in mine if a["agent"] != registry.REMOTE or self.ever_connected(a["localpart"])
+                 or await self.online_now(a["localpart"])]   # just connected: my minute check hasn't seen it
         if any(a["follow"] == "always" for a in ready):
             return " Your agent comes along when you join."
         if ready:

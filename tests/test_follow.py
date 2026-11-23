@@ -100,13 +100,34 @@ class FollowMe(Registry):
         registry.update("dora", None, agent=registry.REMOTE, ready=True)
         dora = f"@dora:{S}"
         self.lp._seen = {}                                       # pm_presence.py: never seen online
-        self.member(room(dora), dora, "join", "invite")
+        with mock.patch("common.matrix_calls.presence", mock.AsyncMock(return_value=False)):   # nor now
+            self.member(room(dora), dora, "join", "invite")
         self.assertEqual(self.invited, [f"@dora-agent:{S}"])
         self.assertIn("I invited dora's agent; it joins once it's connected on their computer", self.said[-1])
         self.assertNotIn("came along", self.said[-1])
         self.lp._seen = {"dora-agent": {"online": True, "ever": True}}
         self.member(room(dora), dora, "join", "invite")
         self.assertIn("dora joined, so their agent came along", self.said[-1])
+
+    def test_an_agent_connected_since_my_last_check_came_along(self):
+        """Live test 2026-11-23: "it joins once it's connected" for an agent that connected seconds before
+        (my presence check runs once a minute) and joined a second later. Synapse is asked right then."""
+        registry.update("dora", None, agent=registry.REMOTE, ready=True)
+        dora = f"@dora:{S}"
+        self.lp._seen = {}
+        with mock.patch("common.matrix_calls.presence", mock.AsyncMock(return_value=True)) as asked:
+            self.member(room(dora), dora, "join", "invite")
+        asked.assert_awaited_once_with(self.lp.client, f"@dora-agent:{S}")
+        self.assertIn("dora joined, so their agent came along", self.said[-1])
+
+    def test_presence_unreadable_keeps_the_careful_wording(self):
+        registry.update("dora", None, agent=registry.REMOTE, ready=True)
+        dora = f"@dora:{S}"
+        self.lp._seen = {}
+        with mock.patch("common.matrix_calls.presence", mock.AsyncMock(side_effect=RuntimeError("HTTP 502"))):
+            self.member(room(dora), dora, "join", "invite")
+        self.assertEqual(self.invited, [f"@dora-agent:{S}"])               # the invite itself never depends on it
+        self.assertIn("it joins once it's connected on their computer", self.said[-1])
 
     def test_ask_asks_first_and_only_the_owner_confirms(self):
         r = room(ANNA, BETTY)

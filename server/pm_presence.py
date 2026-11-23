@@ -56,6 +56,17 @@ class Presence(Removal, StopStart, KindReports):   # pm_remove.py: Remove, forge
         entry = self.seen().get(agent)
         return isinstance(entry, dict) and bool(entry.get("ever") or entry.get("online"))
 
+    async def online_now(self, agent: str) -> bool:
+        """Online, asking Synapse now when my last check (every CHECK_S) hasn't seen it: live test 2026-11-23,
+        "it joins once it's connected" for an agent that connected seconds before and joined a second later."""
+        if self.agent_online(agent):
+            return True
+        try:
+            return bool(await matrix_calls.presence(self.client, f"@{agent}:{SERVER_NAME}"))
+        except (OSError, asyncio.TimeoutError, ClientError, RuntimeError) as e:   # only the wording depends on it
+            log.warning("couldn't ask for %s's presence: %s", agent, e)
+            return False
+
     def has_connected_agent(self, person: str) -> bool:
         """At least one of this person's agents has ever connected (pm_agents.py: ➕ only then)."""
         return any(self.ever_connected(a["localpart"]) for a in registry.agents_of(person))
