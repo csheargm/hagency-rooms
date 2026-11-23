@@ -23,6 +23,11 @@
 	}
 	handle {
 		header X-Frame-Options SAMEORIGIN   # Element itself is never framed by another site
+		# Element's page always comes whole: nginx answers a browser's old validators with 304 before
+		# element-nginx.conf's sub_filter runs, so a cached page would never link element-fixes.css.
+		@element_page path / /index.html
+		request_header @element_page -If-None-Match
+		request_header @element_page -If-Modified-Since
 		reverse_proxy element:80
 	}
 	# No X-Frame-Options for @pm's pages: the panel names the Element apps that may frame it in its own

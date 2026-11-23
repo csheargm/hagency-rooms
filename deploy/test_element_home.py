@@ -211,6 +211,9 @@ class Served(unittest.TestCase):
         self.assertIn("./element-nginx.conf:/etc/nginx/conf.d/hagency.conf:ro", (HERE / "docker-compose.yml").read_text())
         css = element_home.files(VALUES)[element_home.FIXES_CSS]
         self.assertIn(".mx_SSOButtons .mx_SSOButton.mx_SSOButton_mini {\n    width: auto;", css)
+        rooms = (HERE / "Caddyfile").read_text()                            # live: an old ETag got 304, no link
+        for name in ("If-None-Match", "If-Modified-Since"):
+            self.assertIn(f"request_header @element_page -{name}", rooms)
 
     def test_privacy_has_a_short_address_and_is_linked_from_home(self):
         rooms = (HERE / "Caddyfile").read_text().split("{$ROOMS_DOMAIN} {")[1].split("\n}")[0]
