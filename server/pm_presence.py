@@ -28,6 +28,7 @@ from common.setup_accounts import AccountError
 
 log = logging.getLogger("loop")
 CHECK_S, OFFLINE_S, ALERT_EVERY_S = 60, 5 * 60, 24 * 3600
+LIVE_WAIT_S = 3                           # online_now: a wording only, never worth holding up an invite (GPT review)
 AGAIN = "🔁"
 OFFLINE = ("Your agent **{agent}** is offline: its computer is off or asleep, or its connector stopped. To bring "
            "it back, run the connect line again on that computer (running it again is safe). Click 🔁 below "
@@ -61,11 +62,17 @@ class Presence(Removal, StopStart, KindReports):   # pm_remove.py: Remove, forge
         "it joins once it's connected" for an agent that connected seconds before and joined a second later."""
         if self.agent_online(agent):
             return True
+        asked = self.__dict__.setdefault("_asked_live", {})   # agent → (when, answer): one ask a minute (GPT review)
+        when, answer = asked.get(agent, (0.0, False))
+        if time.time() - when < CHECK_S:
+            return answer
         try:
-            return bool(await matrix_calls.presence(self.client, f"@{agent}:{SERVER_NAME}"))
+            answer = bool(await asyncio.wait_for(matrix_calls.presence(self.client, f"@{agent}:{SERVER_NAME}"), LIVE_WAIT_S))
         except (OSError, asyncio.TimeoutError, ClientError, RuntimeError) as e:   # only the wording depends on it
             log.warning("couldn't ask for %s's presence: %s", agent, e)
-            return False
+            answer = False
+        asked[agent] = (time.time(), answer)
+        return answer
 
     def has_connected_agent(self, person: str) -> bool:
         """At least one of this person's agents has ever connected (pm_agents.py: ➕ only then)."""

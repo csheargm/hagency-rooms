@@ -129,6 +129,25 @@ class FollowMe(Registry):
         self.assertEqual(self.invited, [f"@dora-agent:{S}"])               # the invite itself never depends on it
         self.assertIn("it joins once it's connected on their computer", self.said[-1])
 
+    def test_a_hanging_presence_answer_holds_nothing_up_for_long(self):
+        """GPT review: the invite waits for the wording, and Synapse's answer can take 30 s; it gets LIVE_WAIT_S.
+        The answer is kept a minute, so joins can't make @pm ask Synapse again and again."""
+        registry.update("dora", None, agent=registry.REMOTE, ready=True)
+        dora = f"@dora:{S}"
+        self.lp._seen = {}
+
+        async def hang(client, user):
+            await asyncio.sleep(60)
+        with mock.patch("common.matrix_calls.presence", mock.AsyncMock(side_effect=hang)) as asked, \
+                mock.patch("server.pm_presence.LIVE_WAIT_S", 0.05):
+            started = time.time()
+            self.member(room(dora), dora, "join", "invite")
+            self.assertLess(time.time() - started, 5)
+            self.member(room(dora), dora, "join", "invite")
+        self.assertEqual(self.invited, [f"@dora-agent:{S}"] * 2)
+        self.assertIn("it joins once it's connected on their computer", self.said[-1])
+        self.assertEqual(asked.await_count, 1)                                # the second join used the answer kept
+
     def test_ask_asks_first_and_only_the_owner_confirms(self):
         r = room(ANNA, BETTY)
         self.member(r, BETTY, "join", "invite")
