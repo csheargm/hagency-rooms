@@ -27,6 +27,11 @@ AFTER_APPROVAL = {"autonomous": "Then the room runs on its own: build → review
                   "off": "The room is stopped, so nothing starts until the owner picks assist or autonomous."}
 
 
+# Live test 2026-11-23 (a 3B local model): "⚠️ plan didn't work: the plan wasn't valid JSON: Expecting ','
+# delimiter…" told a newcomer nothing they could act on.
+PLAN_FAILED = ("⚠️ {agent} couldn't turn the discussion into a plan ({why}). Small local models often can't; "
+               "say \"@pm let's build it\" to try again, or plan with an agent on a stronger AI.")
+
 class Planner:
     plans: dict                   # room → {"task_id", "agent", "by"} while an agent drafts or files
     last_plans: dict              # room → the plan last shown (items, agent, by), kept on disk
@@ -79,7 +84,10 @@ class Planner:
             return                                    # stale, or not the agent we asked
         self.plans.pop(rid)
         if result.get("error"):
-            await self.say(rid, f"⚠️ {result['kind'].replace('_', ' ')} didn't work: {str(result['error'])[:200]}")
+            await self.say(rid, PLAN_FAILED.format(agent=plan["agent"].split(":")[0].lstrip("@"),
+                                                   why=str(result["error"])[:200])
+                           if result.get("kind") == "plan" else
+                           f"⚠️ {result['kind'].replace('_', ' ')} didn't work: {str(result['error'])[:200]}")
         elif result["kind"] == "plan":
             await self.propose(rid, plan, result.get("items"))
         else:
