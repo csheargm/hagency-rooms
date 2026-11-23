@@ -188,15 +188,20 @@ async def note(loop, rid: str) -> str:
             f"on my own. To try again, say \"@pm retry #{num(paused[0])}\".")
 
 
+OPEN_LIST_CAP = 500
+
+
 async def _open_numbers(repo: str) -> set[int] | None:
     """The repo's open issue numbers, or None when GitHub can't say (then every paused one is named)."""
     try:
         issues = await github.run_json(["issue", "list", "-R", repo, "--state", "open", "--json", "number",
-                                        "--limit", "500"])
-    except github.GitHubError:                 # unknown: named as before, never a wrong "gone"
+                                        "--limit", str(OPEN_LIST_CAP)])
+    except (github.GitHubError, ValueError, OSError):   # unknown: named as before, never a wrong "gone"
         return None
-    return {i["number"] for i in issues if isinstance(i, dict) and isinstance(i.get("number"), int)} \
-        if isinstance(issues, list) else None
+    if not isinstance(issues, list) or len(issues) >= OPEN_LIST_CAP \
+            or not all(isinstance(i, dict) and isinstance(i.get("number"), int) for i in issues):
+        return None                            # capped or odd (GPT review): absence would prove nothing
+    return {i["number"] for i in issues}
 
 
 async def retry_all(loop, rid: str) -> str:
@@ -215,9 +220,9 @@ async def retry_all(loop, rid: str) -> str:
         back = [k for k in same if k not in held_prs]
         for k in back:
             del loop.state[k]
-        back = [k for k in back if still_open is None or num(k) in still_open]   # closed meanwhile: just gone
         if back:
-            loop.save()
+            loop.save()                        # GPT review: also when every one of them was closed
+        back = [k for k in back if still_open is None or num(k) in still_open]   # closed meanwhile: just gone
     held = {k: held_prs[k] for k in same if k in held_prs}
     parts = []
     if back:
