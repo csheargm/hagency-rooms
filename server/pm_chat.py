@@ -265,7 +265,10 @@ class Chat(Addressing):
         agents = ", ".join(a.split(":")[0][1:] for a in self.agents_in(self.client.rooms[room_id])) or "none"
         board = self.boards.get(room_id, {}).get("event_id")
         link = f" Live progress: [Project status](https://matrix.to/#/{room_id}/{board})." if board else ""
-        return f"Mode: {LEVEL_WORDS[await self.level(room_id)]}. Agents here: {agents}.{link}"
+        # Live test 2026-11-23: a brand-new room answered only "Mode: stopped: …", which read as broken.
+        repo = await room_state.repo_of(self.client, room_id)
+        first = "" if repo else f"No GitHub repo yet. {REPO_STEP} "
+        return f"{first}Mode: {LEVEL_WORDS[await self.level(room_id)]}. Agents here: {agents}.{link}"
 
     async def command(self, room: MatrixRoom, sender: str, words: list[str]) -> None:
         cmd, args = words[0].lower(), words[1:]

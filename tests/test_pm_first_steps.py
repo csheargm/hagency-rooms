@@ -37,6 +37,16 @@ class Answer(Talk):
             self.tell(ANNA, "@pm what's next?")
         self.assertIn("1. " + pm_chat.REPO_STEP, self.said[-1])
 
+    def test_where_are_we_in_a_room_without_a_repo_says_the_next_step(self):
+        """Live test 2026-11-23: a new room answered only "Mode: stopped: …", which read as broken."""
+        self.lp.client.rooms = {"!r": self.room}
+        self.lp.agents_in = lambda room: []
+        with mock.patch.object(room_state, "repo_of", mock.AsyncMock(return_value=None)):
+            self.tell(ANNA, "@pm where are we?")
+        self.assertTrue(self.said[-1].startswith("No GitHub repo yet. " + pm_chat.REPO_STEP), self.said[-1])
+        self.tell(ANNA, "@pm where are we?")                               # with one: as before
+        self.assertTrue(self.said[-1].startswith("Mode: "), self.said[-1])
+
 
 if __name__ == "__main__":
     unittest.main()
