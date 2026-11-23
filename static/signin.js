@@ -59,6 +59,19 @@ const SignIn = (() => {
   /** What the password form says: m.login.password for this username. */
   const password = (user, pass) => ({type: "m.login.password", identifier: {type: "m.id.user", user: user.trim()}, password: pass});
 
+  /** The username-and-password form, built into `box`; onLogin(m.login.password body) on submit. */
+  function form(box, button, onLogin) {
+    const el = (tag, props) => Object.assign(document.createElement(tag), props);
+    const user = el("input", {id: "user", name: "username", autocomplete: "username", autocapitalize: "none",
+      spellcheck: false, required: true});
+    const pass = el("input", {id: "pass", name: "password", type: "password", autocomplete: "current-password", required: true});
+    const f = el("form", {id: "password", autocomplete: "on"});
+    f.append(el("h2", {textContent: "Sign in with your username and password"}), el("label", {htmlFor: "user", textContent: "Username"}),
+      user, el("label", {htmlFor: "pass", textContent: "Password"}), pass, el("button", {type: "submit", className: "primary", textContent: button}));
+    f.addEventListener("submit", e => { e.preventDefault(); onLogin(password(user.value, pass.value)); });
+    box.appendChild(f);
+  }
+
   /** {session, user} for a sign-in, or {error: "wrong" | "offline" | "refused"}. */
   async function login(body, device) {
     let r;
@@ -82,5 +95,5 @@ const SignIn = (() => {
     finally { await logout(s.session); }
   }
 
-  return {HS, ELEMENT, $, store, post, hs, ssoUrl, ssoButtons, returned, password, login, openid, logout, openidOnly};
+  return {HS, ELEMENT, $, store, post, hs, ssoUrl, ssoButtons, returned, form, login, openid, logout, openidOnly};
 })();

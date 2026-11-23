@@ -83,8 +83,7 @@ async function start() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  $("password").addEventListener("submit", e => { e.preventDefault();
-    signIn(SignIn.password($("user").value, $("pass").value)); });
+  SignIn.form($("password-box"), "Sign in and join", login => signIn(login));
   start();
 });
 window.addEventListener("hashchange", () => location.reload());   // another link pasted into this tab: start over

@@ -81,13 +81,17 @@ class InviteLinks:
         """A project room: not the Welcome room or the Lobby, and not a private chat with me."""
         return room is not None and not project_rooms.is_front_door(room) and not console_personal.is_dm(self, room)
 
-    async def make_invite_link(self, room: MatrixRoom, sender: str, days: int = invite_links.DEFAULT_DAYS) -> str:
-        """Send `sender` a new link to `room` privately; what to tell them where they asked."""
+    async def link_refusal(self, room: MatrixRoom | None, sender: str) -> str | None:
+        """Why `sender` may not make a link to `room` now, else None (the chat and invite_new_page.py)."""
         if not self.takes_links(room):
             return NOT_HERE
         if not await room_state.is_moderator(self.client, room, sender):
             return ONLY_MODS
-        if refused := invite_links.refusal(room.room_id, sender):
+        return invite_links.refusal(room.room_id, sender)
+
+    async def make_invite_link(self, room: MatrixRoom, sender: str, days: int = invite_links.DEFAULT_DAYS) -> str:
+        """Send `sender` a new link to `room` privately; what to tell them where they asked."""
+        if refused := await self.link_refusal(room, sender):
             return refused
         dm = await self.private_room(sender)
         if dm is None:

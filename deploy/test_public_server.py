@@ -136,7 +136,7 @@ class Health(unittest.TestCase):
     def test_public_checks_include_federation_and_a_closed_admin_api(self):
         names = [n for n, _ in health.checks("https://r", "https://m", "https://r", "m", "m", public=True)]
         self.assertTrue(any("8448" in n for n in names) and any("admin" in n for n in names))
-        self.assertEqual(len(health.checks("http://e", "http://s", "http://l", "m", "m", public=False)), 7)
+        self.assertEqual(len(health.checks("http://e", "http://s", "http://l", "m", "m", public=False)), 8)   # + ADR 0015: the sign-in pages
 
 
 class Alert(unittest.TestCase):

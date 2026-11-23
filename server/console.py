@@ -231,7 +231,7 @@ NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 def routes(loop, panel_html_fn) -> list:
-    from server import connect_page, invite_page          # here, not at the top: they use this module (an import cycle)
+    from server import agent_page, connect_page, invite_new_page, invite_page, signin_page   # here: they use this module (a cycle)
     global panel_html
     panel_html = panel_html_fn
 
@@ -275,7 +275,8 @@ def routes(loop, panel_html_fn) -> list:
                                           str(body.get("value", "")), str(body.get("agent", ""))[:120])})
     return [web.post("/auth/openid", auth_openid), web.post("/auth/link", auth_link),
             web.get("/console/state", state), web.post("/console/action", action),
-            *connect_page.routes(), *invite_page.routes(loop)]   # the Connect page and installer; invite links
+            *connect_page.routes(), *invite_page.routes(loop),   # the Connect page and installer; invite links
+            *signin_page.routes(), *agent_page.routes(loop), *invite_new_page.routes(loop)]   # ADR 0015: home page steps
 
 
 panel_html = None                             # set by routes(): panel.render, kept out of an import cycle

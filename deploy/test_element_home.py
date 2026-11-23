@@ -104,7 +104,19 @@ class HomePage(unittest.TestCase):
                                               "Find a project to join", "③ Invite people")]
         self.assertEqual(steps, sorted(steps))
         self.assertIn("What is this?", self.text)
-        self.assertEqual(self.page.links, ["#/user/@pm:matrix.example.org?action=chat"] * 2 + ["#/new", "#/directory"])
+        self.assertEqual(self.page.links, ["#/user/@pm:matrix.example.org?action=chat", "/connect/new", "#/new", "#/directory",
+                                           "/invite/new"])
+
+    def test_steps_one_and_three_are_buttons_to_pms_sign_in_pages(self):
+        """Owner request (ADR 0015): step ① gets the install line and step ③ an invite link right from
+        here, no detour through the chat with @pm. They open in a new tab, so Element stays open."""
+        page = self.text.split("-->", 1)[1]
+        for path, label in (("/connect/new", "① Get your agent"), ("/invite/new", "Make an invite link")):
+            anchor = page[page.index(f'<a href="{path}"'):]
+            self.assertIn('target="_blank" rel="noopener"', anchor.split(">", 1)[0])
+            self.assertIn(label, anchor.split("</a>", 1)[0])
+        rooms = (HERE / "Caddyfile").read_text().split("@pm path ")[1].split("\n")[0].split()
+        self.assertTrue({"/connect/*", "/invite/*"} <= set(rooms))          # both reach @pm, as /connect/start does
 
     def test_my_agents_and_settings_comes_first_and_opens_the_chat_with_pm(self):
         """Owner request: a prominent button to My Hagency (the panel in the Product Manager chat)."""
@@ -115,7 +127,7 @@ class HomePage(unittest.TestCase):
         """Element keeps #/ links as they are (same tab, its router): #/user/<id>?action=chat opens or
         starts the chat with that user (MatrixChat.viewUser → chatCreateOrReuse), #/new the new-room dialog."""
         for link in self.page.links:
-            self.assertTrue(link.startswith("#/"), link)
+            self.assertTrue(link.startswith("#/") or link in ("/connect/new", "/invite/new"), link)   # or @pm's pages
         self.assertNotIn(element_home.PM_PLACEHOLDER, self.text)
 
     def test_survives_elements_sanitiser(self):
@@ -187,6 +199,8 @@ class Served(unittest.TestCase):
     def test_deploy_checks_the_page_from_outside(self):
         names = [n for n, _ in health.checks("https://r", "https://m", "https://r", "m", "m", public=True)]
         self.assertIn("Element's home page links to @pm", names)
+        self.assertIn("Element's home page has the step ① and ③ buttons", names)
+        self.assertIn("Get your agent and Make an invite link served (ADR 0015)", names)
 
 
 if __name__ == "__main__":

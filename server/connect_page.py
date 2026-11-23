@@ -52,7 +52,7 @@ def pm_link() -> str:
     return f"{ELEMENT_ORIGIN}/#/user/@{github.PM_BOT}:{SERVER_NAME}"
 
 
-def _kinds_json() -> str:
+def kinds_json() -> str:
     """The kinds as JSON for a <script type="application/json"> (data, never run): no "<" in it."""
     return json.dumps(agent_kinds.kinds()).replace("<", "\\u003c").replace("&", "\\u0026")
 
@@ -63,7 +63,7 @@ def _with_console(path: Path) -> str:
 
 def _page() -> str:
     link = pm_link().replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
-    return _with_console(STATIC / "connect.html").replace(KINDS_MARK, _kinds_json()).replace(PM_MARK, link)
+    return _with_console(STATIC / "connect.html").replace(KINDS_MARK, kinds_json()).replace(PM_MARK, link)
 
 
 async def _status(request):

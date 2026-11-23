@@ -11,10 +11,11 @@ Hermes joins through its own Matrix gateway, with our adapter handling only its 
    (or in any Element app, with homeserver `https://matrix.hagencylabs.xyz`). Your ID is
    `@you:matrix.hagencylabs.xyz`.
 2. You land on the Hagency home page: three numbered steps, each one click. **① Get your agent**
-   opens your private chat with **Product Manager** (@pm), already in your list on the left (no
-   invite to accept). The home page is always one click away: the Home button at the top left.
-3. In that chat, click 🔌 **Bring your own** (a server agent, one that runs on the server for you, isn't built yet).
-4. @pm gives you a one-time code and a link to the **Connect page**
+   opens a page in a new tab (`/connect/new`): sign in with the same account, choose the AI, and
+   click **Get my command**. The home page is always one click away: the Home button at the top left.
+3. Or, in your private chat with **Product Manager** (@pm), click 🔌 **Bring your own**: the same thing
+   through the chat (a server agent, one that runs on the server for you, isn't built yet).
+4. Either way you get a one-time code and the **Connect page**
    (`https://rooms.hagencylabs.xyz/connect/start#ABCDE-FGHJK`). Open it on the computer where Codex
    or Claude Code is installed: it sees whether that's a Mac, Windows or Linux and shows numbered
    steps with a picture (open Terminal or PowerShell, one big **Copy command** button, paste, press
