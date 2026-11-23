@@ -169,6 +169,19 @@ class MakeALink(IsolatedAsyncioTestCase):
         self.assertEqual((made, listed), ({"state": "failed", "error": invite_new_page.SLOW},) * 2)
         self.assertEqual(len(invite_links.store()), 0)
 
+    async def test_leaving_during_the_checks_makes_no_link(self):
+        """GPT re-check: in a v12 room the creator check reads state again; leaving meanwhile must count."""
+        checks = self.lp.link_refusal
+
+        async def left_meanwhile(room, user):
+            out = await checks(room, user)
+            del room.users[ANNA]                                   # and the server's state says so from now on
+            return out
+        self.lp.link_refusal = left_meanwhile
+        got = (await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!a"}))[1]
+        self.assertEqual(got, {"state": "refused", "error": pm_invite.ONLY_MODS})
+        self.assertEqual(len(invite_links.store()), 0)
+
     async def test_deeply_nested_json_is_a_plain_no(self):
         r = await self.client.post("/invite/new/make", data="[" * 100000, headers={"Origin": PUBLIC, "Content-Type": "application/json"})
         self.assertEqual(r.status, 403)

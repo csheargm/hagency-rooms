@@ -49,13 +49,15 @@ async def make(loop, user: str, room_id: object, days: int) -> dict:
     room = loop.client.rooms.get(room_id) if isinstance(room_id, str) else None
     if room is None or user not in room.users or user in room.invited_users:
         return {"state": "refused", "error": NOT_IN}
-    try:                                      # read now, not my cached copy (GPT re-check): demoted or gone counts
-        standing = await room_state.joined_moderator(loop.client, room.room_id, user)
+    if refused := await loop.link_refusal(room, user):   # the chat's rule: a project room, owner or maintainer, limits
+        return {"state": "refused", "error": refused}
+    try:                                      # then the server's state now, the LAST await (GPT re-checks): demoted,
+        standing = await room_state.joined_moderator(loop.client, room.room_id, user)   # or gone meanwhile, counts
     except room_state.StateUnreadable:
         return {"state": "failed", "error": SLOW}
     if not standing:
         return {"state": "refused", "error": pm_invite.ONLY_MODS}
-    if refused := await loop.link_refusal(room, user):   # its last step, the limits, has no await after it
+    if refused := invite_links.refusal(room.room_id, user):   # the limits again, with no await before create
         return {"state": "refused", "error": refused}
     token, link_id = invite_links.create(room.room_id, user, days)
     log.info("invite link %s made for %s by %s on the page", link_id, room.room_id, user)   # the id, never the token
