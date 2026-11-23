@@ -23,17 +23,22 @@ def room_safe(text: object, limit: int = MAX_ROOM_ERROR) -> str:
     return _PATH_RE.sub("<local path>", s)[:limit]
 
 
-LOCAL_LINK_RE = re.compile(r"\[([^\]]*)\]\((?:/(?:Users|home|private|var|tmp|opt|Volumes)/|~/)[^)]*\)")
-PREAMBLE_RE = re.compile(r"\A(?:I(?:'|’)ll|I will|Let me)\b[^\n]*\n+")
+_LOCAL = r"(?:file://\S*|(?:/(?:Users|home|private|var|tmp|opt|Volumes)/|~/)|[A-Za-z]:\\)"
+LOCAL_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*<?" + _LOCAL + r"[^\s]*?\)(?=\s|$|[.,;:!?])")
+LOCAL_PATH_RE = re.compile(r"(?<![\w:/.\-])" + _LOCAL + r"[^\s'\"`)\]]*")
+PREAMBLE_RE = re.compile(r"\A(?:I(?:'|’)ll|I will|Let me)\b(?:[^\n.!?]|[.!?](?=\S))*[.!?]?[ \t]*\n\s*\n(?=\S)")   # one sentence only
 
 
-def public_safe(text: object) -> str:
-    """An agent's summary as it goes to GitHub (a public pull request): links to files on its computer keep
-    only their text, other local paths go, and a leading "I'll …" line (its plan, not its result) is dropped.
-    Live test 2026-11-23: a PR showed /Users/<name>/… and "I'll add … without running Git"."""
-    s = LOCAL_LINK_RE.sub(r"\1", str(text).strip())
+def public_safe(text: object, *secrets: str) -> str:
+    """An agent's summary as it goes to GitHub (a public pull request): credentials cut (secret_safe), links to
+    files on its computer keep only their text, other local paths (macOS, Linux, Windows, file://) go, and a
+    leading "I'll …" paragraph (its plan, not its result) is dropped when more follows. Live test 2026-11-23:
+    a PR showed /Users/<name>/… and "I'll add … without running Git". Web links are left alone (GPT review)."""
+    s = secret_safe(str(text).strip(), *secrets)
+    s = LOCAL_LINK_RE.sub(r"\1", s)
     s = PREAMBLE_RE.sub("", s)
-    return room_safe(s, limit=len(s) + 1).replace("<local path>", "(a local file)")
+    s = s.replace(str(Path.home()), "~")
+    return LOCAL_PATH_RE.sub("(a local file)", s)
 
 
 def secret_safe(text: object, *secrets: str) -> str:

@@ -22,6 +22,16 @@ class PullRequestText(unittest.TestCase):
     def test_a_summary_without_paths_is_kept(self):
         self.assertEqual(public_safe("Added index.html with a heading."), "Added index.html with a heading.")
 
+    def test_gpt_review_cases(self):
+        self.assertEqual(public_safe(r"Saved C:\Users\bob\notes.txt and file:///Users/x/a.md"),
+                         "Saved (a local file) and (a local file)")                 # Windows and file:// too
+        web = "See [guide](https://example.com/opt/guide) and https://example.com/tmp/x"
+        self.assertEqual(public_safe(web), web)                                      # web links untouched
+        work = "I'll document the caveat. Fixed the regression.\n\nTests pass."
+        self.assertEqual(public_safe(work), work)                                    # more than a plan: kept
+        self.assertEqual(public_safe("I'll change it."), "I'll change it.")          # nothing else: kept
+        self.assertEqual(public_safe("token ghp_abcdefghijklmnop123 here"), "token <redacted> here")
+
 
 class AloneInARoom(unittest.TestCase):
     def test_a_finished_pr_with_no_reviewer_says_to_review_and_merge_it_with_a_link(self):
@@ -38,10 +48,33 @@ class AloneInARoom(unittest.TestCase):
                                                   "review PR #167"))
         self.assertFalse(picked)
         said = lp.say.call_args.args[1]
-        self.assertIn("[Review and merge PR #167 on GitHub](https://github.com/csheargm/hagency-demo-sandbox/pull/167)", said)
+        self.assertIn("[Review and merge it on GitHub](https://github.com/csheargm/hagency-demo-sandbox/pull/167)", said)
+        self.assertNotIn("retry", said)                       # GPT review: retry can't move a PR that's open
         self.assertNotIn("Make the issue clearer", said)
         self.assertNotIn(".log", said)
         self.assertEqual(item["stage"], "stopped")
+
+    def test_a_paused_pr_a_person_merged_is_done(self):
+        """GPT review: paused items weren't checked, so "once it's merged, #N is done" wasn't true."""
+        lp = SimpleNamespace(save=mock.Mock(), say=mock.AsyncMock(), state={
+            "o/r#166": {"room": "!r", "repo": "o/r", "stage": "stopped", "pr": 167},
+            "o/r#5": {"room": "!r", "repo": "o/r", "stage": "stopped"}})                  # no PR: never asked
+        with mock.patch.object(pm_paused.github, "run_json", mock.AsyncMock(return_value={"state": "MERGED"})) as asked:
+            asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))
+            asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))                         # done: not asked again
+        self.assertEqual(asked.await_count, 1)
+        self.assertEqual(lp.state["o/r#166"]["stage"], "done")
+        self.assertEqual(lp.state["o/r#5"]["stage"], "stopped")
+        self.assertIn("#166 done", lp.say.call_args.args[1])
+
+    def test_a_paused_pr_still_open_is_asked_about_again_only_later(self):
+        lp = SimpleNamespace(save=mock.Mock(), say=mock.AsyncMock(),
+                             state={"o/r#166": {"room": "!r", "repo": "o/r", "stage": "stopped", "pr": 167}})
+        with mock.patch.object(pm_paused.github, "run_json", mock.AsyncMock(return_value={"state": "OPEN"})) as asked:
+            for _ in range(3):
+                asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))
+        self.assertEqual((asked.await_count, lp.state["o/r#166"]["stage"]), (1, "stopped"))
+        lp.say.assert_not_called()
 
     def test_other_pauses_keep_the_general_steps(self):
         self.assertIn("Make the issue clearer", pm_paused.next_steps(5, "@a-agent:x"))

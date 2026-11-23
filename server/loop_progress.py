@@ -12,7 +12,7 @@ from adapters.agents import agents
 from common import github
 from common import room_state
 from common.redact import markup_safe as safe
-from server.pm_paused import next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
+from server.pm_paused import finish_merged, next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
 
 log = logging.getLogger("loop")
 
@@ -75,6 +75,7 @@ class Progress:
                 continue
             self.open_issues[room_id] = sorted((i for i in issues_of[repo] if issue_key(repo, i["number"]) not in self.state),
                                                key=lambda i: i["number"])   # "Next" on the board, even while stopped
+            await finish_merged(self, room_id, repo)   # a paused PR a person merged: done
             lvl = await self.level(room_id)
             if lvl == "off":
                 continue
