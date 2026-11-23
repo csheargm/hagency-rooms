@@ -1,0 +1,9 @@
+/* Hagency's fixes to Element Web v1.12.35's own styles, linked into Element's index.html by
+   element-nginx.conf (sub_filter). Keep each rule tied to the bug it fixes; drop it once Element fixes it.
+
+   Sign-in with two providers (Google and GitHub): Element shows icon-only buttons in one row, but its
+   .mx_SSOButton rule gives every button width:100% of a row that is only as wide as one button, so the
+   two stacked, the second shifted right by its 16px margin (screen test 2026-11-23; same CSS upstream). */
+.mx_SSOButtons .mx_SSOButton.mx_SSOButton_mini {
+    width: auto;
+}

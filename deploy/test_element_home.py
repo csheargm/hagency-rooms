@@ -170,7 +170,7 @@ class Written(unittest.TestCase):
                 os.umask(old)
             site = Path(d) / element_home.OUT
             self.assertEqual(site.stat().st_mode & 0o777, 0o755)
-            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "home.html", "logo.svg", "privacy.html"])
+            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "element-fixes.css", "home.html", "logo.svg", "privacy.html"])
             for f in site.iterdir():
                 self.assertEqual(f.stat().st_mode & 0o777, 0o644, f.name)
             self.assertIn("#/user/@pm:matrix.example.org", (site / "home.html").read_text())
@@ -202,6 +202,15 @@ class Served(unittest.TestCase):
         self.assertIn("Element's home page has the step ① and ③ buttons", names)
         self.assertIn("Get your agent and Make an invite link served (ADR 0015)", names)
         self.assertIn("the privacy policy served at /privacy", names)
+        self.assertIn("Element links Hagency's style fixes", names)
+
+    def test_element_page_links_the_style_fixes_caddy_serves(self):
+        """Screen test 2026-11-23: Google and GitHub sign-in buttons stacked, the second shifted right."""
+        conf = (HERE / "element-nginx.conf").read_text()
+        self.assertIn(f'href="{element_home.PREFIX}/{element_home.FIXES_CSS}"', conf)
+        self.assertIn("./element-nginx.conf:/etc/nginx/conf.d/hagency.conf:ro", (HERE / "docker-compose.yml").read_text())
+        css = element_home.files(VALUES)[element_home.FIXES_CSS]
+        self.assertIn(".mx_SSOButtons .mx_SSOButton.mx_SSOButton_mini {\n    width: auto;", css)
 
     def test_privacy_has_a_short_address_and_is_linked_from_home(self):
         rooms = (HERE / "Caddyfile").read_text().split("{$ROOMS_DOMAIN} {")[1].split("\n}")[0]

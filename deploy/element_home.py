@@ -18,7 +18,8 @@ SOURCE = Path(__file__).resolve().parent / "element_page"   # the page's templat
 OUT = "element-home"                          # generated next to bootstrap.sh; Caddy mounts it read-only
 PREFIX = "/hagency"                           # where Caddy serves OUT's files (Caddyfile: @hagency)
 PM_PLACEHOLDER = "__PM_ID__"
-STATIC = ("logo.svg", "background.svg", "privacy.html")   # privacy.html: Google sign-in links it
+FIXES_CSS = "element-fixes.css"             # Element's own style bugs; element-nginx.conf links it
+STATIC = ("logo.svg", "background.svg", "privacy.html", FIXES_CSS)   # privacy.html: Google sign-in links it
 # Our own panel's widget URL as @pm adds it (panel.widget_url; test_panel checks they agree). Element
 # matches it exactly against the widget's template URL: no other widget is pre-approved.
 PANEL_TEMPLATE = "/panel?room=$matrix_room_id"
