@@ -104,7 +104,7 @@ class Cards(unittest.TestCase):
         never = {"name": "a-agent", "label": "main", "first": True, "follow": "always", "remote": True,
                  "online": False, "connected": False}
         agents = self.render("panel-agents.js", f"agentCards({json.dumps({'agents': [never], 'can_add': True})})", "!dm:x")
-        self.assertIn('open <a href="https://matrix.to/#/!dm%3Ax"', agents)
+        self.assertIn('comes in <a href="https://matrix.to/#/!dm%3Ax"', agents)
         self.assertIn('Connect page in <a href="https://matrix.to/#/!dm%3Ax"', agents)
         github = self.render("panel-github.js", "githubCard({github: {code: 'AB-1', url: 'https://github.com/login/device'}})", "!dm:x")
         self.assertIn('data-pmchat="1">your chat with Product Manager</a>', github)
@@ -116,8 +116,7 @@ class Cards(unittest.TestCase):
         codex = {**never, "name": "a-codex-agent", "label": "codex", "first": False}
         state = {"agents": [never, codex], "can_add": True, "personal": True}
         agents = self.render("panel-agents.js", f"agentCards({json.dumps(state)})", "!dm:x")
-        self.assertIn('Not connected yet: type "resend me the code" here', agents)
-        self.assertIn('type "add another agent called codex" here', agents)
+        self.assertEqual(agents.count("its Connect page comes here, in this chat"), 2)
         self.assertIn("Connect page here, in this chat", agents)
         self.assertNotIn("your chat with Product Manager", agents)
         self.assertNotIn("data-pmchat", agents)
