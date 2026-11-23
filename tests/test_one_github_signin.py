@@ -16,7 +16,7 @@ AGENT, OWNER = "anna-agent", "@anna:bridge.localhost"
 
 
 def gist(nonce, login="anna-gh", gid=42, **kw):
-    return {"files": {"hagency-check.txt": {"content": nonce}}, "owner": {"login": login, "id": gid}, **kw}
+    return {"files": {github_proof.CHECK_FILE: {"content": nonce}}, "owner": {"login": login, "id": gid}, **kw}
 
 
 class Server(unittest.TestCase):
@@ -39,8 +39,9 @@ class Server(unittest.TestCase):
 
     def test_a_check_works_once_and_only_for_its_own_agent(self):
         nonce = github_proof.challenge(AGENT, OWNER)
-        self.assertEqual(self.prove(nonce, gist(nonce), agent="bob-agent")[0], 400)   # not its check
-        self.assertEqual(self.prove(nonce, gist(nonce))[0], 400)                        # used up already
+        self.assertEqual(self.prove(nonce, gist(nonce), agent="bob-agent")[0], 400)   # not its check...
+        self.assertEqual(self.prove(nonce, gist(nonce))[0], 200)                        # ...and not used up by it
+        self.assertEqual(self.prove(nonce, gist(nonce))[0], 400)                        # used up now
 
     def test_a_gist_without_the_check_or_a_fork_proves_nothing(self):
         for data in (gist("something else"), gist("N", fork_of={"id": "x"}), gist("N", gid=True), gist("N", login="bad login")):
@@ -57,6 +58,25 @@ class Server(unittest.TestCase):
         self.assertEqual(status, 409)
         self.assertIn("@anna-old", out["error"])
         self.assertEqual(github_link.link_of(OWNER)["id"], 7)
+
+    def test_one_github_account_never_links_two_people(self):
+        """Review workflow: an agent misled into making a gist with someone else's check would link them."""
+        github_link.save_link("@bob:bridge.localhost", "anna-gh", 42)
+        nonce = github_proof.challenge(AGENT, OWNER)
+        status, out = self.prove(nonce, gist(nonce))
+        self.assertEqual(status, 409)
+        self.assertIsNone(github_link.link_of(OWNER))
+
+    def test_only_the_check_file_counts(self):
+        nonce = github_proof.challenge(AGENT, OWNER)
+        data = {"files": {"other.txt": {"content": nonce}}, "owner": {"login": "anna-gh", "id": 42}}
+        self.assertEqual(self.prove(nonce, data)[0], 400)
+
+    def test_github_busy_keeps_the_check(self):
+        nonce = github_proof.challenge(AGENT, OWNER)
+        with mock.patch.object(github_proof, "read_gist", side_effect=github_proof.Busy("busy")):
+            self.assertEqual(asyncio.run(github_proof.prove(AGENT, OWNER, nonce, "a" * 32))[0], 503)
+        self.assertEqual(self.prove(nonce, gist(nonce))[0], 200)                        # the same check works
 
     def test_bad_gist_ids_and_too_many_checks(self):
         nonce = github_proof.challenge(AGENT, OWNER)
@@ -105,6 +125,22 @@ class Client(unittest.TestCase):
         self.assertTrue(any("files[hagency-check.txt][content]=N1" in a for a in self.gh[0]))
         self.assertEqual(self.gh[-1][-1], "gists/g1")                        # deleted
         self.assertTrue(self.posts[-1].endswith("/logout"))                  # the one-off session ends
+
+    def test_a_network_failure_anywhere_is_never_fatal(self):
+        """GPT review and review workflow: a failed login or logout ended the connect line before the agent started."""
+        def down(url, body, token=None):
+            raise OSError("no route")
+        with mock.patch("builtins.print") as said:
+            self.assertIsNone(client_proof.prove(self.CREDS, "https://rooms.example", run=self.fake_gh, post=down))
+        self.assertIn("Connect GitHub", str(said.call_args_list))
+
+        def logout_fails(url, body, token=None):
+            if url.endswith("/logout"):
+                raise OSError("gone")
+            return self.post(url, body, token)
+        with mock.patch("builtins.print"):
+            self.assertEqual(client_proof.prove(self.CREDS, "https://rooms.example", run=self.fake_gh, post=logout_fails),
+                             "anna-gh")
 
     def test_a_refusal_is_said_and_never_fatal(self):
         def post(url, body, token=None):

@@ -30,8 +30,11 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
     """True if the agent is signed in to GitHub when this returns, and then (given creds and server) its
     account is linked to the person too: one sign-in for both (ADR 0017). Asks only at a terminal
     (connect.sh gives it one); with nobody to answer, it says how to do it later."""
-    if github.identity_dir(agent) is not None:
-        return link(creds, server, prove)
+    if github.identity_dir(agent) is not None:   # signed in before: linked to the person only on their yes
+        if creds and server and (sys.stdin.isatty() if interactive is None else interactive) and _yes(
+                "Your agent is signed in to GitHub. Use that account for you too? [Y/n]", ask):
+            return link(creds, server, prove)
+        return True
     if which("gh") is None:
         print("note: to let your agent open issues and pull requests, install the GitHub CLI "
               "(https://cli.github.com), then sign it in:\n" + LATER.format(app=app, agent=agent))
@@ -39,11 +42,7 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
     if not (sys.stdin.isatty() if interactive is None else interactive):
         print("note: to let your agent open issues and pull requests, sign it in to GitHub:\n" + LATER.format(app=app, agent=agent))
         return False
-    try:
-        answer = ask_line("Sign in to GitHub? You and your agent will both use this account. [Y/n]", ask).lower()
-    except (EOFError, OSError):               # Ctrl-D, a lost terminal: a no (GPT review: never keeps the agent from starting)
-        answer = "n"
-    if answer not in ("", "y", "yes"):
+    if not _yes("Sign in to GitHub? You and your agent will both use this account. [Y/n]", ask):
         print(LATER.format(app=app, agent=agent))
         return False
     folder = github.IDENTITY_ROOT / agent
@@ -68,3 +67,10 @@ def link(creds: dict | None, server: str | None, prove) -> bool:
     print(f"✓ Signed in to GitHub as @{login}. You and your agent both use it." if login else
           "✓ your agent is signed in to GitHub")
     return True
+
+
+def _yes(question: str, ask) -> bool:
+    try:
+        return ask_line(question, ask).lower() in ("", "y", "yes")
+    except (EOFError, OSError):               # Ctrl-D, a lost terminal: a no (never keeps the agent from starting)
+        return False

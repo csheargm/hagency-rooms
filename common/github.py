@@ -100,6 +100,7 @@ def identity_dir(agent: str) -> Path | None:
 
 
 # Never let ambient overrides pick a different account/host than the agent's own config dir.
+GIST_CHECK_FILE = "hagency-check.txt"   # one GitHub sign-in (ADR 0017): the client writes it, @pm accepts only it
 SCRUBBED_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST")
 # Host-side git must not run user/system config (filters, fsmonitor, hooks) on agent-edited trees.
 ISOLATED_GIT_ENV = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}

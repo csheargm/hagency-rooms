@@ -15,13 +15,21 @@ from common import github
 
 TIMEOUT_S = 20
 DESCRIPTION = "Hagency Rooms sign-in check (deleted in a moment)"
+CHECK_FILE = github.GIST_CHECK_FILE
+FIX = "Click Connect GitHub in the Hagency panel to connect it yourself."
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):   # a redirect would carry the agent's sign-in elsewhere
+        return None
 
 
 def _post(url: str, body: dict, token: str | None = None) -> dict:
+    """POST JSON; the answer, or {"error": …}. Raises OSError/ValueError when there is no usable answer."""
     headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {})}
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=TIMEOUT_S) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:         # the server's own reason, said to the person
         try:
@@ -44,12 +52,17 @@ def _gh(agent: str, args: list[str], run=subprocess.run) -> str:
 def prove(creds: dict, server: str, run=subprocess.run, post=_post) -> str | None:
     """The GitHub login now linked to the agent's owner, or None (what went wrong is printed)."""
     agent = str(creds.get("user_id", "")).lstrip("@").partition(":")[0]
-    signed = post(f"{creds['homeserver'].rstrip('/')}/_matrix/client/v3/login",
-                  {"type": "m.login.password", "identifier": {"type": "m.id.user", "user": creds["user_id"]},
-                   "password": creds["password"], "initial_device_display_name": "github check"})
-    token = signed.get("access_token")
+    homeserver = str(creds.get("homeserver", "")).rstrip("/")
+    try:
+        signed = post(f"{homeserver}/_matrix/client/v3/login",
+                      {"type": "m.login.password", "identifier": {"type": "m.id.user", "user": creds["user_id"]},
+                       "password": creds["password"], "initial_device_display_name": "github check"})
+    except (OSError, ValueError, KeyError) as e:   # optional: said, and the agent starts anyway (GPT review)
+        print(f"note: couldn't link your GitHub account to you ({type(e).__name__}). {FIX}")
+        return None
+    token = signed.get("access_token") if isinstance(signed, dict) else None
     if not token:
-        print(f"note: couldn't link your GitHub account to you ({signed.get('error', 'sign-in failed')})")
+        print(f"note: couldn't link your GitHub account to you ({signed.get('error', 'sign-in failed')}). {FIX}")
         return None
     gist = None
     try:
@@ -58,7 +71,7 @@ def prove(creds: dict, server: str, run=subprocess.run, post=_post) -> str | Non
         if not nonce:
             raise OSError(asked.get("error") or "no check from the server")
         made = json.loads(_gh(agent, ["api", "gists", "-X", "POST", "-F", "public=false", "-f", f"description={DESCRIPTION}",
-                                      "-f", f"files[hagency-check.txt][content]={nonce}"], run))
+                                      "-f", f"files[{CHECK_FILE}][content]={nonce}"], run))
         gist = made.get("id") if isinstance(made, dict) else None
         answer = post(f"{server.rstrip('/')}/connect/github/proof", {"nonce": nonce, "gist": gist}, token)
         if answer.get("login"):
@@ -66,7 +79,7 @@ def prove(creds: dict, server: str, run=subprocess.run, post=_post) -> str | Non
         print(f"note: couldn't link your GitHub account to you: {answer.get('error', 'no answer')}")
         return None
     except (OSError, ValueError, subprocess.SubprocessError) as e:   # said; the agent still works
-        print(f"note: couldn't link your GitHub account to you ({e})")
+        print(f"note: couldn't link your GitHub account to you ({e}). {FIX}")
         return None
     finally:
         if gist:
@@ -74,4 +87,7 @@ def prove(creds: dict, server: str, run=subprocess.run, post=_post) -> str | Non
                 _gh(agent, ["api", "-X", "DELETE", f"gists/{gist}"], run)
             except (OSError, subprocess.SubprocessError):   # a secret gist with a used-up check: harmless
                 print(f"note: couldn't delete the check gist {gist}; you can delete it on github.com")
-        post(f"{creds['homeserver'].rstrip('/')}/_matrix/client/v3/logout", {}, token)   # this one-off session ends
+        try:
+            post(f"{homeserver}/_matrix/client/v3/logout", {}, token)   # this one-off session ends
+        except (OSError, ValueError):            # it stays until it is signed out elsewhere: said, never fatal
+            print("note: couldn't end the one-off sign-in used for the GitHub check")
