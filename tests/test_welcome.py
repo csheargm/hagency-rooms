@@ -18,6 +18,7 @@ from server.loop import Loop
 
 S = "bridge.localhost"
 NEW, ANNA, PM = f"@newbie1:{S}", f"@anna:{S}", f"@pm:{S}"
+FAR = "@newbie1:elsewhere.example"   # from another server: my chat comes as an invite they must accept
 WELCOME_ROOM = SimpleNamespace(room_id="!welcome", canonical_alias=pm_welcome.WELCOME_ALIAS, users={})
 DM = SimpleNamespace(room_id="!dm", canonical_alias=None, users={})
 
@@ -73,7 +74,8 @@ class Greeting(Base):
         self.assertEqual(self.said[0][0], "!dm")
         self.assertIn("Get your agent", self.said[0][1])
         self.assertEqual([b[2] for b in self.buttons], ["🔌"])
-        self.assertEqual(self.lp._welcomes[NEW], {"dm": "!dm", "offer": "$offer", "done": [], "pointed": True})
+        self.assertEqual(self.lp._welcomes[NEW], {"dm": "!dm", "offer": "$offer", "done": []})
+        self.assertNotIn("!welcome", [r for r, _ in self.said])   # screen test 2026-11-23: no public "Welcome, @…!"
 
     def test_my_private_chat_is_named_product_manager_and_direct(self):
         """Seen live: it was called "Hagency (private)", which said nothing about who it was with."""
@@ -88,12 +90,12 @@ class Greeting(Base):
 
     def test_one_line_in_welcome_points_them_to_the_invite(self):
         """Seen live: Element lists my private chat as an invite, so a newcomer never saw the buttons."""
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR)))
         pointers = [b for r, b in self.said if r == "!welcome"]
         self.assertEqual(len(pointers), 1)
-        self.assertIn(NEW, pointers[0])                     # the pill: Element shows their name
-        self.assertIn("open on the left as **Product Manager**", pointers[0])   # it's joined already
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW, prev="leave")))
+        self.assertIn(FAR, pointers[0])                     # the pill: Element shows their name
+        self.assertIn("accept it under Invites", pointers[0])   # another server's Element: an invite
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR, prev="leave")))
         self.assertEqual(len([b for r, b in self.said if r == "!welcome"]), 1)
 
     def test_a_failed_pointer_is_retried_but_a_sent_one_never_repeats(self):
@@ -104,21 +106,21 @@ class Greeting(Base):
             self.said.append((room_id, body))
             return "$offer"
         ok, self.lp.say = self.lp.say, failing
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))
-        self.assertNotIn("pointed", self.lp._welcomes[NEW])
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR)))
+        self.assertNotIn("pointed", self.lp._welcomes[FAR])
         self.lp.say = ok
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW, prev="leave")))
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW, prev="leave")))
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR, prev="leave")))
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR, prev="leave")))
         self.assertEqual([r for r, _ in self.said], ["!dm", "!welcome"])    # one offer, one pointer
 
     def test_asking_again_never_brings_the_pointer_back(self):
         """GPT review 23 re-check: "I want an agent" re-greets, which must keep "pointed"."""
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR)))
         self.lp.addressed_text = lambda event, room=None: event.body
-        self.run_(self.lp.on_welcome_text(WELCOME_ROOM, text(NEW, "I want an agent")))   # answered: a second line
-        self.assertTrue(self.lp._welcomes[NEW]["pointed"])
+        self.run_(self.lp.on_welcome_text(WELCOME_ROOM, text(FAR, "I want an agent")))   # answered: a second line
+        self.assertTrue(self.lp._welcomes[FAR]["pointed"])
         before = len(self.said)
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW, prev="leave")))
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR, prev="leave")))
         self.assertEqual(len(self.said), before)                 # a rejoin repeats nothing
 
     def test_no_pointer_for_someone_who_already_clicked_a_button(self):
@@ -145,8 +147,8 @@ class Greeting(Base):
             seen.append((room_id, mention))
             return "$offer" if body.startswith("Welcome to") else "$x"
         self.lp.say = say
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))
-        self.assertIn(("!welcome", NEW), seen)
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR)))
+        self.assertIn(("!welcome", FAR), seen)
 
     def test_the_servers_admins_are_not_welcomed(self):
         """Seen live: the owner's admin account got "Welcome, owner!"."""
@@ -193,7 +195,7 @@ class Greeting(Base):
         self.run_(self.lp.ensure_welcome_room())
         self.lp.private_room.assert_awaited_once_with(NEW)      # not anna (has an agent), not an invitee
         self.run_(self.lp.ensure_welcome_room())
-        self.assertEqual([r for r, _ in self.said], ["!dm", "!w"])   # once, and pointed to it in Welcome
+        self.assertEqual([r for r, _ in self.said], ["!dm"])   # once; no public pointer for someone of ours
 
     def test_a_failed_greeting_is_not_remembered(self):
         self.lp.private_room = mock.AsyncMock(return_value=None)

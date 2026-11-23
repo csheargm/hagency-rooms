@@ -137,3 +137,29 @@ class OthersGreeting(Base):
                          ": your agents **Claude**, **a-codex**")
         self.assertEqual(pm_lobby.agents_in_words([{"localpart": "a-agent", "label": "main"}]), ": your agent **a-agent**")
         self.assertNotIn(PM, pm_lobby.SET_UP)
+
+
+class JoinGreeting(Base):
+    """Live test 2026-11-23: someone joining by an invite link got four welcomes; one of ours, whose private
+    offer (with 🔌) is already open, gets no extra "Click 👍 to get your agent" line in the room."""
+    def setUp(self):
+        super().setUp()
+        self.lp.is_private_chat = lambda room: False
+        self.lp.offer_thumb = mock.AsyncMock()
+        self.room = project("!p", "night test")
+        self.lp._lobby_greeted = {}
+
+    def greet(self, who):
+        with mock.patch.object(pm_lobby.server_admins, "is_admin", return_value=False):
+            run(self.lp.on_room_join(self.room, who))
+
+    def test_one_of_ours_with_my_private_offer_gets_no_room_greeting(self):
+        self.lp._welcomes = {NEW: {"dm": "!dm", "offer": "$o", "done": []}}
+        self.greet(NEW)
+        self.assertEqual(self.said, [])
+
+    def test_without_my_private_offer_the_greeting_still_comes(self):
+        self.lp._welcomes = {}
+        self.greet(NEW)
+        self.assertEqual(len(self.said), 1)
+        self.assertIn("Click 👍", self.said[0][1])

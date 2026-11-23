@@ -130,6 +130,9 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
             return                            # the server's admins (@owner): no "Welcome, owner!"
         if person not in self.welcomes() and await self.greet(person) is None:
             return                            # greeted once; a failure is retried at the next join or start
+        if identity.split(person)[1] == SERVER_NAME:
+            return   # my chat opens by itself for them (hagency_auto_accept.py), and Welcome's topic and the home
+            # page point to it; a public "Welcome, @…!" for every newcomer was noise everyone saw (screen test 2026-11-23)
         entry, pointing = self.welcomes()[person], self.__dict__.setdefault("_pointing", set())
         if entry.get("pointed") or entry.get("done") or person in pointing:
             return                            # said already, or they found my chat (they clicked a button)
