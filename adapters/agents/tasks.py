@@ -280,4 +280,9 @@ async def handle(agent: str, backend: str, base: Path, task: dict) -> dict:
     except (TaskError, GitHubError, agents.AgentError, KeyError, ValueError, TypeError, OSError) as e:
         why = room_safe(e)                     # the result is posted in the room: no local paths
         return {"kind": kind, "issue": task.get("issue"), "pr": task.get("pr"), "error": why,
-                "task_id": task.get("task_id"), "line": f"⚠️ {kind} failed for #{task.get('issue')}: {why}"}
+                "task_id": task.get("task_id"), "line": f"⚠️ {kind} failed{issue_part(task)}: {why}"}
+
+
+def issue_part(task: dict) -> str:
+    """" for #12" when the task is about an issue; a plan has none (live test 2026-11-23: "plan failed for #None")."""
+    return f" for #{task['issue']}" if isinstance(task.get("issue"), int) else ""

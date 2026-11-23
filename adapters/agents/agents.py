@@ -25,6 +25,7 @@ from pathlib import Path
 from common import bridge_config
 from adapters.agents import cli_path
 from adapters.agents import codex_provider
+from common.redact import secret_safe
 from common import lifecycle
 from adapters.agents import owner_cli
 from adapters.agents import tool_refusal
@@ -80,6 +81,10 @@ def _codex_argv(workdir: Path, session_id: str | None, write: bool = False, owne
             common += owner_cli.codex_owner_args(hosted_web=not provider)
         except owner_cli.ConfigError as e:
             raise AgentError(str(e)) from e
+        if provider:   # live test 2026-11-23: the owner's plugins, computer/browser use etc. made a 147k-token
+            # request that no local model takes (Ollama: "exceeds the available context size"); they are
+            # OpenAI-hosted features, of no use with another provider. Off: about 2.6k tokens.
+            common += [x for f in CODEX_FEATURES_OFF for x in ("-c", f"features.{f}=false")]
     else:      # and none of the owner's own widening of workspace-write (network, extra roots)
         common += ["-c", f'sandbox_mode="{sandbox}"', "-c", 'approval_policy="never"',
                    "-c", "sandbox_workspace_write.network_access=false",
@@ -87,6 +92,21 @@ def _codex_argv(workdir: Path, session_id: str | None, write: bool = False, owne
     if session_id:
         return ["codex", "exec", "resume", *common, session_id, "-"]
     return ["codex", "exec", *common, "-C", str(workdir), "-"]
+
+
+LOG_LINE_RE = re.compile(r"^\d{4}-\d\d-\d\dT\S+\s+(TRACE|DEBUG|INFO|WARN|ERROR)\s")   # a CLI's own log line
+ERROR_LINE = "ERROR: "                                                   # Codex's line for the person
+
+
+def failure_reason(output: str) -> str:
+    """What to tell the person when the CLI failed. Live test 2026-11-23: the chat showed Codex's
+    internal log lines ("…Z ERROR codex_models_manager::manager: failed to refresh…") instead of its
+    own last error ("request (147017 tokens) exceeds the available context size")."""
+    lines = [s.strip() for s in output.splitlines() if s.strip()]
+    said = [s[len(ERROR_LINE):] for s in lines if s.startswith(ERROR_LINE)]
+    if said:
+        return said[-1]
+    return " | ".join([s for s in lines if not LOG_LINE_RE.match(s)][-3:] or lines[-3:])
 
 
 def _parse_codex(stdout: str) -> AgentResult:
@@ -189,8 +209,9 @@ async def run_turn(backend: str, workdir: Path, prompt: str, write: bool = False
     stdout = out.decode(errors="replace")
     if proc.returncode != 0:
         parse_fn(stdout)  # CLIs that report errors as JSON on stdout (claude) raise a clear AgentError here
-        tail = (err.decode(errors="replace").strip() or stdout.strip()).splitlines()[-3:]
-        raise AgentError(f"{backend} exited {proc.returncode}: {codex_provider.scrub(' | '.join(tail), extra)[:400]}")
+        reason = failure_reason(err.decode(errors="replace").strip() or stdout.strip())
+        reason = secret_safe(codex_provider.scrub(reason, extra))   # GPT review: an ERROR line may hold a credential
+        raise AgentError(f"{backend} exited {proc.returncode}: {reason[:400]}")
 
     result = parse_fn(stdout)
     note = tool_refusal.note(result.denied) if owner else ""   # task output (VERDICT, plan JSON) stays as is

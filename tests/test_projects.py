@@ -339,7 +339,8 @@ class MakeAndFind(Base):
         kw = self.lp.client.room_create.call_args.kwargs
         self.assertEqual((kw["name"], kw["invite"], kw["power_level_override"]), ("Rocket", [ANNA], {"users": {ANNA: 100}}))
         panel.assert_awaited_once()
-        self.assertIn("pick its GitHub repo", self.said[0][1])                # the next step, in the room
+        self.assertIn("1. Pick its GitHub repo", self.said[0][1])             # the next step, in the room
+        self.assertIn("an invite link from the panel", self.said[0][1])       # live test: links were left out
         self.assertIn("accept its invite", self.said[1][1])                   # and where the room is
         for _ in range(3):
             run(self.lp.make_project_room(origin, ANNA, ""))

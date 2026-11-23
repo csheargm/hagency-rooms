@@ -82,6 +82,12 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         return (bool(identity.USER_RE.match(user_id)) and user_id != self.user_id and not local.endswith(("-agent", "-bot"))
                 and (server == SERVER_NAME or remote_people.allowed()))
 
+    def in_my_chat(self, person: str) -> bool:
+        """They have joined my private chat with my offer in it (GPT review: a stored welcome isn't enough;
+        auto-join can fail, or they may have left it)."""
+        room = self.client.rooms.get((self.welcomes().get(person) or {}).get("dm") or "")
+        return room is not None and person in room.users
+
     def is_newcomer(self, user_id: str) -> bool:
         """A person who may have an agent here and has none of their own yet."""
         return self.may_have_agent(user_id) and not registry.owns(user_id, registry.agent_of(user_id))
@@ -130,6 +136,9 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
             return                            # the server's admins (@owner): no "Welcome, owner!"
         if person not in self.welcomes() and await self.greet(person) is None:
             return                            # greeted once; a failure is retried at the next join or start
+        if identity.split(person)[1] == SERVER_NAME and self.in_my_chat(person):
+            return   # my chat opens by itself for them (hagency_auto_accept.py), and Welcome's topic and the home
+            # page point to it; a public "Welcome, @…!" for every newcomer was noise everyone saw (screen test 2026-11-23)
         entry, pointing = self.welcomes()[person], self.__dict__.setdefault("_pointing", set())
         if entry.get("pointed") or entry.get("done") or person in pointing:
             return                            # said already, or they found my chat (they clicked a button)

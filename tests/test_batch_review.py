@@ -154,7 +154,8 @@ class Pages(unittest.TestCase):
         self.assertEqual(windows, "")
         self.assertTrue(mac.endswith("ABCDE-FGHJK --agent hermes"))
 
-    def test_the_panel_hint_names_what_pm_resends_by(self):
+    def test_the_panel_hint_is_a_button_not_a_typed_name(self):
+        """Was: the hint named what to type ("add another agent called codex"); now Get a fresh code."""
         from server import panel
         import re
         esc = re.search(r"^const esc = .*$", panel.PAGE, re.M).group(0)
@@ -163,9 +164,10 @@ class Pages(unittest.TestCase):
                 {"remote": True, "online": False, "connected": False, "first": False, "label": "lap", "display": "My laptop"}]
         out = self.node(source + f"\nprocess.stdout.write(JSON.stringify({json.dumps(rows)}.map(agentHint)))")
         reused, spaced = json.loads(out)
-        self.assertIn("add another agent called codex&quot;", reused.replace('"', "&quot;"))
+        for hint in (reused, spaced):
+            self.assertIn("Click Get a fresh code", hint)
+            self.assertNotIn("add another agent called", hint)
         self.assertNotIn("codex2", reused)
-        self.assertIn("Rename it here to one short word", spaced)
 
 
 class SwitchFromPrivate(repos.Setup):

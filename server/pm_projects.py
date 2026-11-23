@@ -48,6 +48,12 @@ CONFLICT = ("**{repo}** is already the project of another room here: one room pe
             "{repo}, but its build loop runs in the other room)")
 
 
+# A new project room's first message. Live test 2026-11-23: one long sentence that left out invite links
+# (only "Room info → Invite") and what to do once people are in.
+ROOM_STEPS = ("1. Pick its GitHub repo in the Hagency panel above (or say \"@pm this room works on owner/name\").\n"
+              "2. Invite people: an invite link from the panel (or \"@pm invite link\"), or Room info → Invite.\n"
+              "3. Say what you want built, then \"@pm let's build it\".")
+
 class Answer(str):
     """My reply, carrying the 🙋/➕ question it asks (pm_settings.set_repo puts the buttons under it)."""
     def __new__(cls, text: str, offer: dict):
@@ -111,9 +117,8 @@ class Projects(Finding, Joining, RepoRemoval):
             await self.say(origin.room_id, f"⚠️ I couldn't create the room: {getattr(resp, 'message', resp)}")
             return
         await panel.add_to_room(self.client, resp.room_id)
-        await self.say(resp.room_id, f"This is **{plain(name)}**. Next: pick its GitHub repo in the Hagency panel above "
-                                     "(or say \"@pm this room works on owner/name\"), then invite people: Room info → Invite."
-                                     + panel.browser_note(resp.room_id))
+        await self.say(resp.room_id, f"This is **{plain(name)}**. Next:\n" + ROOM_STEPS
+                       + "\n" + panel.browser_note(resp.room_id).strip())   # its own line: only some apps need it
         await self.say(origin.room_id, f"Made **{plain(name)}**: accept its invite on the left (under Invites), then pick "
                                        f"its GitHub repo in the Hagency panel at the top.{self.agent_note(person)}")
 

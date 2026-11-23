@@ -37,7 +37,7 @@ ASSETS = {f"{PAGE_PATH}/page.js": ("agent.js", "application/javascript")}
 SCOPE = "agent"                             # its page sessions and limits (page_session.py)
 REMOVED = ("You removed your first agent, so a new one needs a new name. Add it under My agents, at the top "
            "of your chat with the Product Manager.")
-BUSY = "I'm already setting up an agent for you; one moment, then try again."
+BUSY = console_agents.BUSY                  # one sentence for every "setting up" refusal
 
 
 def status_of(loop, user: str) -> dict:

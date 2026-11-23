@@ -12,8 +12,11 @@ function agentStatus(a) {
   // Screen test: one that never connected had a Disconnect button (nothing to disconnect); Remove and Rename stay.
   const disconnect = a.online === true || a.connected
     ? `<button data-a="disconnect" data-v="" data-g="${esc(a.name)}">Disconnect</button>` : "";
+  // Screen test: a never-connected agent's only way to a fresh code was typing a command in the chat.
+  const fresh = a.online !== true && !a.connected
+    ? `<button data-a="code" data-v="" data-g="${esc(a.name)}">Get a fresh code</button>` : "";
   return `<span class="chip">${word}</span>${a.stopped ? ' <span class="chip">Stopped</span>' : ""} ${stopButton(a)} ${disconnect}
-    ${removeButton(a)}`;
+    ${fresh} ${removeButton(a)}`;
 }
 // Stop / Start (pm_stop.py): it stays signed in on its computer and ignores messages until Start. Only for
 // one that has connected; Hermes answers through its own gateways, so it is stopped on its computer.
@@ -50,17 +53,10 @@ function agentHint(a, personal) {
   if (!a.remote || a.online === true) return "";
   personal = personal === true;            // never an index (rows.map(agentHint))
   if (a.connected) return '<div class="hint">Run the connect line again on its computer; @pm sends its Connect page with a fresh code (🔁).</div>';
-  // A code lasts 30 minutes, and the 🔌 button only ever sets up the first agent (GPT review): say how to get a fresh one.
-  // A further one: @pm resends by the name its person calls it (pm_agents.start_add), never its slot
-  // ("codex2" for one renamed or called "codex" again: GPT review, batch 12-14); a name of several words
-  // (or longer than 9) can't be typed in that line, so then: rename it to one word first (GPT re-check).
-  const called = a.display || a.label, there = personal ? "here" : "there";
-  const steps = a.first ? `follow the 🔌 steps (type "resend me the code" ${there} for a fresh one)`
-    : /^[A-Za-z][A-Za-z0-9]{0,8}$/.test(called)   // identity.LABEL_RE, any case
-      ? `follow its Connect message (for a fresh code, type "add another agent called ${esc(called)}" ${there})`
-      : `follow its Connect message (for a fresh code, Rename it ${personal ? "below" : "here"} to one short word, then type "add another agent called" that word ${there})`;
-  if (personal && a.first) return '<div class="hint">Not connected yet: type "resend me the code" here for a fresh Connect message and code.</div>';
-  return `<div class="hint">Not connected yet: ${personal ? "" : `open ${chatLink("your chat with Product Manager")} and `}${steps}.</div>`;
+  // A code lasts 30 minutes; "Get a fresh code" (console_agents.fresh_code) sends a new Connect page.
+  // Screen test: this hint told people to type "resend me the code" or "add another agent called pi".
+  const where = personal ? "here, in this chat" : `in ${chatLink("your chat with Product Manager")}`;
+  return `<div class="hint">Click Get a fresh code to connect it: its Connect page comes ${where}.</div>`;
 }
 // Rename: only the name people see (pm_rename.py); its Matrix ID stays. Plain text, up to 40 characters.
 function renameRow(a) {

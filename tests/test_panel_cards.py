@@ -98,7 +98,8 @@ class MyAgents(unittest.TestCase):
         card = self.card([NEVER])
         self.assertIn("newbie1-agent", card)
         self.assertNotIn("main", card)                                 # a label only matters with several
-        self.assertIn("Not connected yet: open your chat with Product Manager and follow the 🔌 steps", card)
+        self.assertIn("Click Get a fresh code to connect it: its Connect page comes in your chat with Product Manager", card)
+        self.assertEqual(card.count("Get a fresh code"), 2)            # the hint and its button
         self.assertNotIn("Run the connect line again", card)
         self.assertNotIn("Code it runs", card)                         # nothing customized: nothing to say
         self.assertNotIn("official version", card)
@@ -134,9 +135,8 @@ class MyAgents(unittest.TestCase):
         self.assertIn("main · newbie1-agent", card)
         self.assertIn("codex · newbie1-codex-agent", card)
         self.assertIn("Code it runs: your own version (abc1234)", card)
-        self.assertIn('type "resend me the code" there for a fresh one', card)              # its first agent
-        self.assertIn('follow its Connect message (for a fresh code, type "add another agent called codex" there)', card)
-        self.assertEqual(card.count("🔌"), 1)                          # GPT review: 🔌 sets up the first one only
+        self.assertEqual(card.count("Get a fresh code"), 4)            # each: a hint and a button (screen test:
+        self.assertNotIn('type "', card)                               # it said what to type in the chat)
         self.assertIn("Go back to official", card)
 
 

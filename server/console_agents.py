@@ -5,6 +5,8 @@ Claude Code): while they have no agent, or none of theirs has ever connected, Ad
 first agent with the AI they chose (pm_first.py, the same path as 🔌). After that, "Add an agent"
 adds a further one (pm_agents.py), as before.
 """
+import time
+
 from common import pm_kinds
 from server import ownership
 from common import registry
@@ -67,3 +69,39 @@ async def add_agent(loop, user: str, value: str) -> str:
         await loop.choose(dm, user, BRING, picked)
         return "Setting up your agent: its Connect page is coming in our private chat."
     return await loop.start_add(dm, user, name or None, picked)
+
+
+FRESH = "A fresh Connect page and code are on their way to our private chat (the code works once, within 30 minutes)."
+BUSY = "I'm already setting up an agent for you; one moment, then try again."
+TOO_MANY = "That's several codes this hour; the newest one still works. Try again later."
+
+
+async def fresh_code(loop, user: str, agent: str | None) -> str:
+    """The panel's "Get a fresh code": a new Connect page and one-time code for one of their agents that
+    has never connected, as 🔁 does (pm_presence.py). Screen test: the panel told people to type
+    "resend me the code", or "add another agent called pi" (which reads like adding a new one)."""
+    found = registry.find(user, agent)
+    if found is None or not registry.owns(user, found["localpart"]) or found["agent"] != registry.REMOTE:
+        return "that isn't one of your agents on your own computer"
+    if loop.ever_connected(found["localpart"]):
+        return "it has connected before: run its connect line again on its computer"
+    if user in loop.__dict__.get("_provisioning", ()):   # GPT review: a second click mid-setup sent nothing
+        return BUSY
+    from server.pm_welcome import CODES_PER_HOUR   # here: pm_welcome's imports reach console, which imports this
+    recent = [t for t in loop.__dict__.setdefault("_codes_sent", {}).get(user, []) if time.time() - t < 3600]
+    if len(recent) >= CODES_PER_HOUR:     # the same budget as typing "resend me the code" (pm_welcome.py)
+        return TOO_MANY
+    loop._codes_sent[user] = [*recent, time.time()]
+    dm = await loop.private_room(user)
+    if dm is None:
+        return "I couldn't open a private chat with you; please try again"
+    if found["first"]:
+        await loop.choose(dm, user, BRING)    # pm_first.bring_own: (re)uses their first agent, then its code
+    else:   # add_agent finishes one whose setup failed halfway (GPT review: a bare code for it never redeemed),
+        busy = loop.__dict__.setdefault("_provisioning", set())   # then sends its Connect page; a failure is said there
+        busy.add(user)
+        try:
+            await loop.add_agent(dm, user, found["label"])
+        finally:
+            busy.discard(user)
+    return FRESH

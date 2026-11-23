@@ -111,10 +111,12 @@ class HomePage(unittest.TestCase):
         """Owner request (ADR 0015): step ① gets the install line and step ③ an invite link right from
         here, no detour through the chat with @pm. They open in a new tab, so Element stays open."""
         page = self.text.split("-->", 1)[1]
-        for path, label in (("/connect/new", "① Get your agent"), ("/invite/new", "Make an invite link")):
+        # Screen test 2026-11-23: step ① was a dark card with no visible button; now a pill button like ③'s.
+        for path, label in (("/connect/new", "Get your agent →"), ("/invite/new", "Make an invite link")):
             anchor = page[page.index(f'<a href="{path}"'):]
             self.assertIn('target="_blank" rel="noopener"', anchor.split(">", 1)[0])
             self.assertIn(label, anchor.split("</a>", 1)[0])
+            self.assertIn("border-radius:20px", anchor.split("</a>", 1)[0])   # the same pill as the other buttons
         rooms = (HERE / "Caddyfile").read_text().split("@pm path ")[1].split("\n")[0].split()
         self.assertTrue({"/connect/*", "/invite/*"} <= set(rooms))          # both reach @pm, as /connect/start does
 

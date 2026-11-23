@@ -98,6 +98,19 @@ class Flow(unittest.TestCase):
         self.assertIn("Opened #5", self.sent[-1][0])
         self.assertIn("take it all the way", self.sent[-1][0])              # level off: tells them how to start
 
+    def test_a_failed_plan_says_what_to_do_in_plain_words(self):
+        """Live test 2026-11-23: a 3B local model's plan failed with "⚠️ plan didn't work: the plan wasn't
+        valid JSON: Expecting ',' delimiter…", and the agent's own line said "plan failed for #None"."""
+        self.run_(self.lp.start_plan(self.room, ANNA))
+        self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "plan", "task_id": self.sent[-1][2]["task_id"],
+                                                                 "error": "the plan wasn't valid JSON"}))
+        said = self.sent[-1][0]
+        self.assertIn("couldn't turn the discussion into a plan", said)
+        self.assertIn("let's build it", said)
+        from adapters.agents import tasks
+        self.assertEqual(tasks.issue_part({"kind": "plan"}), "")
+        self.assertEqual(tasks.issue_part({"kind": "build", "issue": 12}), " for #12")
+
     def test_an_empty_revision_keeps_the_previous_plan(self):
         """Seen live: a re-plan came back empty (the agent remembered its earlier draft) and the
         3-issue plan waiting for ✅ was lost."""

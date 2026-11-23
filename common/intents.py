@@ -12,6 +12,7 @@ WEB = "web"            # "let my agent search the web": no switch since ADR 0006
 CONSOLE = "console"
 SET_REPO = "set_repo"
 RETRY = "retry"
+START = "start"        # "what should we do first?": the next steps, for this room
 # "this room works on owner/name", "set the repo to owner/name", "use https://github.com/owner/name":
 # the repo is the command's own argument (never any other owner/name-looking text in the message).
 SET_REPO_RE = re.compile(
@@ -50,6 +51,13 @@ _RULES = [   # checked in order; the first match wins, so the safest meanings co
            r"go for it|kick (it )?off|ship it|spec is ready|ready to build|make it|plan (it|this))\b"),
     (SHOW_PLAN, r"\bplans?\b"),                 # any other mention of the plan: show it
     (ABOUT, r"\b(who are you|what are you|your model|which model|are you (an? )?(ai|bot|human|llm))\b"),
+    # Live test 2026-11-23: "@pm what should we do first in this project?" only got "Noted. …".
+    # The whole message only (GPT review): "for the next steps, add a migration" revises a plan, and
+    # "help with the next steps" is a help request; a short tail like "in this project?" is fine.
+    (START, r"^\W*(@?pm\b[\s:,]*)?(please\s+)?(so\s+)?(what (should|do|shall|can) (we|i) do( first| next| now)?|"
+            r"what'?s next|what next|what now|where (do|should|can) (we|i) (start|begin)|"
+            r"how (do|should|can) (we|i) (start|begin|get started)|getting started|(the )?(next|first) steps?)"
+            r"\b[^.!?;\n]{0,40}[?.!]*\s*$"),
     (HELP, r"\b(help|what can you do|how do (i|we) use you)\b"),
 ]
 _COMPILED = [(intent, re.compile(rx, re.I)) for intent, rx in _RULES]

@@ -24,8 +24,15 @@ HISTORY = 200                     # room events read for the discussion
 # What happens once the plan is approved, by the room's mode (so "autonomous" is never a surprise).
 AFTER_APPROVAL = {"autonomous": "Then the room runs on its own: build → review → merge, no more 👍 needed.",
                   "assist": "Then agents build and review; a person merges each change.",
-                  "off": "The room is stopped, so nothing starts until the owner picks assist or autonomous."}
+                  "off": "Nothing starts building until the owner says \"@pm let us approve each change\" "
+                         "or \"@pm take it all the way\"."}   # live test: "assist or autonomous" was jargon
 
+
+# Live test 2026-11-23 (a 3B local model): "⚠️ plan didn't work: the plan wasn't valid JSON: Expecting ','
+# delimiter…" told a newcomer nothing they could act on.
+PLAN_FAILED = ("⚠️ {agent} couldn't turn the discussion into a plan ({why}). Small local models often can't. "
+               "Say \"@pm let's build it\" to try again; I plan with the first agent of whoever asks, so someone "
+               "whose first agent runs a stronger AI can ask instead.")
 
 class Planner:
     plans: dict                   # room → {"task_id", "agent", "by"} while an agent drafts or files
@@ -79,7 +86,10 @@ class Planner:
             return                                    # stale, or not the agent we asked
         self.plans.pop(rid)
         if result.get("error"):
-            await self.say(rid, f"⚠️ {result['kind'].replace('_', ' ')} didn't work: {str(result['error'])[:200]}")
+            await self.say(rid, PLAN_FAILED.format(agent=plan["agent"].split(":")[0].lstrip("@"),
+                                                   why=str(result["error"])[:200])
+                           if result.get("kind") == "plan" else
+                           f"⚠️ {result['kind'].replace('_', ' ')} didn't work: {str(result['error'])[:200]}")
         elif result["kind"] == "plan":
             await self.propose(rid, plan, result.get("items"))
         else:
