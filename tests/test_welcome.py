@@ -124,6 +124,12 @@ class Greeting(Base):
         self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(FAR, prev="leave")))
         self.assertEqual(len(self.said), before)                 # a rejoin repeats nothing
 
+    def test_one_of_ours_whose_old_chat_is_gone_gets_the_pointer(self):
+        """GPT review: a stale record (they declined my chat, now gone) must not hide the way in."""
+        self.lp._welcomes[NEW] = {"dm": "!gone", "offer": "$offer", "done": []}
+        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))
+        self.assertEqual([r for r, _ in self.said], ["!welcome"])
+
     def test_no_pointer_for_someone_who_already_clicked_a_button(self):
         self.lp._welcomes[NEW] = {"dm": "!dm", "offer": "$offer", "done": ["🏠"]}
         self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))

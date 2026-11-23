@@ -88,7 +88,7 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         dm = (self.welcomes().get(person) or {}).get("dm")
         room = self.client.rooms.get(dm or "")
         if room is None:
-            return bool(dm)       # made just now: my next sync brings it (final round: the pointer went out then)
+            return False          # unknown: maybe gone (GPT review: a stale record must never hide every way in)
         # Invited counts for one of ours: hagency_auto_accept.py joins them a moment later (final round
         # 2026-11-23: checked before that, the public pointer still went out). Left: they're in neither.
         return person in room.users or person in getattr(room, "invited_users", {})
@@ -139,9 +139,11 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         an invite to accept, which newcomers miss, so the buttons would go unseen."""
         if identity.split(person)[1] == SERVER_NAME and await asyncio.to_thread(server_admins.is_admin, person):
             return                            # the server's admins (@owner): no "Welcome, owner!"
-        if person not in self.welcomes() and await self.greet(person) is None:
+        made_now = person not in self.welcomes()
+        if made_now and await self.greet(person) is None:
             return                            # greeted once; a failure is retried at the next join or start
-        if identity.split(person)[1] == SERVER_NAME and self.in_my_chat(person):
+        if identity.split(person)[1] == SERVER_NAME and (made_now or self.in_my_chat(person)):
+            # made_now: my chat was just created, so it isn't in my synced rooms yet (final round 2026-11-23)
             return   # my chat opens by itself for them (hagency_auto_accept.py), and Welcome's topic and the home
             # page point to it; a public "Welcome, @…!" for every newcomer was noise everyone saw (screen test 2026-11-23)
         entry, pointing = self.welcomes()[person], self.__dict__.setdefault("_pointing", set())

@@ -166,10 +166,11 @@ class JoinGreeting(Base):
         self.greet(NEW)
         self.assertEqual(self.said, [])
 
-    def test_a_chat_made_just_now_counts_as_open(self):
-        self.lp._welcomes = {NEW: {"dm": "!new", "offer": "$o", "done": []}}   # not in my rooms until my next sync
+    def test_a_recorded_chat_i_cant_see_does_not_count(self):
+        """GPT review: a stale record (declined, then gone) must never hide every way to my chat."""
+        self.lp._welcomes = {NEW: {"dm": "!gone", "offer": "$o", "done": []}}
         self.greet(NEW)
-        self.assertEqual(self.said, [])
+        self.assertEqual(len(self.said), 1)
 
     def test_one_who_left_my_private_chat_is_still_greeted(self):
         """GPT review: a stored welcome isn't enough; they may have left the chat, or never joined it."""
