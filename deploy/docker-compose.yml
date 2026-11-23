@@ -9,7 +9,8 @@ x-logs: &logs                           # Docker's logs stay small on the 45 GB 
 services:
   caddy:
     image: caddy:2.11.9
-    ports: ["80:80", "443:443", "8448:8448"]
+    # bootstrap.sh sets HAGENCY_BIND_IP (the default route's address); 0.0.0.0 only for a bare `docker compose`
+    ports: ["${HAGENCY_BIND_IP:-0.0.0.0}:80:80", "${HAGENCY_BIND_IP:-0.0.0.0}:443:443", "${HAGENCY_BIND_IP:-0.0.0.0}:8448:8448"]
     environment:
       ROOMS_DOMAIN: ${ROOMS_DOMAIN}
       MATRIX_DOMAIN: ${MATRIX_DOMAIN}

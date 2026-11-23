@@ -35,7 +35,12 @@ python3 envfile.py check
 [ "$(get PM_UID)" = "$(id -u)" ] || { echo "✗ PM_UID in .env isn't $(id -u), the user that owns ~/hagency/pm"; exit 1; }
 SERVER_NAME=$(get SERVER_NAME)
 MATRIX_DOMAIN=$(get MATRIX_DOMAIN)
-dc() { sudo env -u PM_UID docker compose --env-file .env "$@"; }   # PM_UID from .env only
+# Caddy publishes its ports on the default route's own address, not 0.0.0.0: tailscale serve holds
+# :443 on this VM's tailscale0 address, and after a reboot Docker failed "address already in use"
+# for 0.0.0.0:443, so the site was down until Caddy was recreated (live, 2026-11-23).
+BIND_IP=$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')
+[[ $BIND_IP =~ ^[0-9]+(\.[0-9]+){3}$ ]] || { echo "✗ no IPv4 address on the default route"; exit 1; }
+dc() { sudo env -u PM_UID HAGENCY_BIND_IP="$BIND_IP" docker compose --env-file .env "$@"; }   # PM_UID from .env only
 dc config --quiet                                        # the compose file and .env agree
 dc pull --quiet                                          # fails here on a wrong tag or architecture
 # The Caddyfile is checked before anything is replaced (a running Caddy keeps its old one otherwise).
