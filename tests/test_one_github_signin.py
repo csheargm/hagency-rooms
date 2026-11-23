@@ -67,6 +67,11 @@ class Server(unittest.TestCase):
         self.assertEqual(status, 409)
         self.assertIsNone(github_link.link_of(OWNER))
 
+    def test_taken_is_shared_with_connect_github(self):
+        github_link.save_link("@bob:bridge.localhost", "anna-gh", 42)
+        self.assertTrue(github_link.taken(OWNER, 42))
+        self.assertFalse(github_link.taken("@bob:bridge.localhost", 42))     # their own account
+
     def test_only_the_check_file_counts(self):
         nonce = github_proof.challenge(AGENT, OWNER)
         data = {"files": {"other.txt": {"content": nonce}}, "owner": {"login": "anna-gh", "id": 42}}
@@ -141,6 +146,12 @@ class Client(unittest.TestCase):
         with mock.patch("builtins.print"):
             self.assertEqual(client_proof.prove(self.CREDS, "https://rooms.example", run=self.fake_gh, post=logout_fails),
                              "anna-gh")
+
+    def test_an_odd_answer_is_never_fatal(self):
+        def odd(url, body, token=None):
+            return {"access_token": "tok"} if url.endswith("/login") else {"error": "an odd answer"}
+        with mock.patch("builtins.print"):
+            self.assertIsNone(client_proof.prove(self.CREDS, "https://rooms.example", run=self.fake_gh, post=odd))
 
     def test_a_refusal_is_said_and_never_fatal(self):
         def post(url, body, token=None):

@@ -42,7 +42,8 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
     if not (sys.stdin.isatty() if interactive is None else interactive):
         print("note: to let your agent open issues and pull requests, sign it in to GitHub:\n" + LATER.format(app=app, agent=agent))
         return False
-    if not _yes("Sign in to GitHub? You and your agent will both use this account. [Y/n]", ask):
+    if not _yes("Sign in to GitHub? You and your agent will both use this account. [Y/n]" if creds and server else
+                "Sign your agent in to GitHub, so it can open issues and pull requests? [Y/n]", ask):
         print(LATER.format(app=app, agent=agent))
         return False
     folder = github.IDENTITY_ROOT / agent

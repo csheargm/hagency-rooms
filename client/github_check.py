@@ -30,12 +30,14 @@ def _post(url: str, body: dict, token: str | None = None) -> dict:
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
     try:
         with urllib.request.build_opener(_NoRedirect).open(req, timeout=TIMEOUT_S) as r:
-            return json.loads(r.read() or b"{}")
+            got = json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:         # the server's own reason, said to the person
         try:
-            return {"error": json.loads(e.read() or b"{}").get("error") or f"HTTP {e.code}"}
+            got = json.loads(e.read() or b"{}")
         except ValueError:
-            return {"error": f"HTTP {e.code}"}
+            got = {}
+        return {"error": (got.get("error") if isinstance(got, dict) else None) or f"HTTP {e.code}"}
+    return got if isinstance(got, dict) else {"error": "an odd answer"}   # never .get() on a list (GPT re-check)
 
 
 def _gh(agent: str, args: list[str], run=subprocess.run) -> str:
@@ -88,6 +90,8 @@ def prove(creds: dict, server: str, run=subprocess.run, post=_post) -> str | Non
             except (OSError, subprocess.SubprocessError):   # a secret gist with a used-up check: harmless
                 print(f"note: couldn't delete the check gist {gist}; you can delete it on github.com")
         try:
-            post(f"{homeserver}/_matrix/client/v3/logout", {}, token)   # this one-off session ends
+            ended = "error" not in post(f"{homeserver}/_matrix/client/v3/logout", {}, token)   # the one-off session ends
         except (OSError, ValueError):            # it stays until it is signed out elsewhere: said, never fatal
+            ended = False
+        if not ended:
             print("note: couldn't end the one-off sign-in used for the GitHub check")

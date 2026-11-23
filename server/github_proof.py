@@ -39,7 +39,6 @@ GIST_RE = re.compile(r"[0-9a-f]{20,40}")   # fullmatch only
 API = os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
 DIFFERENT = ("You're connected to GitHub as @{linked}, but your agent signed in as @{login}. To use @{login}: "
              "Disconnect GitHub in the Hagency panel, then Connect GitHub.")
-TAKEN = "That GitHub account is already someone else's here, so I didn't link it to you."
 _pending: dict[str, tuple[str, str, float]] = {}   # nonce → (agent localpart, owner, issued)
 _asked: dict[str, list[float]] = {}           # agent, "client:<address>" or "*" → recent asks
 
@@ -131,8 +130,8 @@ async def prove(agent: str, owner: str, nonce: object, gist: object) -> tuple[in
     login, gid = found
     if registry.owner_of(agent) != owner:         # the agent changed hands while GitHub answered (GPT review)
         return 409, {"error": "this agent isn't yours any more"}
-    if any(u != owner and isinstance(e, dict) and e.get("id") == gid for u, e in github_link.links().items()):
-        return 409, {"error": TAKEN}              # one account, one person (review workflow: a misled agent)
+    if github_link.taken(owner, gid):             # one account, one person (review workflow: a misled agent)
+        return 409, {"error": github_link.TAKEN}
     linked = github_link.link_of(owner)
     if linked and linked["id"] != gid:            # never relinked silently: the person decides
         return 409, {"error": DIFFERENT.format(linked=linked["login"], login=login)}
