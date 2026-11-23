@@ -52,9 +52,12 @@ _RULES = [   # checked in order; the first match wins, so the safest meanings co
     (SHOW_PLAN, r"\bplans?\b"),                 # any other mention of the plan: show it
     (ABOUT, r"\b(who are you|what are you|your model|which model|are you (an? )?(ai|bot|human|llm))\b"),
     # Live test 2026-11-23: "@pm what should we do first in this project?" only got "Noted. …".
-    (START, r"\b(what (should|do|shall|can) (we|i) do( first| next| now)?|what'?s next|what next|what now|"
-            r"where (do|should|can) (we|i) (start|begin)|how (do|should|can) (we|i) (start|begin|get started)|"
-            r"getting started|next steps?|first steps?)\b"),
+    # The whole message only (GPT review): "for the next steps, add a migration" revises a plan, and
+    # "help with the next steps" is a help request; a short tail like "in this project?" is fine.
+    (START, r"^\W*(@?pm\b[\s:,]*)?(please\s+)?(so\s+)?(what (should|do|shall|can) (we|i) do( first| next| now)?|"
+            r"what'?s next|what next|what now|where (do|should|can) (we|i) (start|begin)|"
+            r"how (do|should|can) (we|i) (start|begin|get started)|getting started|(the )?(next|first) steps?)"
+            r"\b[^.!?;\n]{0,40}[?.!]*\s*$"),
     (HELP, r"\b(help|what can you do|how do (i|we) use you)\b"),
 ]
 _COMPILED = [(intent, re.compile(rx, re.I)) for intent, rx in _RULES]

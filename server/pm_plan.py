@@ -29,8 +29,9 @@ AFTER_APPROVAL = {"autonomous": "Then the room runs on its own: build → review
 
 # Live test 2026-11-23 (a 3B local model): "⚠️ plan didn't work: the plan wasn't valid JSON: Expecting ','
 # delimiter…" told a newcomer nothing they could act on.
-PLAN_FAILED = ("⚠️ {agent} couldn't turn the discussion into a plan ({why}). Small local models often can't; "
-               "say \"@pm let's build it\" to try again, or plan with an agent on a stronger AI.")
+PLAN_FAILED = ("⚠️ {agent} couldn't turn the discussion into a plan ({why}). Small local models often can't. "
+               "Say \"@pm let's build it\" to try again; I plan with the first agent of whoever asks, so someone "
+               "whose first agent runs a stronger AI can ask instead.")
 
 class Planner:
     plans: dict                   # room → {"task_id", "agent", "by"} while an agent drafts or files

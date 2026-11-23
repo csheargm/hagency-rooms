@@ -100,7 +100,7 @@ class Lobby:
         if (person in self.lobby_greeted() or person in greeting or not self.is_newcomer(person)
                 or self.is_private_chat(room)):
             return
-        if identity.split(person)[1] == SERVER_NAME and person in self.welcomes():
+        if identity.split(person)[1] == SERVER_NAME and self.in_my_chat(person):
             return   # my private offer, with 🔌, is already open for them: live test 2026-11-23, someone joining
             # by an invite link got four welcomes (Welcome, private, the link's hello and this one)
         greeting.add(person)

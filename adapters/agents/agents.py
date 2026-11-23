@@ -25,6 +25,7 @@ from pathlib import Path
 from common import bridge_config
 from adapters.agents import cli_path
 from adapters.agents import codex_provider
+from common.redact import secret_safe
 from common import lifecycle
 from adapters.agents import owner_cli
 from adapters.agents import tool_refusal
@@ -209,7 +210,8 @@ async def run_turn(backend: str, workdir: Path, prompt: str, write: bool = False
     if proc.returncode != 0:
         parse_fn(stdout)  # CLIs that report errors as JSON on stdout (claude) raise a clear AgentError here
         reason = failure_reason(err.decode(errors="replace").strip() or stdout.strip())
-        raise AgentError(f"{backend} exited {proc.returncode}: {codex_provider.scrub(reason, extra)[:400]}")
+        reason = secret_safe(codex_provider.scrub(reason, extra))   # GPT review: an ERROR line may hold a credential
+        raise AgentError(f"{backend} exited {proc.returncode}: {reason[:400]}")
 
     result = parse_fn(stdout)
     note = tool_refusal.note(result.denied) if owner else ""   # task output (VERDICT, plan JSON) stays as is

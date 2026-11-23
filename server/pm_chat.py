@@ -58,6 +58,8 @@ FIRST_STEPS = ("Here's how a project goes:\n1. {repo}\n"
                "2. **Say what you want built**, here in the chat. People and agents can talk it through.\n"
                "3. Say **@pm let's build it**: your agent turns the discussion into issues for your 👍, then agents "
                "build them and open pull requests.\nSay **@pm help** for everything I understand.")
+PRIVATE_STEPS = ("Projects happen in project rooms. Say **make me a project room called** and a name, here, and I'll make "
+                 "one for you (or find one to join with **find a project**). Then ask me \"what's next?\" in that room.")
 
 
 def replied_to(event: RoomMessageText) -> str | None:
@@ -199,6 +201,8 @@ class Chat(Addressing):
             await self.start_plan(room, sender)
         elif intent == intents.HELP:
             await self.say(rid, HELP)
+        elif intent == intents.START and self.is_private_chat(room):   # GPT review: no repo picker in My Hagency
+            await self.say(rid, PRIVATE_STEPS)
         elif intent == intents.START:
             repo = await room_state.repo_of(self.client, rid)
             await self.say(rid, FIRST_STEPS.format(repo=f"✓ This room works on **{repo}**." if repo else REPO_STEP))
@@ -266,8 +270,9 @@ class Chat(Addressing):
         board = self.boards.get(room_id, {}).get("event_id")
         link = f" Live progress: [Project status](https://matrix.to/#/{room_id}/{board})." if board else ""
         # Live test 2026-11-23: a brand-new room answered only "Mode: stopped: …", which read as broken.
-        repo = await room_state.repo_of(self.client, room_id)
-        first = "" if repo else f"No GitHub repo yet. {REPO_STEP} "
+        room = self.client.rooms.get(room_id)
+        private = room is not None and self.is_private_chat(room)   # GPT review: no repo for My Hagency
+        first = "" if private or await room_state.repo_of(self.client, room_id) else f"No GitHub repo yet. {REPO_STEP} "
         return f"{first}Mode: {LEVEL_WORDS[await self.level(room_id)]}. Agents here: {agents}.{link}"
 
     async def command(self, room: MatrixRoom, sender: str, words: list[str]) -> None:

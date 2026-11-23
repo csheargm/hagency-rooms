@@ -71,7 +71,8 @@ async def add_agent(loop, user: str, value: str) -> str:
     return await loop.start_add(dm, user, name or None, picked)
 
 
-FRESH = "A fresh Connect page and code are in our private chat (the code works once, within 30 minutes)."
+FRESH = "A fresh Connect page and code are on their way to our private chat (the code works once, within 30 minutes)."
+BUSY = "I'm already setting up an agent for you; one moment, then try again."
 TOO_MANY = "That's several codes this hour; the newest one still works. Try again later."
 
 
@@ -84,6 +85,8 @@ async def fresh_code(loop, user: str, agent: str | None) -> str:
         return "that isn't one of your agents on your own computer"
     if loop.ever_connected(found["localpart"]):
         return "it has connected before: run its connect line again on its computer"
+    if user in loop.__dict__.get("_provisioning", ()):   # GPT review: a second click mid-setup sent nothing
+        return BUSY
     from server.pm_welcome import CODES_PER_HOUR   # here: pm_welcome's imports reach console, which imports this
     recent = [t for t in loop.__dict__.setdefault("_codes_sent", {}).get(user, []) if time.time() - t < 3600]
     if len(recent) >= CODES_PER_HOUR:     # the same budget as typing "resend me the code" (pm_welcome.py)
@@ -94,9 +97,11 @@ async def fresh_code(loop, user: str, agent: str | None) -> str:
         return "I couldn't open a private chat with you; please try again"
     if found["first"]:
         await loop.choose(dm, user, BRING)    # pm_first.bring_own: (re)uses their first agent, then its code
-    else:
+    else:   # add_agent finishes one whose setup failed halfway (GPT review: a bare code for it never redeemed),
+        busy = loop.__dict__.setdefault("_provisioning", set())   # then sends its Connect page; a failure is said there
+        busy.add(user)
         try:
-            await loop.send_code(user, found["localpart"])   # pm_agents.py: that agent's Connect page
-        except RuntimeError as e:
-            return f"I couldn't send it: {e}"
+            await loop.add_agent(dm, user, found["label"])
+        finally:
+            busy.discard(user)
     return FRESH

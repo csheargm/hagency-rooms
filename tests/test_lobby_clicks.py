@@ -155,8 +155,16 @@ class JoinGreeting(Base):
 
     def test_one_of_ours_with_my_private_offer_gets_no_room_greeting(self):
         self.lp._welcomes = {NEW: {"dm": "!dm", "offer": "$o", "done": []}}
+        self.lp.client.rooms["!dm"] = SimpleNamespace(users={PM: None, NEW: None})
         self.greet(NEW)
         self.assertEqual(self.said, [])
+
+    def test_one_who_left_my_private_chat_is_still_greeted(self):
+        """GPT review: a stored welcome isn't enough; they may have left the chat, or never joined it."""
+        self.lp._welcomes = {NEW: {"dm": "!dm", "offer": "$o", "done": []}}
+        self.lp.client.rooms["!dm"] = SimpleNamespace(users={PM: None})
+        self.greet(NEW)
+        self.assertEqual(len(self.said), 1)
 
     def test_without_my_private_offer_the_greeting_still_comes(self):
         self.lp._welcomes = {}

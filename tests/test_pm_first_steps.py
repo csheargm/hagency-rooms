@@ -21,7 +21,11 @@ class Phrases(unittest.TestCase):
     def test_commands_keep_their_meaning(self):
         for text, intent in (("let's build it", intents.PLAN), ("start building", intents.PLAN),
                              ("where are we", intents.STATUS), ("help", intents.HELP), ("stop", intents.OFF),
-                             ("what do we do about the login bug, stop it?", intents.OFF)):
+                             ("what do we do about the login bug, stop it?", intents.OFF),
+                             # GPT review: a plan revision and a help request are not "where to start"
+                             ("@pm for the next steps, add a migration before launch", intents.UNKNOWN),
+                             ("what should we do first? add a migration step", intents.UNKNOWN),
+                             ("help with the next steps", intents.HELP)):
             self.assertEqual(intents.classify(text), intent, text)
 
 
@@ -36,6 +40,12 @@ class Answer(Talk):
         with mock.patch.object(room_state, "repo_of", mock.AsyncMock(return_value=None)):
             self.tell(ANNA, "@pm what's next?")
         self.assertIn("1. " + pm_chat.REPO_STEP, self.said[-1])
+
+    def test_in_my_private_chat_it_points_to_project_rooms(self):
+        """GPT review: My Hagency has no repo picker, and a repo can't be set there."""
+        self.lp.is_private_chat = lambda room: True
+        self.tell(ANNA, "@pm what's next?")
+        self.assertEqual(self.said[-1], pm_chat.PRIVATE_STEPS)
 
     def test_where_are_we_in_a_room_without_a_repo_says_the_next_step(self):
         """Live test 2026-11-23: a new room answered only "Mode: stopped: …", which read as broken."""

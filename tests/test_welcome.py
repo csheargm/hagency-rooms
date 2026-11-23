@@ -57,6 +57,7 @@ class Base(unittest.TestCase):
             self.buttons.append((room_id, event_id, key))
         self.lp.say, self.lp.offer_thumb = say, thumb
         self.lp.private_room = mock.AsyncMock(return_value="!dm")
+        self.lp.client = SimpleNamespace(rooms={"!dm": SimpleNamespace(users={PM: None, NEW: None})})   # it opened by itself
         self.admins = set()
         for a in (mock.patch.object(pm_welcome.server_admins, "is_admin", lambda who: who in self.admins),
                   mock.patch.object(matrix_calls, "in_directory", mock.AsyncMock(return_value=True))):   # the Lobby: listed
@@ -191,7 +192,8 @@ class Greeting(Base):
         alias = mock.patch.object(matrix_calls, "room_of_alias", mock.AsyncMock(return_value="!w"))
         alias.start()
         self.addCleanup(alias.stop)
-        self.lp.client = mock.Mock(rooms={"!w": welcome}, room_put_state=mock.AsyncMock())
+        self.lp.client = mock.Mock(rooms={"!w": welcome, "!dm": SimpleNamespace(users={PM: None, NEW: None})},
+                                   room_put_state=mock.AsyncMock())
         self.run_(self.lp.ensure_welcome_room())
         self.lp.private_room.assert_awaited_once_with(NEW)      # not anna (has an agent), not an invitee
         self.run_(self.lp.ensure_welcome_room())

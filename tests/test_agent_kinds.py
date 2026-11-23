@@ -158,6 +158,14 @@ class Turns(unittest.TestCase):
         self.assertEqual(agents.failure_reason(f"{log}\nboom\n{log}"), "boom")
         self.assertEqual(agents.failure_reason(log), log)                 # nothing else: the log line, not nothing
 
+    def test_a_credential_in_the_clis_error_never_reaches_the_room(self):
+        """GPT review: the ERROR line is chosen from anywhere in the output, so it may hold a key."""
+        with self.assertRaises(agents.AgentError) as e:
+            self.turn("codex", {}, code=1, out=b"",
+                      err=b"ERROR: auth failed for key sk-abcdefghijklmnopqrstuvwxyz0123\nshutting down")
+        self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz0123", str(e.exception))
+        self.assertIn("auth failed", str(e.exception))
+
     def test_a_locked_turn_keeps_the_lockdown(self):
         _, seen = self.turn("ollama", {"model": "qwen3:8b"}, owner=False)
         self.assertIn('sandbox_mode="read-only"', seen["argv"])
