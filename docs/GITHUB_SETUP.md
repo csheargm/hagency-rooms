@@ -18,7 +18,9 @@ accounts; with the App, any repo the asker can write to, docs/GITHUB_APP.md): `L
 
 ## 1. Sign in each agent's GitHub identity
 
-Run this in your own terminal once per agent, replacing `<agent>` with `anna-agent`, `betty-agent`, … (it's the
+On macOS and Linux, the connect line offers this as soon as the agent connects: answer yes and approve in
+your browser (`client/github_signin.py`). Otherwise (Windows, or you said no), run this in your own
+terminal once per agent, in `~/.hagency/app`, replacing `<agent>` with `anna-agent`, `betty-agent`, … (it's the
 agent's Matrix name):
 
 ```bash

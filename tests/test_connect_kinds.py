@@ -49,13 +49,14 @@ class Flow(unittest.TestCase):
                 mock.patch.object(agent_service, "install", return_value="launchd") as install, \
                 mock.patch.object(connect.service_migration, "migrate", return_value=[]), \
                 mock.patch.object(connect.signin_place, "stranded", return_value=[]), \
+                mock.patch.object(connect.github_signin, "offer", return_value=False) as github, \
                 mock.patch.object(connect.os, "execve"), redirect_stdout(said), redirect_stderr(err):
             try:
                 connect.main()
                 failed = None
             except SystemExit as e:
                 failed = str(e)
-        self.asked = asked
+        self.asked, self.github = asked, github   # github_signin.offer: tested in test_github_signin
         return install.call_args, said.getvalue() + err.getvalue() + (failed or ""), secret, failed
 
     def saved(self) -> dict:
@@ -68,6 +69,13 @@ class Flow(unittest.TestCase):
         self.assertEqual(install.args[2], "codex")
         self.assertEqual(self.saved()["agent"], "codex")
         self.assertNotIn("model", self.saved())
+
+    def test_connecting_offers_github_for_that_agent(self):
+        """Live test 2026-11-23: nothing during setup said the agent needs GitHub (client/github_signin.py)."""
+        self.installed = {"codex"}
+        _, _, _, failed = self.run_connect("ABCDE-FGHJK")
+        self.assertIsNone(failed)
+        self.github.assert_called_once_with(self.saved()["user_id"].lstrip("@").partition(":")[0], connect.APP)
 
     def test_ollama_with_the_model_pm_named(self):
         install, said, secret, failed = self.run_connect("ABCDE-FGHJK", answer={**SIGN_IN, "agent_kind": "ollama",
