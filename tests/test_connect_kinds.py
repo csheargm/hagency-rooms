@@ -75,7 +75,8 @@ class Flow(unittest.TestCase):
         self.installed = {"codex"}
         _, _, _, failed = self.run_connect("ABCDE-FGHJK")
         self.assertIsNone(failed)
-        self.github.assert_called_once_with(self.saved()["user_id"].lstrip("@").partition(":")[0], connect.APP)
+        self.github.assert_called_once_with(self.saved()["user_id"].lstrip("@").partition(":")[0], connect.APP,
+                                            creds=mock.ANY, server="https://c.example")   # ADR 0017: one sign-in
 
     def test_ollama_with_the_model_pm_named(self):
         install, said, secret, failed = self.run_connect("ABCDE-FGHJK", answer={**SIGN_IN, "agent_kind": "ollama",

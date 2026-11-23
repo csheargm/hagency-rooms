@@ -252,7 +252,7 @@ def main() -> None:
         print(f"✗ {signin_place.REPLACED.format(agent)}", file=sys.stderr)
     print(f"✓ connected as {creds['user_id']} ({creds['agent']}); only {creds['owner']} can direct it")
     if not args.pair_only:                    # Windows (pair-only): connect.ps1 shows its own steps
-        github_signin.offer(agent_name(creds), APP)
+        github_signin.offer(agent_name(creds), APP, creds=creds, server=args.server)
     if args.pair_only:
         if signin_place.kept_aside(home, path) and os.name == "nt":   # connect.ps1 registers only the first agent's task
             raise SystemExit(f"✓ saved. On Windows this agent runs in a window for now: "
