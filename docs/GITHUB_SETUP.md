@@ -13,16 +13,19 @@ accounts; with the App, any repo the asker can write to, docs/GITHUB_APP.md): `L
 `--repo owner/name`; the console's **Check it's ready** button runs step 4 for a room's repo.
 
 > Never paste a password or token into chat, a file or this repo. Every sign-in below uses
-> GitHub's browser device flow. The token goes into the macOS keychain. `.gh/` holds only
-> `hosts.yml`, which has no token, and is git-ignored.
+> GitHub's browser device flow. The token stays in that agent's own `.gh/<agent>/hosts.yml` (folder mode 700,
+> git-ignored), not the macOS keychain: gh's keychain entry is shared by every gh folder, so with it a
+> second agent's sign-in could make the first one act as the second.
 
 ## 1. Sign in each agent's GitHub identity
 
-Run this in your own terminal once per agent, replacing `<agent>` with `anna-agent`, `betty-agent`, … (it's the
+On macOS and Linux, the connect line offers this as soon as the agent connects: answer yes and approve in
+your browser (`client/github_signin.py`). Otherwise (Windows, or you said no), run this in your own
+terminal once per agent, in `~/.hagency/app`, replacing `<agent>` with `anna-agent`, `betty-agent`, … (it's the
 agent's Matrix name):
 
 ```bash
-mkdir -p .gh/<agent> && chmod 700 .gh/<agent> && GH_CONFIG_DIR=$PWD/.gh/<agent> gh auth login --hostname github.com --git-protocol https --web
+mkdir -p .gh/<agent> && chmod 700 .gh/<agent> && GH_CONFIG_DIR=$PWD/.gh/<agent> GIT_CONFIG_GLOBAL=$PWD/.gh/<agent>/gitconfig GIT_CONFIG_NOSYSTEM=1 gh auth login --hostname github.com --git-protocol https --web --insecure-storage
 ```
 
 The command prints a one-time code. Press Enter and open github.com/login/device in a browser
