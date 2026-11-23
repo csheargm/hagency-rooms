@@ -35,7 +35,7 @@ class Switch(unittest.TestCase):
                 self.assertEqual(test_limits.on(), on, value)
                 self.assertEqual(test_limits.pick(3, 20), 20 if on else 3)
 
-    def test_on_raises_every_per_person_limit_and_no_server_wide_one(self):
+    def test_on_raises_the_listed_per_person_limits_and_no_server_wide_one(self):
         public, testing = values(None), values("1")
         self.assertEqual(values("0"), public)
         self.assertEqual((public["server.pm_projects.ROOMS_PER_HOUR"], testing["server.pm_projects.ROOMS_PER_HOUR"]), (3, 20))
@@ -55,6 +55,7 @@ class Deploy(unittest.TestCase):
         self.assertTrue(re.fullmatch(envfile.RULES["HAGENCY_TEST_LIMITS"], "1"))
         self.assertFalse(re.fullmatch(envfile.RULES["HAGENCY_TEST_LIMITS"], "2"))
         self.assertIn("HAGENCY_TEST_LIMITS", envfile.OPTIONAL)
+        self.assertIn("HAGENCY_TEST_LIMITS", envfile.FAIL_CLOSED)    # GPT review: a typo turns it off, never stops a deploy
         self.assertIn("HAGENCY_TEST_LIMITS=0", (ROOT / "deploy" / ".env.example").read_text())
 
 

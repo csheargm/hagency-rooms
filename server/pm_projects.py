@@ -35,7 +35,7 @@ from common.saved_dict import SavedDict
 log = logging.getLogger("loop")
 SEPARATE = "➕"
 ROOMS_PER_HOUR = test_limits.pick(3, 20)
-LOOKUPS_PER_HOUR = test_limits.pick(5, 20)           # "ask to join owner/name" per person
+LOOKUPS_PER_HOUR = test_limits.pick(5, 10)   # "ask to join owner/name" per person; each reads every room (GPT review)
 OFFER_S = 86400                # a 🙋/➕ question is answerable for a day
 MAKE_RE = re.compile(r"^\W*(please\s+)?(make|create|start|set up|open)\s+(me\s+)?(a\s+)?(new\s+)?project(\s+room)?"
                      r"(\s+(called|named)\s+(?P<name>[^\n]{1,60}?))?[\s.!]*$", re.I)

@@ -28,6 +28,8 @@ class Kept(unittest.TestCase):
             self.calls.append((path, token))
             if token in self.unknown:
                 return {"_status": 401, "errcode": "M_UNKNOWN_TOKEN"}
+            if path == "/forbidden":
+                return {"_status": 403, "errcode": "M_FORBIDDEN"}
             return {"ok": True}
         for p in (mock.patch.object(admin_session, "FILE", self.file),
                   mock.patch.object(admin_session.setup_accounts, "login", login),
@@ -35,7 +37,7 @@ class Kept(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def test_one_sign_in_serves_many_calls_and_processes(self):
+    def test_one_sign_in_serves_many_calls_and_runs(self):
         for _ in range(3):                                   # three separate tool runs (invite.sh token ...)
             call = admin_session.caller("admin-bot", "pw")
             self.assertEqual(call("GET", "/x", None), {"ok": True})
@@ -61,9 +63,53 @@ class Kept(unittest.TestCase):
 
     def test_a_damaged_or_future_dated_file_means_a_fresh_sign_in(self):
         self.file.parent.mkdir(parents=True)
-        for bad in ("{not json", json.dumps({"token": 5}), json.dumps({"token": "x", "at": time.time() + 999})):
+        for bad in ("{not json", json.dumps({"token": 5}), json.dumps({"token": "x", "at": None}),
+                    json.dumps({"token": "x", "at": "bad"}), json.dumps({"token": "x", "at": True})):
             self.file.write_text(bad)
-            self.assertIsNone(admin_session.saved())
+            self.assertIsNone(admin_session.read(), bad)    # GPT review: a bad "at" never breaks every admin call
+        self.file.write_text(json.dumps({"token": "x", "at": time.time() + 999}))
+        admin_session.caller("admin-bot", "pw")
+        self.assertEqual(self.logins, ["admin-bot"])         # from the future: replaced too
+
+    def test_a_token_replaced_by_another_process_is_used_not_replaced_again(self):
+        """GPT review: a caller holding an old token must not sign in over a healthy replacement."""
+        call = admin_session.caller("admin-bot", "pw")       # t1
+        self.file.write_text(json.dumps({"token": "other", "at": time.time()}))   # another process rotated it
+        self.unknown.add("t1")
+        call("GET", "/x", None)
+        self.assertEqual(self.calls[-1], ("/x", "other"))
+        self.assertEqual(self.logins, ["admin-bot"])
+
+    def test_two_callers_at_once_share_one_sign_in(self):
+        """GPT review: both saw no session and both signed in, leaving one untracked."""
+        import threading
+        slow = admin_session.setup_accounts.login
+
+        def login(user, password):
+            time.sleep(0.2)                                  # the window where the other caller looks
+            return slow(user, password)
+        with mock.patch.object(admin_session.setup_accounts, "login", login):
+            got = []
+            threads = [threading.Thread(target=lambda: got.append(admin_session.current("admin-bot", "pw")))
+                       for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        self.assertEqual((self.logins, got), (["admin-bot"], ["t1", "t1"]))
+
+    def test_other_errors_are_returned_not_retried(self):
+        call = admin_session.caller("admin-bot", "pw")
+        self.assertEqual(call("GET", "/forbidden", None)["errcode"], "M_FORBIDDEN")
+        self.assertEqual([p for p, _ in self.calls], ["/forbidden"])
+        self.assertEqual(self.logins, ["admin-bot"])
+
+    def test_a_session_that_cant_be_kept_is_signed_out(self):
+        with mock.patch.object(admin_session.os, "replace", side_effect=OSError("disk full")), \
+                self.assertRaises(OSError):
+            admin_session.caller("admin-bot", "pw")
+        self.assertIn(("/_matrix/client/v3/logout", "t1"), self.calls)
+        self.assertEqual([p.name for p in self.file.parent.iterdir() if p.suffix == ".tmp"], [])
 
     def test_admin_call_uses_the_kept_session(self):
         with mock.patch.object(local_signup.setup_accounts, "ensure_user", return_value=("pw", False)), \

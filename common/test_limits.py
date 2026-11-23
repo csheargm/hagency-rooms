@@ -3,7 +3,7 @@
 The owner's choice (2026-11-23): testers hit "that's enough for now" long before an abuser would.
 Off (any other value, or unset) is the public limits. Only per-person convenience caps change here;
 the limits that stop guessing and floods (wrong codes, failed sign-ins, emails, server-wide totals)
-never do. Read once at import: @pm's container gets it at start (deploy/docker-compose.yml).
+never do, and neither does invite links' 10 a day per person (each link lets someone in). Read once at import: @pm's container gets it at start (deploy/docker-compose.yml).
 """
 import os
 

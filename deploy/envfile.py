@@ -50,6 +50,7 @@ RULES = {
 # against RULES and bootstrap prints which), instead of stopping the deploy, so a typo made while
 # closing sign-up (HAGENCY_OPEN_SIGNUP=0) can't leave the old, open config running (GPT review).
 FAIL_CLOSED = {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "HAGENCY_OPEN_SIGNUP",
+               "HAGENCY_TEST_LIMITS",   # a typo while turning it off must not keep the old, raised limits running
                "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
                "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
 COMPOSE_UNSAFE = re.compile(r"""['"`$\\\s]""")
