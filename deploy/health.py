@@ -63,6 +63,9 @@ def checks(rooms: str, matrix: str, console: str, domain: str, server: str, publ
          and "__HAGENCY_CONSOLE__" not in t),
         ("the Connect page and /connect.ps1 served", lambda: "connect/start.js" in fetch(f"{console}/connect/start")[1]
          and "bin\\connect_win.py" in (t := fetch(f"{console}/connect.ps1")[1]) and "__HAGENCY_CONSOLE__" not in t),
+        ("Get your agent and Make an invite link served (ADR 0015)",
+         lambda: "/connect/new/page.js" in fetch(f"{console}/connect/new")[1] and "/invite/new/page.js" in
+         fetch(f"{console}/invite/new")[1] and "const SignIn" in fetch(f"{console}/auth/signin.js")[1]),
     ]
     if public:
         items += [
@@ -73,6 +76,8 @@ def checks(rooms: str, matrix: str, console: str, domain: str, server: str, publ
             ("admin API not public", lambda: fetch(f"{matrix}/_synapse/admin/v1/server_version")[0] == 404),
             ("Element's home page links to @pm",
              lambda: f"#/user/@pm:{server}?action=chat" in fetch(f"{rooms}/hagency/home.html")[1]),
+            ("Element's home page has the step ① and ③ buttons",
+             lambda: all(f'<a href="{p}"' in fetch(f"{rooms}/hagency/home.html")[1] for p in ("/connect/new", "/invite/new"))),
         ]
     return items
 

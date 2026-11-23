@@ -8,6 +8,7 @@
 <meta name="hagency-element" content="__HAGENCY_ELEMENT__">
 <title>Join a room on Hagency Rooms</title>
 <link rel="stylesheet" href="/invite/page.css">
+<script src="/auth/signin.js" defer></script>
 <script src="/invite/page.js" defer></script>
 </head>
 <body>
@@ -18,14 +19,7 @@
 
   <section id="signin" hidden>
     <div id="sso"></div>
-    <form id="password" autocomplete="on">
-      <h2>Sign in with your username and password</h2>
-      <label for="user">Username</label>
-      <input id="user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
-      <label for="pass">Password</label>
-      <input id="pass" name="password" type="password" autocomplete="current-password" required>
-      <button type="submit" class="primary">Sign in and join</button>
-    </form>
+    <div id="password-box"></div>
     <h2>New to Hagency Rooms?</h2>
     <p id="new-sso" class="small" hidden>With Google or GitHub, your account is made as you sign in above.</p>
     <p class="small">Or <a id="register" target="_blank" rel="noopener">create an account</a>

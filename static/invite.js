@@ -5,18 +5,8 @@
 // Element opens. The only places this page ever sends anyone: the homeserver's own SSO address and
 // Element at the room @pm names (both fixed origins from the page's meta tags).
 "use strict";
-const meta = n => document.querySelector(`meta[name="${n}"]`).content;
-const HS = meta("hagency-homeserver"), ELEMENT = meta("hagency-element");
-const KEY = "hagency-invite", IDP_KEY = "hagency-invite-idp", SSO_MS = 10 * 60 * 1000;
-function startedSso() {                  // the sign-in this tab started, if recent; used up by reading it
-  let mark = null; try { mark = JSON.parse(store.get(IDP_KEY) || "null"); } catch (e) { /* damaged: none */ }
-  store.drop(IDP_KEY);
-  return mark && typeof mark.idp === "string" && Date.now() < mark.until ? mark.idp : null;
-}
-const $ = id => document.getElementById(id);
-const store = {get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },   // blocked: just this visit
-  set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) { /* blocked: the link stays in this visit only */ } },
-  drop: k => { try { sessionStorage.removeItem(k); } catch (e) { /* blocked: nothing was kept */ } }};
+const {HS, ELEMENT, $, store, post, hs, ssoUrl} = SignIn;   // static/signin.js
+const KEY = "hagency-invite", IDP_KEY = "hagency-invite-idp";
 const AGAIN = " Ask the person who sent it for a new one.";
 const SAYS = {used: "This invite link has already been used." + AGAIN, expired: "This invite link has expired." + AGAIN,
   cancelled: "This invite link was cancelled." + AGAIN,
@@ -32,50 +22,24 @@ let token = null;
 
 function say(text, ok) { const s = $("status"); s.textContent = text; s.hidden = !text; s.className = ok ? "status ok" : "status"; }
 function stop(text) { say(text); $("signin").hidden = true; $("lead").textContent = ""; }
-async function post(path, body, auth) {
-  const r = await fetch(path, {method: "POST", body: JSON.stringify(body),
-    headers: {"Content-Type": "application/json", ...(auth ? {Authorization: "Bearer " + auth} : {})}});
-  let data = {}; try { data = await r.json(); } catch (e) { /* not JSON: judged by the status below */ }
-  return {status: r.status, data};
-}
-const hs = (path, body, auth) => post(HS + "/_matrix/client/v3" + path, body, auth);
 const elementHere = () => { try { return new URL(ELEMENT).origin === location.origin; } catch (e) { return false; } };
-
-async function ssoChoices() {
-  let flows = [];
-  try { flows = (await (await fetch(HS + "/_matrix/client/v3/login")).json()).flows || []; } catch (e) { return; }
-  const sso = flows.find(f => f.type === "m.login.sso");
-  const idps = ((sso && sso.identity_providers) || []).filter(p => /^[A-Za-z0-9._~-]{1,64}$/.test(p.id));
-  for (const p of idps) {
-    const b = document.createElement("button");
-    b.textContent = "Continue with " + String(p.name || p.id).slice(0, 40);
-    b.className = "primary";
-    b.addEventListener("click", () => { store.set(IDP_KEY, JSON.stringify({idp: p.id, until: Date.now() + SSO_MS}));
-      location.assign(ssoUrl(p.id, location.origin + location.pathname)); });
-    $("sso").appendChild(b);
-  }
-  $("new-sso").hidden = !idps.length;
-}
-const ssoUrl = (idp, back) => `${HS}/_matrix/client/v3/login/sso/redirect/${encodeURIComponent(idp)}?redirectUrl=${encodeURIComponent(back)}`;
 
 async function signIn(login, idp) {
   $("signin").hidden = true; say("Signing you in…", true);
-  let r;
-  try { r = await hs("/login", {...login, initial_device_display_name: "Hagency invite link"}); } catch (e) { return retry(SAYS.offline); }
-  if (r.status !== 200 || !r.data.access_token) return retry(login.type === "m.login.password"
+  const r = await SignIn.login(login, "Hagency invite link");
+  if (r.error) return retry(r.error === "offline" ? SAYS.offline : r.error === "wrong"
     ? "That username and password didn't work. Please try again." : SAYS.not_signed_in);
-  const {access_token: session, user_id: user} = r.data;
   let room = null;
-  try { room = await join(session, user); } catch (e) { retry(SAYS.offline); } finally { await hs("/logout", {}, session).catch(() => null); }   // this page's session, gone
+  try { room = await join(r.session, r.user); } catch (e) { retry(SAYS.offline); } finally { await SignIn.logout(r.session); }   // this page's session, gone
   if (room) openElement(room, idp);                     // only after the sign-out: leaving the page would cut it short
 }
 function retry(text) { say(text); $("signin").hidden = false; }
 
 async function join(session, user) {              // the room's ID once they're in, else nothing (the page says why)
-  const id = await hs(`/user/${encodeURIComponent(user)}/openid/request_token`, {}, session);
-  if (!id.data.access_token) return retry(SAYS.not_signed_in);
+  const openid = await SignIn.openid(session, user);
+  if (!openid) return retry(SAYS.not_signed_in);
   say("Adding you to the room…", true);
-  const r = await post("invite/redeem", {token, openid: id.data.access_token});
+  const r = await post("invite/redeem", {token, openid});
   const state = r.data.state;
   if (state === "failed" || state === "not_signed_in") return retry(SAYS[state]);   // the link still works
   if (state !== "ok" && state !== "member") return stop(r.data.error || SAYS[state] || SAYS.unknown);
@@ -99,10 +63,9 @@ function openElement(room, idp) {
 }
 
 async function start() {
-  const idp = startedSso();             // read and used up first, whatever happens next (a new link clears it too)
-  const fromLink = location.hash.slice(1);
-  const back = new URLSearchParams(location.search).get("loginToken");
-  if (fromLink || back) history.replaceState(null, "", location.pathname);   // neither stays in the address bar
+  const fromLink = location.hash.slice(1);   // read before anything cleans the address (GPT review)
+  const back = SignIn.returned(IDP_KEY);   // the mark is used up first, whatever happens next (a new link clears it too)
+  if (fromLink) history.replaceState(null, "", location.pathname);   // neither the token nor the query stays
   if (fromLink) store.set(KEY, fromLink);
   token = fromLink || store.get(KEY);
   if (!token) return stop(SAYS.none);
@@ -114,14 +77,14 @@ async function start() {
   $("register").href = `${ELEMENT}/#/register`;
   // Only a sign-in this tab started (GPT review: a crafted link carrying someone else's login
   // token is ignored; a new tab has no IDP_KEY). The token is never used twice.
-  if (back && !fromLink && idp) return signIn({type: "m.login.token", token: back}, idp);
+  const buttons = SignIn.ssoButtons($("sso"), IDP_KEY).then(n => { $("new-sso").hidden = !n; });   // for a retry too
+  if (back && !fromLink) return signIn(back.login, back.idp);
   $("signin").hidden = false;
-  await ssoChoices();
+  await buttons;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  $("password").addEventListener("submit", e => { e.preventDefault();
-    signIn({type: "m.login.password", identifier: {type: "m.id.user", user: $("user").value.trim()}, password: $("pass").value}); });
+  SignIn.form($("password-box"), "Sign in and join", login => signIn(login));
   start();
 });
 window.addEventListener("hashchange", () => location.reload());   // another link pasted into this tab: start over

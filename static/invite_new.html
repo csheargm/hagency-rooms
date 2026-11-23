@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="hagency-homeserver" content="__HAGENCY_HOMESERVER__">
+<meta name="hagency-element" content="__HAGENCY_ELEMENT__">
+<title>Invite people</title>
+<link rel="stylesheet" href="/invite/page.css">
+<script src="/auth/signin.js" defer></script>
+<script src="/invite/new/page.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Invite people</h1>
+  <p id="lead" class="lead">Make a link for one person. When they open it, they sign in or create an
+    account, and they're in your room.</p>
+  <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+  <section id="signin" hidden>
+    <div id="sso"></div>
+    <div id="password-box"></div>
+    <p class="small">Use the account you use in the app. Your password goes straight to Hagency Rooms'
+      own sign-in.</p>
+  </section>
+
+  <section id="make" hidden>
+    <label for="room">Room</label>
+    <select id="room"></select>
+    <label for="days">The link works for</label>
+    <select id="days">
+      <option value="1">1 day</option>
+      <option value="3">3 days</option>
+      <option value="7" selected>7 days</option>
+      <option value="30">30 days</option>
+    </select>
+    <button id="go" type="button" class="primary">Make a link</button>
+  </section>
+
+  <section id="made" hidden>
+    <h2 id="made-title">Your invite link</h2>
+    <pre class="link"><code id="link"></code></pre>
+    <button id="copy" type="button" class="primary">Copy link</button>
+    <p id="about" class="small"></p>
+  </section>
+
+  <p class="small">Inviting someone on another Matrix server? In the room, open Room info, then Invite,
+    and type their full ID, like @anna:matrix.org.</p>
+</main>
+</body>
+</html>

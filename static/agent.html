@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="hagency-homeserver" content="__HAGENCY_HOMESERVER__">
+<meta name="hagency-element" content="__HAGENCY_ELEMENT__">
+<title>Get your agent</title>
+<link rel="stylesheet" href="/invite/page.css">
+<script id="kinds" type="application/json">__HAGENCY_KINDS__</script>
+<script src="/auth/signin.js" defer></script>
+<script src="/connect/new/page.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Get your agent</h1>
+  <p id="lead" class="lead">Your own AI agent runs on your computer and works with you in your rooms.
+    Sign in, choose its AI, then copy one line to paste on your computer.</p>
+  <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+  <section id="signin" hidden>
+    <div id="sso"></div>
+    <div id="password-box"></div>
+    <p class="small">Use the account you use in the app. Your password goes straight to Hagency Rooms'
+      own sign-in.</p>
+  </section>
+
+  <section id="choose" hidden>
+    <p id="have"></p>
+    <div id="pick">
+      <label for="kind">Which AI should it run?</label>
+      <select id="kind"></select>
+      <p id="needs" class="small"></p>
+      <div id="model-box" hidden>
+        <label for="model">Model</label>
+        <input id="model" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <p id="model-hint" class="small"></p>
+      </div>
+      <div id="base-box" hidden>
+        <label for="base">The service's address</label>
+        <input id="base" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://openrouter.ai/api/v1">
+        <p class="small">You type its API key on your computer when you connect, never here.</p>
+      </div>
+    </div>
+    <button id="go" type="button" class="primary">Get my command</button>
+  </section>
+</main>
+</body>
+</html>

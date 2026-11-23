@@ -94,8 +94,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def openid_user(access_token: str) -> str | None:
     """Ask our homeserver who an OpenID token belongs to (only local users count; fail closed)."""
-    if not isinstance(access_token, str) or not access_token or len(access_token) > 512:
-        return None
+    if not isinstance(access_token, str) or not access_token or len(access_token) > 512 or not access_token.isascii():
+        return None                           # a lone surrogate can't even be quoted (GPT review: a 500, not a 401)
     url = f"{HS}/_matrix/federation/v1/openid/userinfo?access_token={urllib.parse.quote(access_token, safe='')}"
     try:
         with urllib.request.build_opener(_NoRedirect, urllib.request.ProxyHandler({})).open(url, timeout=10) as r:   # no env proxy
@@ -231,7 +231,7 @@ NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 def routes(loop, panel_html_fn) -> list:
-    from server import connect_page, invite_page          # here, not at the top: they use this module (an import cycle)
+    from server import agent_page, connect_page, invite_new_page, invite_page, signin_page   # here: they use this module (a cycle)
     global panel_html
     panel_html = panel_html_fn
 
@@ -275,7 +275,8 @@ def routes(loop, panel_html_fn) -> list:
                                           str(body.get("value", "")), str(body.get("agent", ""))[:120])})
     return [web.post("/auth/openid", auth_openid), web.post("/auth/link", auth_link),
             web.get("/console/state", state), web.post("/console/action", action),
-            *connect_page.routes(), *invite_page.routes(loop)]   # the Connect page and installer; invite links
+            *connect_page.routes(), *invite_page.routes(loop),   # the Connect page and installer; invite links
+            *signin_page.routes(), *agent_page.routes(loop), *invite_new_page.routes(loop)]   # ADR 0015: home page steps
 
 
 panel_html = None                             # set by routes(): panel.render, kept out of an import cycle
