@@ -17,6 +17,7 @@ import urllib.parse
 
 from nio import MatrixRoom, RoomMessageText
 
+from common import test_limits
 from common import identity
 from common import local_signup
 from common import registry
@@ -28,7 +29,7 @@ from common.setup_accounts import AccountError
 
 log = logging.getLogger("loop")
 NAME_MAX = 40
-RENAMES_PER_HOUR = 5
+RENAMES_PER_HOUR = test_limits.pick(5, 20)
 HOUR_S = 3600
 RENAMING = threading.Lock()                   # one rename at a time: Synapse and agents.json in one order
 RENAME_RE = re.compile(r"^\W*(please\W+)?(?:call my agent\s+(?P<a>.+?)|rename my agent\s+(?:(?P<label>[a-z0-9]+)\s+)?"

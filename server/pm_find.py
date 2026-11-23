@@ -15,6 +15,7 @@ import urllib.parse
 from nio import MatrixRoom, ReactionEvent
 
 from server import project_rooms
+from common import test_limits
 from common import room_state
 from common.bridge_config import SERVER_NAME
 from server.pm_joining import ASK
@@ -23,7 +24,7 @@ from server.project_rooms import plain
 log = logging.getLogger("loop")
 MAX_LISTED = 10                # one message each: a room's chat never gets a flood
 MAX_SCANNED = 300              # "find a project" reads at most this many rooms
-FINDS_PER_HOUR = 3             # "find a project" per person (each reads many rooms)
+FINDS_PER_HOUR = test_limits.pick(3, 10)             # "find a project" per person (each reads many rooms)
 OFFER_S = 86400                # a 🙋 is answerable for a day
 TOPIC_MAX = 160
 FIND_RE = re.compile(r"^\W*(please\s+)?(find|list|show|browse)\s+(me\s+)?(a\s+|the\s+|some\s+)?projects?(\s+to join)?\W*$", re.I)

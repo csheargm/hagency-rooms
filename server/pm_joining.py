@@ -17,6 +17,7 @@ import time
 
 from nio import MatrixRoom, ReactionEvent, RoomInviteResponse, RoomKickResponse
 
+from common import test_limits
 from common import room_state
 from common.bridge_config import ROOT
 from server.project_rooms import plain
@@ -26,7 +27,7 @@ log = logging.getLogger("loop")
 LET_IN, DECLINE, ASK = "👍", "👎", "🙋"
 REQUEST_S = 7 * 86400          # a moderator's click counts for a week
 AGAIN_S = 86400                # the same person and room: once a day
-ASKS_PER_HOUR = 5              # per person, all rooms
+ASKS_PER_HOUR = test_limits.pick(5, 20)              # per person, all rooms
 ALL_ASKS_PER_HOUR = 60         # everyone together: a flood never fans out without end
 ASKED = ("I've asked the owners of the room working on that repo, if there is one here. You'll get an invite "
          "on the left (under Invites) if they let you in.")

@@ -21,6 +21,7 @@ from nio import MatrixRoom, ReactionEvent, RoomMessageText, RoomPreset
 
 from server import panel
 from server import project_rooms
+from common import test_limits
 from common import registry
 from server import room_address
 from common import room_state
@@ -33,8 +34,8 @@ from common.saved_dict import SavedDict
 
 log = logging.getLogger("loop")
 SEPARATE = "➕"
-ROOMS_PER_HOUR = 3
-LOOKUPS_PER_HOUR = 5           # "ask to join owner/name" per person
+ROOMS_PER_HOUR = test_limits.pick(3, 20)
+LOOKUPS_PER_HOUR = test_limits.pick(5, 10)   # "ask to join owner/name" per person; each reads every room (GPT review)
 OFFER_S = 86400                # a 🙋/➕ question is answerable for a day
 MAKE_RE = re.compile(r"^\W*(please\s+)?(make|create|start|set up|open)\s+(me\s+)?(a\s+)?(new\s+)?project(\s+room)?"
                      r"(\s+(called|named)\s+(?P<name>[^\n]{1,60}?))?[\s.!]*$", re.I)

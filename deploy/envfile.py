@@ -39,6 +39,7 @@ RULES = {
     "SMTP_PASS": r"[A-Za-z0-9!%&()*+,./:;<=>?@\[\]^_{|}~#-]{8,256}",   # no quotes, $, backslashes or spaces (.env rules)
     "SMTP_FROM": rf"[A-Za-z0-9._%+-]{{1,64}}@{DOMAIN}",               # the address only; signup.py adds the name
     "HAGENCY_OPEN_SIGNUP": r"[01]",            # 1: open sign-up once SMTP is set; 0: invite tokens only
+    "HAGENCY_TEST_LIMITS": r"[01]",            # 1: higher per-person limits while testing (common/test_limits.py)
     # Sign-in with Google / GitHub (sso_login.py): each on once both of its keys are set.
     "HAGENCY_GOOGLE_CLIENT_ID": r"[0-9]{6,30}-[a-z0-9]{8,64}\.apps\.googleusercontent\.com",
     "HAGENCY_GOOGLE_CLIENT_SECRET": r"[A-Za-z0-9_-]{16,128}",
@@ -49,6 +50,7 @@ RULES = {
 # against RULES and bootstrap prints which), instead of stopping the deploy, so a typo made while
 # closing sign-up (HAGENCY_OPEN_SIGNUP=0) can't leave the old, open config running (GPT review).
 FAIL_CLOSED = {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "HAGENCY_OPEN_SIGNUP",
+               "HAGENCY_TEST_LIMITS",   # a typo while turning it off must not keep the old, raised limits running
                "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
                "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
 COMPOSE_UNSAFE = re.compile(r"""['"`$\\\s]""")
@@ -62,7 +64,7 @@ OPTIONAL = {"OPERATOR", "ALLOW_REMOTE", "REMOTE_PER_HOUR",     # OPERATOR: empty
             "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID",   # the GitHub App: empty until
             "HAGENCY_REPOS",                                               # it is registered
             "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",   # empty: sign-up by invite only
-            "HAGENCY_OPEN_SIGNUP", "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
+            "HAGENCY_OPEN_SIGNUP", "HAGENCY_TEST_LIMITS", "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
             "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
 
 

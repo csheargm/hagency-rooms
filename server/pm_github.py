@@ -14,6 +14,7 @@ import time
 
 from nio import MatrixRoom, RoomMessageText
 
+from common import test_limits
 from common import github
 from server import github_link
 from server.pm_address import unaddressed
@@ -23,7 +24,7 @@ log = logging.getLogger("loop")
 _GITHUB = r"\s+(my\s+)?github(\s+account)?(\s+please)?\W*$"
 CONNECT_RE = re.compile(r"^\W*(please\W+)?(connect|link|sign in with|verify)" + _GITHUB, re.I)
 DISCONNECT_RE = re.compile(r"^\W*(please\W+)?(disconnect|unlink|forget)" + _GITHUB, re.I)
-STARTS_PER_HOUR = 5               # one person: new codes asked for per hour
+STARTS_PER_HOUR = test_limits.pick(5, 20)   # one person: new codes asked for per hour
 SERVER_STARTS_PER_HOUR = 40       # everyone together (GitHub rate-limits the App's device codes)
 HOUR_S = 3600
 CODE = ("To connect your GitHub account, open {url} and enter the code **{code}** (it works for {minutes} "

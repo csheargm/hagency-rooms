@@ -17,10 +17,11 @@ import time
 import urllib.parse
 import urllib.request
 
+from common import admin_session as kept_session
 from common import github
 from common import setup_accounts
 from common.bridge_config import ELEMENT_ORIGIN, ROOT, SERVER_NAME
-from common.setup_accounts import HS, api, load_env
+from common.setup_accounts import HS, load_env
 
 sys.path.append(str(ROOT / "deploy"))           # the public server's settings, shared
 from configure_synapse import WELCOME_LOCALPART, module_settings, set_keys, welcome_settings  # noqa: E402
@@ -65,25 +66,21 @@ def setup() -> bool:
 
 
 def admin_call(method: str, path: str, body: dict) -> dict:
-    """One call to Synapse's admin API, signed in as admin-bot only for this call."""
+    """One call to Synapse's admin API as admin-bot (its kept session: admin_session.py)."""
     with admin_session() as call:
         return call(method, path, body)
 
 
 @contextlib.contextmanager
 def admin_session():
-    """Several admin API calls on one admin-bot sign-in (each sign-in counts against Synapse's limit:
-    GPT review), signed out at the end. Yields call(method, path, body) -> dict."""
+    """Admin API calls as admin-bot on its kept session (admin_session.py: one sign-in an hour, since each
+    sign-in counts against Synapse's limit). Yields call(method, path, body) -> dict."""
     env = load_env()
     try:
         password, _ = setup_accounts.ensure_user(env, ADMIN, setup_accounts.shared_secret(), admin=True)
     except setup_accounts.AccountError as e:
         raise SystemExit(str(e)) from e
-    token = setup_accounts.login(ADMIN, password)
-    try:
-        yield lambda method, path, body: api(method, path, body, token=token)
-    finally:
-        api("POST", "/_matrix/client/v3/logout", {}, token=token)     # the admin session ends here
+    yield kept_session.caller(ADMIN, password)
 
 
 def new_token(uses: int = 1, days: int = TOKEN_DAYS) -> str:
