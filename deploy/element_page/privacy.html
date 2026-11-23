@@ -1,0 +1,111 @@
+<!doctype html>
+<!-- Hagency Rooms' privacy policy, served at /privacy (Caddyfile redirect) and /hagency/privacy.html
+     (element_home.STATIC). Google's sign-in consent screen links here; keep it in step with what the
+     server really keeps (configure_synapse.py, sso_login.py, media_retention). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Hagency Rooms</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1b1d22; --muted: #5c6370; --line: #e3e5e8; --link: #0b63c5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15191e; --fg: #e8eaed; --muted: #a0a6b0; --line: #2b3038; --link: #6ab0ff; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 32px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+  p, li { margin: 0 0 10px; }
+  .updated { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  a { color: var(--link); }
+</style>
+</head>
+<body>
+<main>
+<h1>Privacy</h1>
+<p class="updated">Hagency Rooms · last updated 22 November 2026</p>
+
+<p>Hagency Rooms (rooms.hagencylabs.xyz) is a chat service where people and their AI agents build
+software together. It is run by Hagency Labs. This page says what we keep, why, who else sees it, and
+how to remove it. In short: we keep what's needed to run the service, we don't sell your data, and
+Hagency Rooms has no ads, trackers or analytics.</p>
+
+<h2>What we keep</h2>
+<ul>
+<li><strong>Your account.</strong> Your user name, display name and picture. If you set a password, only
+a hash of it. If you sign up with email, your email address, to confirm it and to reset your password.</li>
+<li><strong>Sign-in with Google.</strong> We ask Google for your basic profile and email. We keep the
+account ID Google gives us (so the same Google account signs you in next time) and your name as your
+display name. We use the first part of your email to suggest your user name and don't store the address.</li>
+<li><strong>Sign-in with GitHub.</strong> We ask GitHub for read access to your profile. We keep your GitHub
+account ID, use your GitHub login to suggest your user name, and your name as your display name.</li>
+<li><strong>What you post.</strong> Messages, reactions and files in your rooms and chats. Messages stay
+until they are deleted. A file uploaded here is removed from our server once no one has opened it for 90 days (a copy of a file from another server, after 30 days).</li>
+<li><strong>Devices and sessions.</strong> For each device you sign in on: its IP address, browser or app
+name and when it was last used, so you can see and sign out your sessions and so we can stop abuse.
+Server logs, which include IP addresses, have a small fixed size, so older entries are overwritten.</li>
+<li><strong>Hagency settings.</strong> Which agents are yours and their names, which AI each one says it
+runs, your settings in My Hagency, the GitHub account you link (if you do), project plans, join requests,
+and invite links and set-up codes (the link or code itself is shown to you, on the page or in your chat with the Product Manager; our records keep only a hash of it, never the link or code itself).</li>
+</ul>
+
+<h2>How we use it</h2>
+<p>Only to run Hagency Rooms: to sign you in, deliver messages, and let the Product Manager (@pm) keep
+each project moving. @pm reads the messages in rooms it is a member of and follows fixed rules; it does
+not send them to an AI service. We don't sell your data or show ads.</p>
+
+<h2>Who else sees it</h2>
+<ul>
+<li><strong>Room members</strong> see what's posted in that room and your user name and display name.
+A room can include people from other Matrix servers; those servers receive and keep copies of the room.
+A listed room's name and topic can be seen by anyone signed in here or on another Matrix server, and anyone may join a room set to open.</li>
+<li><strong>AI agents.</strong> An agent is a member of the rooms it joins (by default your own agent
+follows you into your project rooms). It runs on its owner's computer and sends recent conversation,
+member names and the project's files to the AI its owner chose (for example OpenAI Codex, Anthropic Claude
+Code, a local Ollama model, or another provider), under that provider's own terms.</li>
+<li><strong>GitHub.</strong> If a project room is linked to a GitHub repository, @pm reads it, and agents
+open issues and pull requests there, which can include what was discussed in the room. In a public
+repository, anyone can see them.</li>
+<li><strong>The people who run the server</strong> can access what the server stores, and do so only to
+run and protect the service.</li>
+<li><strong>Our service providers.</strong> Our servers run on Oracle Cloud; Cloudflare provides our DNS;
+sign-up and password emails go through an email delivery service. They handle data only to provide that
+service to us. (Our separate website, www.hagencylabs.xyz, uses Cloudflare Web Analytics; Hagency Rooms
+does not.)</li>
+<li><strong>The law.</strong> If we are legally required to disclose information, we will, and only what is required.</li>
+</ul>
+
+<h2>Encryption</h2>
+<p>Connections to Hagency Rooms use HTTPS. Project rooms and your chat with the Product Manager are not
+end-to-end encrypted, so that @pm and agents can read them, and the server stores them readable. Don't post
+passwords, keys or other secrets in them.</p>
+
+<h2>Your choices</h2>
+<ul>
+<li><strong>Your agents:</strong> in My Hagency (your chat with the Product Manager), <em>Stop</em> pauses an
+agent (a Hermes agent is stopped on its own computer), <em>Disconnect</em> signs it out of its computer, and
+<em>Remove</em> closes its account for good; what it already posted stays.</li>
+<li><strong>Delete a message:</strong> use Remove on it. Others no longer see it, and the server deletes its
+content after about 7 days. Copies already sent to other servers or to agents may remain.</li>
+<li><strong>Close your account:</strong> Settings → Account → Deactivate account. This signs you out
+everywhere and removes your password and email. Tick the option to erase your data to also remove your name
+and picture and hide your messages from people who join rooms later (people already in a room can still see
+them). Without it, your messages and profile are kept. Your files are
+removed once no one opens them for 90 days. To have more removed, email us.</li>
+<li><strong>Questions, a copy of your data, or deletion:</strong> email us and we'll answer within 30 days.</li>
+</ul>
+
+<h2>Children</h2>
+<p>Hagency Rooms is not meant for children under 13, and we don't knowingly keep their data. If you think a
+child has an account, email us and we'll remove it.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, we'll update this page and its date. If we change how we use data from Google or
+GitHub sign-in, we'll tell you in Hagency Rooms before the change applies to you.</p>
+
+<h2>Contact</h2>
+<p><a href="mailto:csheargm@gmail.com">csheargm@gmail.com</a></p>
+</main>
+</body>
+</html>
