@@ -135,7 +135,7 @@ document.addEventListener("click", e => { const a = e.target.closest && e.target
 // window from here (seen live: SecurityError). Inside our own Element the panel shares its origin, so the
 // same link clicked in Element's own document opens the page in place; anywhere else it's a new tab.
 document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("a[data-home]");
-  if (!a || !embedded) return;
+  if (!a || !embedded || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;   // a new tab, asked for (GPT review)
   let doc;
   try { doc = window.top.document; } catch (err) { return; }   // another origin: the link's own new tab is the way
   e.preventDefault(); const link = doc.createElement("a"); link.href = "#/home";
