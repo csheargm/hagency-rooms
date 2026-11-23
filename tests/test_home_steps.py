@@ -5,6 +5,7 @@ them, and runs the Connect page's line: POST /connect answers with their first a
 that AI, and connect.py runs it. Only the network edges are faked, as in test_first_agent_ai.
 Run: .venv/bin/python -m unittest tests.test_home_steps"""
 import asyncio
+import json
 import re
 from types import SimpleNamespace
 from unittest import mock
@@ -16,6 +17,7 @@ from common import registry
 from server import agent_page
 from server import console
 from server import fed_openid
+from server import page_session
 from server import pm_first
 from server import remote_agent
 from server import signin_page
@@ -28,13 +30,15 @@ OLLAMA = {"name": "", "agent_kind": "ollama", "model": "qwen3:8b", "base_url": "
 
 
 class GetYourAgent(kind_flow.KindFlow):
+    real_whoami = staticmethod(page_session.whoami)        # before setUp fakes it
+
     def setUp(self):
         super().setUp()
         fakes = ((remote_agent, "open_dm", lambda agent, password, person: "!agentdm"),
                  (remote_agent.setup_accounts, "ensure_user", mock.Mock(return_value=("agent-pw", False))),
                  (remote_agent.setup_accounts, "shared_secret", lambda: "s"),
                  (remote_agent, "PUBLIC_HOMESERVER", HS),
-                 (console, "openid_user", lambda t: NEWB if t == "newb-openid" else None),
+                 (page_session, "whoami", lambda t: NEWB if t == "newb-token" else None),   # our homeserver's /whoami
                  (fed_openid, "_tries", {}),
                  (kind_flow.on_computer.connect_kinds, "problem", mock.Mock(return_value=None)),
                  (kind_flow.on_computer.connect_kinds.subprocess, "run", mock.Mock(return_value=mock.Mock(returncode=0))))
@@ -62,7 +66,9 @@ class GetYourAgent(kind_flow.KindFlow):
         return asyncio.run(go())
 
     def ask(self, path, body):
+        """(status, answer) for one POST; @pm's page session, if it made one, is kept in self.session."""
         status, data, _ = self.call(("POST", path, body))[0]
+        self.session = data.pop("session", None)
         return status, data
 
     def test_the_page_signs_in_only_with_our_homeserver_and_lists_every_kind(self):
@@ -77,11 +83,11 @@ class GetYourAgent(kind_flow.KindFlow):
         self.assertEqual(self.call(("GET", signin_page.SCRIPT_PATH, None))[0][0], 200)
 
     def test_a_newcomer_signs_in_chooses_ollama_and_connects_from_the_page(self):
-        self.assertEqual(self.ask("/connect/new/me", {"openid": "newb-openid"}),
+        self.assertEqual(self.ask("/connect/new/me", {"access_token": "newb-token"}),
                          (200, {"state": "ok", "agent": "newb-agent", "connected": False, "pick": True, "runs": "",
                                 "picked": {}}))
         with self.assertLogs("loop", "INFO") as logs:
-            status, got = self.ask("/connect/new/code", {"openid": "newb-openid", "pick": OLLAMA})
+            status, got = self.ask("/connect/new/code", {"access_token": "newb-token", "pick": OLLAMA})
         self.assertEqual((status, got["state"], got["kind"]), (200, "ok", "ollama"))
         self.assertFalse([line for line in logs.output if got["code"] in line])   # the code is in the reply only
         self.assertEqual(registry.find(NEWB, None)["agent_kind"], "ollama")        # recorded, as the picker does
@@ -91,14 +97,47 @@ class GetYourAgent(kind_flow.KindFlow):
         self.assertEqual((install.args[2], saved["model"]), ("ollama", "qwen3:8b"))
 
     def test_a_new_code_replaces_the_old_one_and_works_once(self):
-        first = self.ask("/connect/new/code", {"openid": "newb-openid", "pick": None})[1]["code"]
-        second = self.ask("/connect/new/code", {"openid": "newb-openid", "pick": None})[1]["code"]
+        first = self.ask("/connect/new/code", {"access_token": "newb-token", "pick": None})[1]["code"]
+        second = self.ask("/connect/new/code", {"access_token": "newb-token", "pick": None})[1]["code"]
         self.assertIsNone(remote_agent.CODES.redeem(first))
         self.assertEqual(remote_agent.CODES.redeem(second), NEWB)
         self.assertIsNone(remote_agent.CODES.redeem(second))
 
+    def test_an_openid_token_is_not_enough_and_the_page_session_is_this_pages_only(self):
+        """GPT review: an OpenID token may have been given to any widget, which could replay it. The page
+        shows a real session once; after that, @pm's own page session (this page, this person) is used."""
+        with mock.patch.object(console, "openid_user", return_value=NEWB):
+            self.assertEqual(self.ask("/connect/new/code", {"openid": "newb-openid", "pick": None}), (401, {"state": "not_signed_in"}))
+        self.assertEqual(self.ask("/connect/new/me", {"access_token": "newb-token"})[0], 200)
+        session = self.session
+        self.assertTrue(session)
+        status, got = self.ask("/connect/new/code", {"session": session, "pick": None})
+        self.assertEqual((status, got["state"], self.session), (200, "ok", None))   # no new one: it had one
+        self.assertEqual(page_session.user_of(session, "invite-new"), None)          # not another page's
+        self.assertEqual(page_session.user_of(session, "agent", now=page_session.time.time() + page_session.SESSION_S + 1), None)
+        self.assertEqual(self.ask("/connect/new/code", {"session": "made-up", "pick": None})[0], 401)
+
+    def test_whoami_asks_our_homeserver_and_takes_only_our_people(self):
+        def answers(data):
+            opened = mock.MagicMock()
+            opened.open.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            return mock.patch.object(page_session.urllib.request, "build_opener", return_value=opened)
+        whoami = GetYourAgent.real_whoami
+        with answers({"user_id": NEWB, "device_id": "D"}) as built:
+            self.assertEqual(whoami("syt_abc_DEF.123"), NEWB)
+        sent = built.return_value.open.call_args[0][0]
+        self.assertEqual((sent.full_url.endswith("/_matrix/client/v3/account/whoami"), sent.get_header("Authorization")),
+                         (True, "Bearer syt_abc_DEF.123"))
+        for data in ({"user_id": NEWB, "is_guest": True}, {"user_id": "@x:elsewhere.org"}, {}, []):
+            with answers(data):
+                self.assertIsNone(whoami("syt_abc_DEF.123"), data)
+        with answers({"user_id": NEWB}) as built:
+            for token in (None, "", "a\r\nX-Evil: 1", "short", "x" * 600, "\ud800" * 9):
+                self.assertIsNone(whoami(token))
+        built.assert_not_called()
+
     def test_without_a_real_sign_in_nothing_is_made(self):
-        self.assertEqual(self.ask("/connect/new/code", {"openid": "made-up", "pick": OLLAMA}), (401, {"state": "not_signed_in"}))
+        self.assertEqual(self.ask("/connect/new/code", {"access_token": "made-up-token", "pick": OLLAMA}), (401, {"state": "not_signed_in"}))
         self.assertEqual(self.ask("/connect/new/me", {}), (401, {"state": "not_signed_in"}))
         self.assertIsNone(registry.find(NEWB, None))
 
@@ -107,52 +146,52 @@ class GetYourAgent(kind_flow.KindFlow):
             app = web.Application()
             app.add_routes(agent_page.routes(self.lp))
             async with TestClient(TestServer(app)) as client:
-                evil = await client.post("/connect/new/code", json={"openid": "newb-openid"}, headers={"Origin": "https://evil.example"})
-                form = await client.post("/connect/new/code", data="openid=newb-openid", headers={"Origin": PUBLIC})
+                evil = await client.post("/connect/new/code", json={"access_token": "newb-token"}, headers={"Origin": "https://evil.example"})
+                form = await client.post("/connect/new/code", data="access_token=newb-token", headers={"Origin": PUBLIC})
                 return evil.status, form.status
         self.assertEqual(asyncio.run(go()), (403, 403))
         self.assertIsNone(registry.find(NEWB, None))
 
     def test_once_connected_it_keeps_its_ai_and_another_computer_gets_a_new_code(self):
-        self.ask("/connect/new/code", {"openid": "newb-openid", "pick": OLLAMA})
+        self.ask("/connect/new/code", {"access_token": "newb-token", "pick": OLLAMA})
         self.lp._seen = {"newb-agent": {"online": True, "ever": True}}
-        status, me = self.ask("/connect/new/me", {"openid": "newb-openid"})
+        status, me = self.ask("/connect/new/me", {"access_token": "newb-token"})
         self.assertEqual((me["connected"], me["pick"]), (True, False))
-        self.assertEqual(self.ask("/connect/new/code", {"openid": "newb-openid", "pick": {**OLLAMA, "agent_kind": "claude",
+        self.assertEqual(self.ask("/connect/new/code", {"access_token": "newb-token", "pick": {**OLLAMA, "agent_kind": "claude",
                                                                                           "model": ""}})[1],
                          {"state": "bad_pick", "error": pm_first.CONNECTED})
-        got = self.ask("/connect/new/code", {"openid": "newb-openid", "pick": None})[1]
+        got = self.ask("/connect/new/code", {"access_token": "newb-token", "pick": None})[1]
         self.assertEqual((got["state"], got["kind"]), ("ok", "ollama"))
 
     def test_a_bad_choice_says_why_and_an_api_key_is_never_taken(self):
-        bad = self.ask("/connect/new/code", {"openid": "newb-openid", "pick": {**OLLAMA, "agent_kind": "remote"}})[1]
+        bad = self.ask("/connect/new/code", {"access_token": "newb-token", "pick": {**OLLAMA, "agent_kind": "remote"}})[1]
         self.assertEqual(bad["state"], "bad_pick")
         self.assertIn("base URL", bad["error"])
-        key = self.ask("/connect/new/code", {"openid": "newb-openid", "pick": {**OLLAMA, "api_key": "sk-" + "a" * 30}})[1]
+        key = self.ask("/connect/new/code", {"access_token": "newb-token", "pick": {**OLLAMA, "api_key": "sk-" + "a" * 30}})[1]
         self.assertEqual(key["state"], "bad_pick")
         self.assertIsNone(registry.find(NEWB, None))
 
     def test_a_choice_is_the_pickers_fields_only(self):
         """GPT re-check: a string here went through a second JSON decode (deep nesting: a 500)."""
         for pick in ("[" * 5000, '{"agent_kind": "claude"}', ["claude"]):
-            self.assertEqual(self.ask("/connect/new/code", {"openid": "newb-openid", "pick": pick})[1]["state"], "bad_pick")
+            self.assertEqual(self.ask("/connect/new/code", {"access_token": "newb-token", "pick": pick})[1]["state"], "bad_pick")
         self.assertIsNone(registry.find(NEWB, None))
 
     def test_someone_who_removed_their_first_agent_is_sent_to_my_agents(self):
         registry.update(NEWB, None, agent=registry.REMOTE)
         with mock.patch.object(registry, "first_removed", return_value=True):
-            self.assertEqual(self.ask("/connect/new/me", {"openid": "newb-openid"})[1],
+            self.assertEqual(self.ask("/connect/new/me", {"access_token": "newb-token"})[1],
                              {"state": "refused", "error": agent_page.REMOVED})
 
     def test_one_set_up_at_a_time(self):
         self.lp._provisioning = {NEWB}
-        self.assertEqual(self.ask("/connect/new/code", {"openid": "newb-openid", "pick": None})[1],
+        self.assertEqual(self.ask("/connect/new/code", {"access_token": "newb-token", "pick": None})[1],
                          {"state": "busy", "error": agent_page.BUSY})
 
     def test_asks_are_rate_limited_per_address(self):
-        states = [self.ask("/connect/new/me", {"openid": "made-up"})[0] for _ in range(signin_page.TRIES_PER_CLIENT + 1)]
+        states = [self.ask("/connect/new/me", {"access_token": "made-up-token"})[0] for _ in range(signin_page.TRIES_PER_CLIENT + 1)]
         self.assertEqual(states[-1], 429)
-        self.assertEqual(self.ask("/connect/new/code", {"openid": "newb-openid", "pick": None})[0], 429)
+        self.assertEqual(self.ask("/connect/new/code", {"access_token": "newb-token", "pick": None})[0], 429)
         self.assertIsNone(registry.find(NEWB, None))
 
 

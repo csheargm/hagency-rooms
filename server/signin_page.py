@@ -2,9 +2,9 @@
 agent (/connect/new) and Make an invite link (/invite/new).
 
 Each page signs the person in straight with our homeserver (Google, GitHub or a password: static/
-signin.js, served here at /auth/signin.js), asks it for an OpenID token, and posts only that token to
-@pm. verified() asks our homeserver whose token it is (console.openid_user: people on this server
-only). @pm never sees a password or a session.
+signin.js, served here at /auth/signin.js); @pm never sees a password. The invite page then posts an
+OpenID token, which verified() checks with our homeserver (console.openid_user: people on this server
+only); the two newer pages prove a real session instead (page_session.py).
 """
 import asyncio
 
@@ -77,14 +77,9 @@ def may_ask(scope: str, client: str) -> bool:
     return fed_openid.may_try(f"{scope}:{client}", TRIES_PER_CLIENT) and fed_openid.may_try(f"{scope}:all", TRIES_ALL)
 
 
-def asks(scope: str):
-    """may_ask for one page's calls: what verified() takes."""
-    return lambda client: may_ask(scope, client)
-
-
 async def verified(request, may):
     """(body, the signed-in user) for a POST carrying an OpenID token, or the web.Response refusing it.
-    may(client address): one more try allowed (counted), as invite_links.may_look or asks()."""
+    may(client address): one more try allowed (counted), as invite_links.may_look."""
     body = await json_body(request)
     if body is None:
         return reply({"error": "refused"}, 403)

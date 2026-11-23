@@ -1,9 +1,9 @@
 """Get your agent (docs/adr/0015-one-click-home-steps.md): step ① on Element's home page, without
 a detour through the chat with @pm.
 
-GET /connect/new signs the person in (signin_page.py, static/signin.js), then its script asks:
-  POST /connect/new/me   {openid}        → {state: "ok", agent, connected, pick, picked, runs}, or {state, error}
-  POST /connect/new/code {openid, pick}  → {state: "ok", code, kind?}, or {state, error}
+GET /connect/new signs the person in (signin_page.py, static/signin.js; who it is: page_session.py), then asks:
+  POST /connect/new/me   {access_token}  → {state: "ok", agent, connected, pick, picked, runs}, or {state, error}
+  POST /connect/new/code {session, pick} → {state: "ok", code, kind?}, or {state, error}
 and opens the Connect page (/connect/start#CODE&kind=KIND) with that code, exactly the page @pm's
 message links to. The code is made as 🔌 Bring your own makes it (pm_first.bring_own): their first
 agent is set up (remote_agent.provision) and remote_agent.CODES.issue binds a code to the person the
@@ -25,16 +25,16 @@ from common.setup_accounts import AccountError
 from server import connect_page
 from server import console
 from server import console_agents
+from server import page_session
 from server import pm_first
 from server import remote_agent
 from server import remote_people
 from server import signin_page
-from server.signin_page import reply
 
 log = logging.getLogger("loop")
 PAGE_PATH = "/connect/new"
 ASSETS = {f"{PAGE_PATH}/page.js": ("agent.js", "application/javascript")}
-ASKS = signin_page.asks("agent")
+SCOPE = "agent"                             # its page sessions and limits (page_session.py)
 REMOVED = ("You removed your first agent, so a new one needs a new name. Add it under My agents, at the top "
            "of your chat with the Product Manager.")
 BUSY = "I'm already setting up an agent for you; one moment, then try again."
@@ -94,18 +94,14 @@ def routes(loop) -> list:
         return web.Response(text=html, content_type="text/html",
                             headers={**console.NO_STORE, "Content-Security-Policy": signin_page.page_csp()})
 
-    async def me(request):
-        found = await signin_page.verified(request, ASKS)
-        return found if isinstance(found, web.Response) else reply(status_of(loop, found[1]))
+    async def me(body, user):
+        return status_of(loop, user)
 
-    async def code(request):
-        found = await signin_page.verified(request, ASKS)
-        if isinstance(found, web.Response):
-            return found
-        body, user = found
+    async def code(body, user):
         pick = body.get("pick")                   # the page sends the picker's fields, or null
         if pick is not None and not isinstance(pick, dict):
-            return reply({"state": "bad_pick", "error": pm_kinds.HOW})
-        return reply(await issue(loop, user, json.dumps(pick) if pick else None))
+            return {"state": "bad_pick", "error": pm_kinds.HOW}
+        return await issue(loop, user, json.dumps(pick) if pick else None)
     return [web.get(PAGE_PATH, page), *(web.get(p, signin_page.assets(ASSETS)) for p in ASSETS),
-            web.post(f"{PAGE_PATH}/me", me), web.post(f"{PAGE_PATH}/code", code)]
+            web.post(f"{PAGE_PATH}/me", page_session.handler(SCOPE, me)),
+            web.post(f"{PAGE_PATH}/code", page_session.handler(SCOPE, code))]

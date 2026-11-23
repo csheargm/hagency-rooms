@@ -7,7 +7,7 @@ const LINK_RE = /^(https:\/\/[A-Za-z0-9.-]+|http:\/\/(localhost|127\.0\.0\.1))(:
 const SAYS = {offline: "We couldn't reach Hagency Rooms. Check your connection and try again.",
   wrong: "That username and password didn't work. Please try again.",
   refused: "We couldn't confirm your sign-in. Please try again.",
-  not_signed_in: "Your sign-in has run out. Please sign in again.",
+  not_signed_in: "Please sign in again.",
   busy: "Too many tries from here. Please wait a few minutes and try again.",
   failed: "Something went wrong. Please try again in a minute.",
   none: "You're not an owner or maintainer of a project room yet. Create a room first (step ②), or ask " +
@@ -23,22 +23,21 @@ function aboutText(days, id) {
 const shownLink = link => (LINK_RE.test(String(link || "")) ? link : "");
 
 // The page itself (browser only; SignIn is static/signin.js).
-let openid = null;
+let session = null;   // @pm's page session (server/page_session.py), in memory only
 const $ = id => document.getElementById(id);
 const say = (text, ok) => { const s = $("status"); s.textContent = text || ""; s.hidden = !text; s.className = ok ? "status ok" : "status"; };
-const signInAgain = text => { openid = null; say(text); $("make").hidden = $("made").hidden = true; $("signin").hidden = false; };
+const signInAgain = text => { session = null; say(text); $("make").hidden = $("made").hidden = true; $("signin").hidden = false; };
 const why = r => r.data.error || SAYS[r.data.state] || (r.status ? SAYS.failed : SAYS.offline);
 
 async function ask(path, body) {
-  try { return await SignIn.post(path, {openid, ...body}); } catch (e) { return {status: 0, data: {}}; }
+  try { return await SignIn.post(path, {session, ...body}); } catch (e) { return {status: 0, data: {}}; }
 }
 
 async function signedIn(body) {
   $("signin").hidden = true; say("Signing you in…", true);
-  const r = await SignIn.openidOnly(body, "Hagency: invite people");
-  if (r.error) { say(SAYS[r.error]); $("signin").hidden = false; return; }
-  openid = r.openid;
-  const rooms = await ask("/invite/new/rooms", {});
+  const rooms = await SignIn.handOver(body, "Hagency: invite people", "/invite/new/rooms");   // @pm's own page session comes back
+  if (rooms.error) { say(SAYS[rooms.error]); $("signin").hidden = false; return; }
+  session = typeof rooms.data.session === "string" ? rooms.data.session : null;
   if (rooms.status === 401) return signInAgain(SAYS.not_signed_in);
   if (rooms.data.state !== "ok" || !Array.isArray(rooms.data.rooms)) return signInAgain(why(rooms));   // a way to try again
   if (!rooms.data.rooms.length) return say(SAYS.none);

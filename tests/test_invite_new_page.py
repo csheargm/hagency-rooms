@@ -14,6 +14,7 @@ from server import console
 from server import invite_links
 from server import invite_new_page
 from server import invite_page
+from server import page_session
 from server import pm_invite
 from server import project_rooms
 from server import remote_agent
@@ -22,8 +23,8 @@ from tests.test_invite_links import NEW, fresh_store
 from tests.test_projects import ANNA, BETTY, PM, project
 
 PUBLIC, HS = "https://rooms.example.org", "https://matrix.example.org"
-REAL_OPENID_USER = console.openid_user        # before any test fakes it
-WHO = {"anna-openid": ANNA, "betty-openid": BETTY, "new-openid": NEW}
+REAL_WHOAMI = page_session.whoami            # before any test fakes it
+WHO = {"anna-token": ANNA, "betty-token": BETTY}
 
 
 class MakeALink(IsolatedAsyncioTestCase):
@@ -31,7 +32,8 @@ class MakeALink(IsolatedAsyncioTestCase):
         self.path = fresh_store(self)
         for p in (mock.patch.dict("os.environ", {"HAGENCY_PUBLIC_CONSOLE": PUBLIC}),
                   mock.patch.object(remote_agent, "PUBLIC_HOMESERVER", HS),
-                  mock.patch.object(console, "openid_user", side_effect=WHO.get),
+                  mock.patch.object(page_session, "whoami", side_effect=WHO.get),   # our homeserver's /whoami
+                  mock.patch.object(console, "openid_user", side_effect={"new-openid": NEW}.get),   # the invite page's
                   mock.patch.object(project_rooms, "FRONT_DOOR_IDS", {"!welcome"})):
             p.start()
             self.addCleanup(p.stop)
@@ -66,7 +68,9 @@ class MakeALink(IsolatedAsyncioTestCase):
 
     async def post(self, path, body):
         r = await self.client.post(path, json=body, headers={"Origin": PUBLIC})
-        return r.status, await r.json()
+        data = await r.json()
+        data.pop("session", None)                 # @pm's page session: page_session.py, tested in test_home_steps
+        return r.status, data
 
     async def test_the_page_signs_in_only_with_our_homeserver(self):
         r = await self.client.get("/invite/new")
@@ -77,11 +81,11 @@ class MakeALink(IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get("/invite/new/page.js")).status, 200)
 
     async def test_an_owner_makes_a_link_on_the_page_and_a_newcomer_joins_with_it(self):
-        status, got = await self.post("/invite/new/rooms", {"openid": "anna-openid"})
+        status, got = await self.post("/invite/new/rooms", {"access_token": "anna-token"})
         self.assertEqual((status, got), (200, {"state": "ok", "rooms": [{"id": "!a", "name": "Alpha <b>team</b>"},
                                                                       {"id": "!b", "name": "Beta"}]}))   # by name
         with self.assertLogs("loop", "INFO") as logs:
-            status, made = await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!a", "days": 3})
+            status, made = await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!a", "days": 3})
         self.assertEqual((status, made["state"], made["days"]), (200, "ok", 3))
         token = made["link"].split("/invite#", 1)[1]
         self.assertTrue(made["link"].startswith(f"{PUBLIC}/invite#"))
@@ -96,20 +100,20 @@ class MakeALink(IsolatedAsyncioTestCase):
         self.assertLess(abs(link["expires"] - link["made"] - 3 * invite_links.DAY_S), 1)
 
     async def test_only_rooms_where_they_are_owner_or_maintainer(self):
-        self.assertEqual((await self.post("/invite/new/rooms", {"openid": "betty-openid"}))[1],
+        self.assertEqual((await self.post("/invite/new/rooms", {"access_token": "betty-token"}))[1],
                          {"state": "ok", "rooms": [{"id": "!c", "name": "Betty's"}]})
         for room in ("!a", "!welcome", "!nowhere", ["!a"]):
-            status, got = await self.post("/invite/new/make", {"openid": "betty-openid", "room": room})
+            status, got = await self.post("/invite/new/make", {"access_token": "betty-token", "room": room})
             self.assertEqual((status, got["state"]), (200, "refused"), room)
-        self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!d"}))[1]["state"], "refused")
-        self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!welcome"}))[1],
+        self.assertEqual((await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!d"}))[1]["state"], "refused")
+        self.assertEqual((await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!welcome"}))[1],
                          {"state": "refused", "error": pm_invite.NOT_HERE})
         self.assertEqual(len(invite_links.store()), 0)
 
     async def test_the_same_limits_as_in_the_chat(self):
         for _ in range(invite_links.PER_PERSON_DAY):
-            self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!b"}))[1]["state"], "ok")
-        got = (await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!b"}))[1]
+            self.assertEqual((await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!b"}))[1]["state"], "ok")
+        got = (await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!b"}))[1]
         self.assertEqual(got, {"state": "refused", "error": invite_links.refusal("!b", ANNA)})
         self.assertIn("today", got["error"])
 
@@ -117,10 +121,10 @@ class MakeALink(IsolatedAsyncioTestCase):
         """GPT review: the chat checked the limit, then awaited its private chat; a link made on the page
         meanwhile took the last one, and the chat made one more anyway."""
         for _ in range(invite_links.PER_PERSON_DAY - 1):
-            await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!b"})
+            await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!b"})
 
         async def private_room(person):
-            await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!b"})   # the last one, meanwhile
+            await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!b"})   # the last one, meanwhile
             return "!dm"
         self.lp.private_room = private_room
         answer = await self.lp.make_invite_link(self.lp.client.rooms["!b"], ANNA)
@@ -130,9 +134,9 @@ class MakeALink(IsolatedAsyncioTestCase):
 
     async def test_a_token_that_cant_be_one_is_a_plain_no(self):
         """GPT review: a lone surrogate in the JSON couldn't be URL-quoted: a 500. Now 401, no request made."""
-        with mock.patch.object(console, "openid_user", REAL_OPENID_USER), \
+        with mock.patch.object(page_session, "whoami", REAL_WHOAMI), \
                 mock.patch.object(console.urllib.request, "build_opener") as asked:
-            r = await self.client.post("/invite/new/rooms", data='{"openid": "\\ud800"}',
+            r = await self.client.post("/invite/new/rooms", data='{"access_token": "\\ud800"}',
                                        headers={"Origin": PUBLIC, "Content-Type": "application/json"})
         self.assertEqual(r.status, 401)
         asked.assert_not_called()
@@ -146,11 +150,11 @@ class MakeALink(IsolatedAsyncioTestCase):
             r.events[-1]["content"]["users"][ANNA] = 0
             return r
         self.lp.client.room_get_state.side_effect = demoted
-        self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!a"}))[1],
+        self.assertEqual((await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!a"}))[1],
                          {"state": "refused", "error": pm_invite.ONLY_MODS})
         self.lp.client.room_get_state.side_effect = None
         self.lp.client.room_get_state.return_value = None                    # unreadable: fail closed
-        self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!a"}))[1]["state"], "failed")
+        self.assertEqual((await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!a"}))[1]["state"], "failed")
         self.assertEqual(len(invite_links.store()), 0)
 
     async def test_deeply_nested_json_is_a_plain_no(self):
@@ -159,12 +163,12 @@ class MakeALink(IsolatedAsyncioTestCase):
 
     async def test_days_are_one_of_the_choices_else_the_default(self):
         for days, kept in ((30, 30), (1, 1), (999, 7), ("3", 7), (True, 7)):
-            self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!a", "days": days}))[1]["days"], kept)
+            self.assertEqual((await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!a", "days": days}))[1]["days"], kept)
 
     async def test_no_sign_in_no_rooms_and_no_link(self):
-        self.assertEqual(await self.post("/invite/new/rooms", {"openid": "made-up"}), (401, {"state": "not_signed_in"}))
+        self.assertEqual(await self.post("/invite/new/rooms", {"access_token": "made-up-token"}), (401, {"state": "not_signed_in"}))
         self.assertEqual(await self.post("/invite/new/make", {"room": "!a"}), (401, {"state": "not_signed_in"}))
-        r = await self.client.post("/invite/new/make", json={"openid": "anna-openid", "room": "!a"},
+        r = await self.client.post("/invite/new/make", json={"access_token": "anna-token", "room": "!a"},
                                    headers={"Origin": "https://evil.example"})
         self.assertEqual(r.status, 403)
         self.assertEqual(len(invite_links.store()), 0)

@@ -11,7 +11,7 @@ const IDP_KEY = "hagency-agent-idp";
 const SAYS = {offline: "We couldn't reach Hagency Rooms. Check your connection and try again.",
   wrong: "That username and password didn't work. Please try again.",
   refused: "We couldn't confirm your sign-in. Please try again.",
-  not_signed_in: "Your sign-in has run out. Please sign in again.",
+  not_signed_in: "Please sign in again.",
   busy: "Too many tries from here. Please wait a few minutes and try again.",
   failed: "Something went wrong. Please try again in a minute."};
 
@@ -37,10 +37,10 @@ function haveText(me) {
 }
 
 // The page itself (browser only; SignIn is static/signin.js).
-let openid = null, kinds = [];
+let session = null, kinds = [];   // @pm's page session (server/page_session.py), in memory only
 const $ = id => document.getElementById(id);
 const say = (text, ok) => { const s = $("status"); s.textContent = text || ""; s.hidden = !text; s.className = ok ? "status ok" : "status"; };
-const signInAgain = text => { openid = null; say(text); $("choose").hidden = true; $("signin").hidden = false; };
+const signInAgain = text => { session = null; say(text); $("choose").hidden = true; $("signin").hidden = false; };
 const why = r => r.data.error || SAYS[r.data.state] || (r.status ? SAYS.failed : SAYS.offline);
 
 function fillKinds(picked) {
@@ -61,15 +61,14 @@ function showKind() {
 }
 
 async function ask(path, body) {
-  try { return await SignIn.post(path, {openid, ...body}); } catch (e) { return {status: 0, data: {}}; }
+  try { return await SignIn.post(path, {session, ...body}); } catch (e) { return {status: 0, data: {}}; }
 }
 
 async function signedIn(body) {
   $("signin").hidden = true; say("Signing you in…", true);
-  const r = await SignIn.openidOnly(body, "Hagency: get your agent");
-  if (r.error) { say(SAYS[r.error]); $("signin").hidden = false; return; }
-  openid = r.openid;
-  const me = await ask("/connect/new/me", {});
+  const me = await SignIn.handOver(body, "Hagency: get your agent", "/connect/new/me");   // @pm's own page session comes back
+  if (me.error) { say(SAYS[me.error]); $("signin").hidden = false; return; }
+  session = typeof me.data.session === "string" ? me.data.session : null;
   if (me.status === 401) return signInAgain(SAYS.not_signed_in);
   if (me.data.state !== "ok") return me.data.state === "refused" ? say(why(me)) : signInAgain(why(me));   // else: try again
   say("");

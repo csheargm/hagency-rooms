@@ -1,8 +1,8 @@
 // Sign-in for Hagency's own pages (server/signin_page.py; docs/adr/0014 and 0015): the invite page,
 // Get your agent and Make an invite link. The browser talks straight to our homeserver (its address
 // is in the page's meta tag): Google or GitHub through its SSO, or a username and password to its
-// /login. Our server never sees a password or a session, only an OpenID token, which proves who
-// signed in and nothing more. A loginToken coming back from SSO counts only in the tab that started
+// /login. Our server never sees a password. The invite page shows it an OpenID token; the newer
+// pages show it a throwaway session once and sign it out right after (handOver). A loginToken coming back from SSO counts only in the tab that started
 // that very sign-in: the button stores a random nonce in this tab and puts it in the return address,
 // and only a return carrying it counts (GPT review), so a crafted link with someone else's login
 // token is ignored.
@@ -103,15 +103,18 @@ const SignIn = typeof document === "undefined" ? null : (() => {
   }
   const logout = session => hs("/logout", {}, session).catch(() => null);
 
-  /** Sign in, take an OpenID token and sign this page's session out again: {openid} or {error}. */
-  async function openidOnly(body, device) {
+  /** Sign in with a new, throwaway session, show it to @pm once at `path` (server/page_session.py:
+      it asks our homeserver whose it is and answers with its own page session), then sign it out
+      again: @pm's answer {status, data}, or {error}. */
+  async function handOver(body, device, path) {
     const s = await login(body, device);
     if (s.error) return s;
-    try { const token = await openid(s.session, s.user); return token ? {openid: token} : {error: "refused"}; }
+    try { return await post(path, {access_token: s.session}); }
+    catch (e) { return {error: "offline"}; }
     finally { await logout(s.session); }
   }
 
-  return {HS, ELEMENT, $, store, post, hs, ssoUrl, ssoButtons, returned, form, login, openid, logout, openidOnly};
+  return {HS, ELEMENT, $, store, post, hs, ssoUrl, ssoButtons, returned, form, login, openid, logout, handOver};
 })();
 
 if (typeof module === "object" && module.exports) module.exports = {ownReturn, SSO_PARAM};   // tests/test_home_steps_js.py

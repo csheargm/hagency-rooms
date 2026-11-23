@@ -1,9 +1,9 @@
 """Make an invite link (docs/adr/0015-one-click-home-steps.md): step ③ on Element's home page.
 
-GET /invite/new signs the person in (signin_page.py, static/signin.js), then its script asks:
-  POST /invite/new/rooms {openid}              → {state: "ok", rooms: [{id, name}]}: the project rooms they
+GET /invite/new signs the person in (signin_page.py, static/signin.js; who it is: page_session.py), then asks:
+  POST /invite/new/rooms {access_token|session} → {state: "ok", rooms: [{id, name}]}: the project rooms they
                                                  are in as an owner or maintainer (pm_invite.link_refusal's rule)
-  POST /invite/new/make  {openid, room, days?} → {state: "ok", link, id, days}, or {state, error}
+  POST /invite/new/make  {session, room, days?} → {state: "ok", link, id, days}, or {state, error}
 The link is shown on that page only (not in a chat); it is the same link @pm's "invite link" makes
 (invite_links.create, ADR 0014), with the same limits. Its id, never its token, is logged.
 """
@@ -14,14 +14,14 @@ from aiohttp import web
 from common import room_state
 from server import invite_links
 from server import invite_page
+from server import page_session
 from server import pm_invite
 from server import signin_page
-from server.signin_page import reply
 
 log = logging.getLogger("loop")
 PAGE_PATH = "/invite/new"
 ASSETS = {f"{PAGE_PATH}/page.js": ("invite_new.js", "application/javascript")}
-ASKS = signin_page.asks("invite-new")
+SCOPE = "invite-new"                       # its page sessions and limits (page_session.py)
 NOT_IN = "You're not in that room."
 DAY_CHOICES = (1, 3, 7, 30)               # what the page offers; anything else is the default
 
@@ -60,15 +60,11 @@ async def make(loop, user: str, room_id: object, days: int) -> dict:
 
 
 def routes(loop) -> list:
-    async def rooms(request):
-        found = await signin_page.verified(request, ASKS)
-        return found if isinstance(found, web.Response) else reply({"state": "ok", "rooms": await rooms_of(loop, found[1])})
+    async def rooms(body, user):
+        return {"state": "ok", "rooms": await rooms_of(loop, user)}
 
-    async def new_link(request):
-        found = await signin_page.verified(request, ASKS)
-        if isinstance(found, web.Response):
-            return found
-        body, user = found
-        return reply(await make(loop, user, body.get("room"), days_of(body.get("days"))))
+    async def new_link(body, user):
+        return await make(loop, user, body.get("room"), days_of(body.get("days")))
     return [web.get(PAGE_PATH, signin_page.page("invite_new.html")), *(web.get(p, signin_page.assets(ASSETS)) for p in ASSETS),
-            web.post(f"{PAGE_PATH}/rooms", rooms), web.post(f"{PAGE_PATH}/make", new_link)]
+            web.post(f"{PAGE_PATH}/rooms", page_session.handler(SCOPE, rooms)),
+            web.post(f"{PAGE_PATH}/make", page_session.handler(SCOPE, new_link))]

@@ -20,7 +20,7 @@ Options weighed:
 - **The Hagency panel (a widget) on the home page**: widgets live in rooms, not on the home page.
 - **A page of ours that signs the person in with our homeserver, as /invite does.** Chosen: 0014 already
   built and reviewed that sign-in (Google, GitHub or a password, straight to Synapse; @pm sees only an
-  OpenID token it checks with Synapse).
+  OpenID token it checks with Synapse; see 4 below for why the new pages show a session instead).
 
 ## Decision
 Two pages on @pm's console, under paths Caddy already sends to @pm (`/connect/*`, `/invite/*`), opened
@@ -52,16 +52,24 @@ from the home page in a new tab (`target="_blank"`), so Element stays open:
    never the token.
 3. **Shared sign-in.** `static/signin.js` (served at `/auth/signin.js`) and `server/signin_page.py`
    hold what the invite page did inline: SSO buttons, the one-tab `loginToken` check, the password form,
-   the OpenID token, the page CSP (`connect-src` this origin and the homeserver only, no frames, no
-   forms) and `verified()`. The new pages sign their own session out right after taking the OpenID
-   token: they keep nothing but that token, in memory, for at most its hour. A Google or GitHub return
-   counts only when it carries the random nonce this tab stored when its button was clicked (the return
-   address is `<page>?sso=<nonce>`; Synapse adds `loginToken` to it), not merely a recent click (GPT
-   review): a crafted link with someone else's login token can't sign this tab in as them. This also
-   applies to /invite.
-4. **Limits.** The new pages' calls count per client address and for everyone together
-   (`signin_page.asks`, 30 and 600 per 10 minutes, as invite links), before the OpenID check, so a flood
-   of made-up tokens never reaches Synapse.
+   the page CSP (`connect-src` this origin and the homeserver only, no frames, no forms). A Google or
+   GitHub return counts only when it carries the random nonce this tab stored when its button was
+   clicked (the return address is `<page>?sso=<nonce>`; Synapse adds `loginToken` to it), not merely a
+   recent click (GPT review): a crafted link with someone else's login token can't sign this tab in as
+   them. This also applies to /invite.
+4. **Who is asking: a real session, shown once, not an OpenID token** (`server/page_session.py`; GPT
+   review). Matrix doesn't tie an OpenID token to one service: a widget or integration a person once let
+   "verify their identity" could replay it within its hour, and here that would be worth a pairing code
+   (their agent's sign-in) or invite links in their name. So the page signs in with a new, throwaway
+   session, posts its access token once, and @pm asks our homeserver `/whoami` with it (people on this
+   server only, no guests; a token of any other shape is refused before any request). @pm uses it for
+   that one call, never keeps or logs it, and the page signs that session out as soon as @pm answers
+   (`SignIn.handOver`). @pm answers with its own page session (30 minutes, that page only, in the page's
+   memory) for the rest. This bends 0014's "@pm never sees a session" for these two pages, on purpose:
+   @pm already holds the server's registration secret and admin power, so a session it sees for one
+   request adds nothing it couldn't do, while an OpenID token adds a door for everyone else.
+   The calls count per client address and for everyone together (30 and 600 per 10 minutes, as invite
+   links) before any homeserver call, so a flood of made-up tokens never reaches Synapse.
 5. **The home page.** ① is a button to `/connect/new`; ② keeps its two buttons, in plainer words; ③ has
    a "Make an invite link" button and keeps one line for people on other servers (Room info → Invite).
    The links are relative, so the page stays free of hosts (its test forbids `http` in it). @pm's chat
@@ -69,10 +77,10 @@ from the home page in a new tab (`target="_blank"`), so Element stays open:
 
 ## What this protects, and what is left
 - A code is still bound to the account that signed in, which only our homeserver can vouch for
-  (`console.openid_user`: people on this server only). Nothing on the page names whose code to make.
+  (`page_session.whoami`: people on this server only). Nothing on the page names whose code to make.
 - The address the page moves to is built only from a code and a kind of the exact shapes @pm makes;
   the only places these pages send anyone are our homeserver's SSO and the Connect page.
-- People from other Matrix servers can't use these pages (their OpenID isn't checked here, as in 0014);
+- People from other Matrix servers can't use these pages (they have no session on our homeserver);
   they use @pm's chat as before.
 - The limit for everyone together (600 asks in 10 minutes per page) can be filled with made-up tokens
   from many addresses, and then the page answers "too many" for a while; the chat still works. Kept:
