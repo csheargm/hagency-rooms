@@ -3,7 +3,7 @@ person joins a room @pm is in, their own agent follows according to their settin
   always (default): @pm invites it · ask: @pm asks them for a ✅ · never: nothing.
 When the person leaves, their agent is removed too: an agent never works in a room without its
 owner. People change the setting in plain words ("@pm don't bring my agent", "ask me first",
-"always bring my agent"). Mixed into loop.Loop (client, user_id, say, pending, agent_online, ...).
+"always bring my agent"). Mixed into loop.Loop (client, user_id, say, pending, online_now: pm_presence.py, ...).
 """
 import logging
 import time
@@ -93,13 +93,13 @@ class Follow:
                                               "until": time.time() + CONFIRM_S, "by": person}
                 await self.offer_thumb(room.room_id, event_id)
                 continue
-            await self.invite_agent(room.room_id, agent, self.came_along(local, found))
+            await self.invite_agent(room.room_id, agent, await self.came_along(local, found))
 
-    def came_along(self, local: str, found: dict) -> str:
+    async def came_along(self, local: str, found: dict) -> str:
         """What I say after inviting their agent: "came along" only if it can really join now (one run
         by this server, or theirs online: pm_presence.py); an invite alone joins nothing (screen test)."""
         which = "" if found["first"] else " " + found["localpart"]
-        if found["agent"] != registry.REMOTE or self.agent_online(found["localpart"]):
+        if found["agent"] != registry.REMOTE or await self.online_now(found["localpart"]):
             said = f"{local} joined, so their agent{which} came along"
         else:
             said = f"I invited {local}'s agent{which}; it joins once it's connected on their computer"

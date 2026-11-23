@@ -122,6 +122,9 @@ class Following(unittest.TestCase):
         self.lp.say = say
         self.lp.is_welcome_room = lambda room: False
         self.lp.client = mock.Mock(room_invite=mock.AsyncMock())
+        p = mock.patch("common.matrix_calls.presence", mock.AsyncMock(return_value=None))   # pm_presence.online_now: no live answer
+        p.start()
+        self.addCleanup(p.stop)
 
     def test_their_agent_comes_along(self):
         room = SimpleNamespace(room_id="!r", users={ALICE: None}, invited_users={})

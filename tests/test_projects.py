@@ -352,7 +352,8 @@ class MakeAndFind(Base):
         self.lp.addressed_text = lambda event, room=None: event.body
         registry.PATH.write_text(json.dumps({"anna": {"agent": "hermes"}, "betty": {"agent": registry.REMOTE}}))
         self.lp._seen = {}
-        with mock.patch("server.panel.add_to_room", mock.AsyncMock(return_value=True)):
+        with mock.patch("server.panel.add_to_room", mock.AsyncMock(return_value=True)), \
+                mock.patch("common.matrix_calls.presence", mock.AsyncMock(return_value=False)):   # not online now either
             for who in (ANNA, BETTY):
                 run(self.lp.on_project_text(project("!o", "Lobby"), SimpleNamespace(sender=who, body="make me a project room")))
             self.lp._seen = {registry.agents_of(BETTY)[0]["localpart"]: {"ever": True}}
@@ -364,7 +365,17 @@ class MakeAndFind(Base):
         self.assertIn("Your agent comes along when you join.", made[2])                    # connected once
         for follow, note in (("ask", " When you join, I'll ask whether to bring your agent."), ("never", "")):
             registry.PATH.write_text(json.dumps({"anna": {"agent": "hermes", "follow": follow}}))
-            self.assertEqual(self.lp.agent_note(ANNA), note)                               # GPT review: their setting
+            self.assertEqual(run(self.lp.agent_note(ANNA)), note)                          # GPT review: their setting
+
+    def test_an_agent_connected_since_my_last_check_counts(self):
+        """Live test 2026-11-23: "Your agent joins once it's connected" for an agent connected seconds before
+        (my presence check runs once a minute). Synapse is asked right then."""
+        registry.PATH.write_text(json.dumps({"betty": {"agent": registry.REMOTE}}))
+        self.lp._seen = {}
+        with mock.patch("common.matrix_calls.presence", mock.AsyncMock(return_value=True)):
+            self.assertEqual(run(self.lp.agent_note(BETTY)), " Your agent comes along when you join.")
+        with mock.patch("common.matrix_calls.presence", mock.AsyncMock(side_effect=OSError("down"))):
+            self.assertEqual(run(self.lp.agent_note(BETTY)), " Your agent joins once it's connected on your computer.")
 
 
 class Panel(VisibilitySetup):

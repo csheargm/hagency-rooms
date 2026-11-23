@@ -28,6 +28,7 @@ from common.setup_accounts import AccountError
 
 log = logging.getLogger("loop")
 CHECK_S, OFFLINE_S, ALERT_EVERY_S = 60, 5 * 60, 24 * 3600
+LIVE_WAIT_S = 3                           # online_now: a wording only, never worth holding up an invite (GPT review)
 AGAIN = "🔁"
 OFFLINE = ("Your agent **{agent}** is offline: its computer is off or asleep, or its connector stopped. To bring "
            "it back, run the connect line again on that computer (running it again is safe). Click 🔁 below "
@@ -55,6 +56,22 @@ class Presence(Removal, StopStart, KindReports):   # pm_remove.py: Remove, forge
         """This agent (localpart) has been online at least once: its computer really connected."""
         entry = self.seen().get(agent)
         return isinstance(entry, dict) and bool(entry.get("ever") or entry.get("online"))
+
+    async def online_now(self, agent: str) -> bool:
+        """Online, asking Synapse now when my last check (every CHECK_S) hasn't seen it: live test 2026-11-23,
+        "it joins once it's connected" for an agent that connected seconds before and joined a second later."""
+        if self.agent_online(agent):
+            return True
+        offline = self.__dict__.setdefault("_offline_asked", {})   # agent → when it was last asked and wasn't online:
+        if time.monotonic() - offline.get(agent, -CHECK_S) < CHECK_S:   # one ask a minute (GPT review); "online" is
+            return False                                              # never kept: the minute check takes over
+        try:
+            if await asyncio.wait_for(matrix_calls.presence(self.client, f"@{agent}:{SERVER_NAME}"), LIVE_WAIT_S):
+                return True
+        except (OSError, asyncio.TimeoutError, ClientError, RuntimeError) as e:   # only the wording depends on it
+            log.warning("couldn't ask for %s's presence: %s", agent, e)
+        offline[agent] = time.monotonic()
+        return False
 
     def has_connected_agent(self, person: str) -> bool:
         """At least one of this person's agents has ever connected (pm_agents.py: ➕ only then)."""
