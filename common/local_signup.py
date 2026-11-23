@@ -2,6 +2,7 @@
 
   python bin/local_signup.py setup         # once: sign-up with a token, new accounts join #welcome
   python bin/local_signup.py token [uses]  # an invite token for Element's sign-up page (default 1 use, 7 days)
+  python bin/local_signup.py exempt-pm     # @pm's messages aren't rate limited (deploy/bootstrap.sh, each deploy)
 
 `setup` edits data/homeserver.yaml with the same settings the public server gets
 (deploy/configure_synapse.py) and restarts this folder's Synapse only if something changed.
@@ -13,8 +14,10 @@ import json
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
+from common import github
 from common import setup_accounts
 from common.bridge_config import ELEMENT_ORIGIN, ROOT, SERVER_NAME
 from common.setup_accounts import HS, api, load_env
@@ -92,6 +95,17 @@ def new_token(uses: int = 1, days: int = TOKEN_DAYS) -> str:
     return r["token"]
 
 
+def exempt_pm() -> None:
+    """@pm's own messages are never rate limited (Synapse's per-user override; 0 = no limit). Overnight
+    live test 2026-11-23: under load @pm got 429s and slept on each, so "@pm help" took two minutes and
+    a slow room creation was retried into two rooms with the same name."""
+    user = urllib.parse.quote(f"@{github.PM_BOT}:{SERVER_NAME}")
+    r = admin_call("POST", f"/_synapse/admin/v1/users/{user}/override_ratelimit",
+                   {"messages_per_second": 0, "burst_count": 0})
+    if r.get("messages_per_second") != 0:
+        raise SystemExit(f"Synapse refused @pm's rate-limit exemption: {r.get('errcode')} {r.get('error')}")
+
+
 def main() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "setup":
@@ -101,6 +115,9 @@ def main() -> None:
         uses = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 1
         print(json.dumps({"token": new_token(uses), "uses": uses, "days": TOKEN_DAYS,
                           "sign_up": f"{ELEMENT_ORIGIN}/#/register"}))
+    elif cmd == "exempt-pm":
+        exempt_pm()
+        print("@pm isn't rate limited")
     else:
         raise SystemExit(__doc__)
 
