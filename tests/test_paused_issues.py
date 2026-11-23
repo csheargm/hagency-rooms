@@ -66,6 +66,20 @@ class EveryModeSwitch(unittest.TestCase):
         self.assertIn("back in the queue", self.said[-1])
         self.assertEqual({}, self.lp.state)
 
+    def test_a_paused_issue_closed_meanwhile_is_not_named(self):
+        """Live test 2026-11-23: "I put #168 and #169 back in the queue" for issues already closed on GitHub."""
+        with mock.patch.object(pm_paused, "_open_numbers", mock.AsyncMock(return_value={9})):
+            said = asyncio.run(pm_paused.retry_all(self.lp, "!r"))
+        self.assertIn("I put #9 back in the queue", said)
+        self.assertNotIn("#7", said)
+        self.assertEqual({}, self.lp.state)                       # the closed one is gone from the loop too
+
+    def test_a_capped_or_odd_open_list_proves_nothing(self):
+        for answer in ([{"number": n} for n in range(pm_paused.OPEN_LIST_CAP)], [{"number": "x"}], ValueError("bad")):
+            run_json = mock.AsyncMock(side_effect=answer) if isinstance(answer, Exception) else mock.AsyncMock(return_value=answer)
+            with mock.patch.object(pm_paused.github, "run_json", run_json):
+                self.assertIsNone(asyncio.run(pm_paused._open_numbers("o/r")))
+
     def test_the_level_command(self):
         asyncio.run(self.lp.command(self.room, ANNA, ["!level", "autonomous"]))
         self.assertIn("back in the queue", self.said[-1])

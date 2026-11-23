@@ -188,6 +188,22 @@ async def note(loop, rid: str) -> str:
             f"on my own. To try again, say \"@pm retry #{num(paused[0])}\".")
 
 
+OPEN_LIST_CAP = 500
+
+
+async def _open_numbers(repo: str) -> set[int] | None:
+    """The repo's open issue numbers, or None when GitHub can't say (then every paused one is named)."""
+    try:
+        issues = await github.run_json(["issue", "list", "-R", repo, "--state", "open", "--json", "number",
+                                        "--limit", str(OPEN_LIST_CAP)])
+    except (github.GitHubError, ValueError, OSError):   # unknown: named as before, never a wrong "gone"
+        return None
+    if not isinstance(issues, list) or len(issues) >= OPEN_LIST_CAP \
+            or not all(isinstance(i, dict) and isinstance(i.get("number"), int) for i in issues):
+        return None                            # capped or odd (GPT review): absence would prove nothing
+    return {i["number"] for i in issues}
+
+
 async def retry_all(loop, rid: str) -> str:
     """For autonomous mode: every paused issue back in the queue, said in one line ("" when none).
     GitHub is asked about open PRs outside the loop's lock (GPT review: slow calls would hold up every
@@ -196,6 +212,7 @@ async def retry_all(loop, rid: str) -> str:
         repo, paused = await loop.paused_here(rid)
         seen = {k: loop.state[k] for k in paused}   # these very pauses: a retried-and-paused-again one is new
     held_prs = await open_prs(loop, seen, repo) if seen else {}   # GPT review: nothing paused, nothing to ask
+    still_open = await _open_numbers(repo) if seen else None
     async with loop.lock:                          # never between a poll and its results
         if await loop.level(rid) != "autonomous":  # GPT review: someone said "stop" (or assist) meanwhile
             return ""
@@ -204,7 +221,8 @@ async def retry_all(loop, rid: str) -> str:
         for k in back:
             del loop.state[k]
         if back:
-            loop.save()
+            loop.save()                        # GPT review: also when every one of them was closed
+        back = [k for k in back if still_open is None or num(k) in still_open]   # closed meanwhile: just gone
     held = {k: held_prs[k] for k in same if k in held_prs}
     parts = []
     if back:

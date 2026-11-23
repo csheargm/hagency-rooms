@@ -263,7 +263,7 @@ async def plan(agent: str, backend: str, base: Path, task: dict) -> dict:
     _check_repo(task)
     prompt = planning.plan_prompt(str(task.get("discussion", "")), [str(t) for t in task.get("existing", [])])
     items = planning.parse_items(await agents.run_turn(backend, base / "plan", prompt, fresh=True))
-    return {"kind": "plan", "items": items, "line": f"plan drafted: {len(items)} item(s)"}
+    return {"kind": "plan", "items": items, "line": f"plan drafted: {len(items)} issue" + ("" if len(items) == 1 else "s")}
 
 
 async def file_issues(agent: str, backend: str, base: Path, task: dict) -> dict:
