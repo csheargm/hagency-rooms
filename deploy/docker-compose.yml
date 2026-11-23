@@ -78,6 +78,7 @@ services:
       HAGENCY_OPERATOR: ${OPERATOR:-}     # who guard.py's warnings go to
       HAGENCY_ALLOW_REMOTE: ${ALLOW_REMOTE:-1}       # people from other servers may get an agent (0: off)
       HAGENCY_REMOTE_PER_HOUR: ${REMOTE_PER_HOUR:-10}   # at most this many of their agents made per hour
+      HAGENCY_TEST_LIMITS: ${HAGENCY_TEST_LIMITS:-0}   # 1: higher per-person limits while testing (common/test_limits.py)
       PANEL_HOST: 0.0.0.0                 # reachable by Caddy on the edge network only
       PM_BRAIN: "off"                     # no model keys on this server: @pm uses its phrase rules
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}   # @pm reads GitHub as its read-only App (docs/GITHUB_APP.md)

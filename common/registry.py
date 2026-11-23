@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 
+from common import test_limits
 from common import pm_kinds
 from common import bridge_config
 from common import identity
@@ -30,7 +31,7 @@ FIRST_LABEL = "main"                 # what the first agent is called when its p
 MORE = "more"                        # a person's further agents, in their line
 FIRST_GONE = "first_removed"         # their first agent was removed for good: only named ones from now on
 REPORTED = "reported"                # the AI its computer says it runs (pm_kind_reports.py)
-PER_PERSON_DEFAULT = 3
+PER_PERSON_DEFAULT = test_limits.pick(3, 5)
 LOCALPART_RE = re.compile(r"[a-z0-9._=-]{1,120}")   # a recorded agent account name (Matrix localpart characters)
 LOCK = threading.RLock()             # @pm's read-modify-writes of this file (its loop and set-up threads)
 

@@ -18,6 +18,7 @@ import time
 from aiohttp import ClientError
 from nio import InviteMemberEvent, JoinResponse, MatrixRoom, ReactionEvent, RoomMemberEvent, RoomMessageText, RoomPreset
 
+from common import test_limits
 from common import agent_kinds
 from common import identity
 from common import matrix_calls
@@ -48,7 +49,7 @@ WANT_RE = re.compile(r"^\W*(please\W+)?(i (want|need|would like)|i'?d like|get m
 # "resend me the code", "new code", "connect my agent": the Connect message again, with a fresh code
 RESEND_RE = re.compile(r"\b(re-?send|send( me)?|give me|get me|need)\b.{0,20}\b(code|connect\w*( page)?)\b|\bnew code\b"
                        r"|\bconnect my agent\b|\bcode again\b", re.I)
-CODES_PER_HOUR = 5
+CODES_PER_HOUR = test_limits.pick(5, 20)
 WELCOME = ("Welcome to Hagency Rooms, {name}: chat rooms where people and their AI agents build software "
            f"together.\n\nGet your agent: 🔌 **Bring your own**, on your own computer: {agent_kinds.IN_WORDS}.\n\n"
            "Click 🔌 below, or type \"bring my own\" (to choose the AI, for example \"bring my own using ollama "
