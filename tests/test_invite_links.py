@@ -130,6 +130,36 @@ class Flow(Base):
         self.assertEqual(run(self.lp.redeem_invite(token, NEW))["state"], "closed")
         self.lp.client.room_invite.assert_not_called()
 
+    def test_a_cancel_during_the_invite_wins_even_if_the_invite_fails(self):
+        """GPT review: the link was taken, the invite was in flight, the owner cancelled, the server said no."""
+        self.ask(ANNA, "@pm invite link")
+        token, link_id = self.token(), next(iter(invite_links.store().values()))["id"]
+
+        async def refused_after_a_cancel(room_id, user):
+            self.assertTrue(invite_links.cancel(link_id, lambda link: True))
+            return RoomInviteError("banned")
+        self.lp.client.room_invite.side_effect = refused_after_a_cancel
+        self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "failed"})
+        self.assertEqual(invite_links.look_up(token)[0], "cancelled")
+
+    def test_no_answer_from_the_server_keeps_the_link_used(self):
+        """GPT review: the invite may have gone through, so the link never reopens for someone else."""
+        self.ask(ANNA, "@pm invite link")
+        token = self.token()
+        self.lp.client.room_invite.side_effect = asyncio.TimeoutError()
+        self.assertEqual(run(self.lp.redeem_invite(token, NEW)), {"state": "unsure"})
+        self.lp.client.room_invite.side_effect = None
+        self.assertEqual(run(self.lp.redeem_invite(token, BETTY + "x")), {"state": "used"})
+
+    def test_a_link_from_someone_who_left_stops_working(self):
+        """GPT review: a power level left behind by a maker who left the room counts for nothing."""
+        self.ask(ANNA, "@pm invite link")
+        token = self.token()
+        del self.room.users[ANNA]                         # still 100 in the power levels
+        self.assertEqual(run(self.lp.redeem_invite(token, NEW))["state"], "closed")
+        self.lp.client.room_invite.assert_not_called()
+        self.assertEqual(invite_links.look_up(token)[0], "ok")
+
     def test_expired_links_let_nobody_in(self):
         self.ask(ANNA, "@pm invite link")
         token = self.token()

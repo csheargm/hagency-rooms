@@ -18,6 +18,8 @@ const SAYS = {used: "This invite link has already been used." + AGAIN, expired: 
   unknown: "This invite link doesn't work. Check that you copied all of it, or ask the person who sent it for a new one.",
   none: "This page needs the invite link you were sent. Open that link again.",
   busy: "Too many tries from here. Please wait a few minutes and try again.",
+  closed: "This invite link no longer works." + AGAIN,
+  unsure: "Something went wrong while adding you. If the room isn't in your list in a minute, ask the person who sent the link for a new one.",
   failed: "We couldn't add you to the room just now. Please try again in a minute: your link still works.",
   not_signed_in: "We couldn't confirm your sign-in. Please try again.",
   offline: "We couldn't reach Hagency Rooms. Check your connection and try again."};
@@ -104,7 +106,9 @@ async function start() {
   $("title").textContent = `Join ${r.data.room}`;
   $("lead").textContent = `${r.data.by} invited you to ${r.data.room} on Hagency Rooms. Sign in or create an account, and you're in.`;
   $("register").href = `${ELEMENT}/#/register`;
-  if (back) return signIn({type: "m.login.token", token: back});
+  // Only a sign-in this tab started (GPT review: a crafted link carrying someone else's login
+  // token is ignored; a new tab has no IDP_KEY). The token is never used twice.
+  if (back && !fromLink && store.get(IDP_KEY)) return signIn({type: "m.login.token", token: back});
   $("signin").hidden = false;
   await ssoChoices();
 }

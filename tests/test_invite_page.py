@@ -78,6 +78,10 @@ class Page(IsolatedAsyncioTestCase):
         self.assertEqual(await self.post("check", {"token": self.token}),
                          (200, {"state": "ok", "room": "Alpha <b>team</b>", "by": "Anna"}))   # shown as text by the page
 
+    async def test_a_link_whose_maker_left_names_no_room(self):
+        del self.room.users[ANNA]
+        self.assertEqual(await self.post("check", {"token": self.token}), (200, {"state": "closed"}))
+
     async def test_a_newcomer_signs_in_and_is_invited_once(self):
         status, body = await self.post("redeem", {"token": self.token, "openid": "good-openid"})
         self.assertEqual((status, body), (200, {"state": "ok", "room": "!a"}))
@@ -124,6 +128,14 @@ class Page(IsolatedAsyncioTestCase):
 
 
 class Proxy(IsolatedAsyncioTestCase):
+    def test_nothing_logs_request_addresses(self):
+        """GPT review: Google/GitHub sign-in comes back to /invite?loginToken=..., a one-time login.
+        Neither Caddy (no log directive) nor @pm (access_log=None) writes request addresses down."""
+        from common import paths
+        caddy = (paths.ROOT / "deploy" / "Caddyfile").read_text()
+        self.assertFalse(re.search(r"^\s*log\b", caddy, re.M))
+        self.assertIn("access_log=None", (paths.ROOT / "server" / "panel.py").read_text())
+
     def test_caddy_sends_every_invite_path_to_pm(self):
         """The page, its script and style and both calls reach @pm, on the public server's name."""
         from common import paths

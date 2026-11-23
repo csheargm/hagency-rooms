@@ -91,6 +91,8 @@ def routes(loop) -> list:
         if not invite_links.may_look(remote_agent.client_of(request)):
             return reply(TOO_MANY, 429)
         state, found = invite_links.look_up(body.get("token"))
+        if found and not await loop.link_stands(loop.client.rooms.get(found["room"]), found):
+            return reply({"state": "closed"})          # the room's name only while its maker may still invite
         return reply(describe(loop, found) if found else {"state": state})
 
     async def redeem(request):

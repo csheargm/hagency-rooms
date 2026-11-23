@@ -7,9 +7,11 @@ invite_links.py, the page invite_page.py):
   - redeem_invite: the page's sign-in found a person; I invite them and say hello in the room.
 Mixed into pm_welcome.Welcome (client, user_id, say, private_room, addressed_text, is_one_to_one).
 """
+import asyncio
 import logging
 import re
 
+from aiohttp import ClientError
 from nio import MatrixRoom, RoomInviteResponse, RoomMessageText
 
 from common import identity
@@ -98,6 +100,13 @@ class InviteLinks:
         n = invite_links.cancel_room(room.room_id)
         return f"Cancelled {n} invite link{'s' if n != 1 else ''}." if n else "This room has no unused invite links."
 
+    async def link_stands(self, room: MatrixRoom | None, link: dict) -> bool:
+        """The room still takes links and their maker is still in it as an owner or maintainer
+        (GPT review: a power level left behind by someone who left counts for nothing)."""
+        by = link["by"]
+        return (self.takes_links(room) and by in room.users and by not in room.invited_users
+                and await room_state.is_moderator(self.client, room, by))
+
     async def redeem_invite(self, token: object, user: str) -> dict:
         """The page signed in `user`: use the link and invite them. {"state", "room"?} for the page."""
         state, link = invite_links.look_up(token)
@@ -106,16 +115,21 @@ class InviteLinks:
         room = self.client.rooms.get(link["room"])
         if room is not None and user in room.users and user not in room.invited_users:
             return {"state": "member", "room": room.room_id}      # in already: the link stays unused
-        if not self.takes_links(room) or not await room_state.is_moderator(self.client, room, link["by"]):
-            return {"state": "closed", "error": NO_ROOM}           # its maker is no longer an owner or maintainer
+        if not await self.link_stands(room, link):
+            return {"state": "closed", "error": NO_ROOM}           # its maker left, or is no longer an owner or maintainer
         state, link = invite_links.take(token, user)               # once: checked and marked with no await between
         if link is None:
             return {"state": state}
-        resp = await self.client.room_invite(room.room_id, user)
-        if not isinstance(resp, RoomInviteResponse):
+        try:
+            resp = await self.client.room_invite(room.room_id, user)
+        except (ClientError, asyncio.TimeoutError) as e:   # it may have gone through: never reopened (GPT review)
+            log.warning("invite link %s: no answer inviting %s (%s); kept used", link["id"], user, type(e).__name__)
+            return {"state": "unsure"}
+        if not isinstance(resp, RoomInviteResponse):    # the server said no: nobody was invited
             invite_links.give_back(token)
             log.warning("invite link %s: couldn't invite %s: %s", link["id"], user, getattr(resp, "message", resp))
             return {"state": "failed"}
+        invite_links.settle(token)
         log.info("invite link %s used by %s", link["id"], user)
         by = room.user_name(link["by"]) or identity.split(link["by"])[0].lstrip("@")
         await self.say(room.room_id, HELLO.format(person=user, by=identity.plain(by)), mention=user)

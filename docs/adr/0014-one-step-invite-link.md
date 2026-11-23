@@ -45,6 +45,8 @@ a server, so it is not in Caddy's or @pm's request logs, and it never leaks in a
      account if it's new (with 0013's rules: no existing account is ever linked) and comes back with a
      one-time `loginToken`, which the page swaps for a session. The invite token waits in this tab's
      `sessionStorage` meanwhile, never in a URL. **For SSO this is one step for a newcomer.**
+     The page takes a `loginToken` only in the tab that started that sign-in (it marks the tab when
+     the button is clicked), so a crafted link carrying someone else's login token is ignored.
    - **Username and password**, for people who have an account: the page posts them to Synapse's
      `/login`, never to @pm.
    - **Email sign-up can't be one step.** Synapse's email sign-up is Element's form, which knows
@@ -57,8 +59,11 @@ a server, so it is not in Caddy's or @pm's request logs, and it never leaks in a
    user is, and lasts an hour) and posts it with the invite token to `POST /invite/redeem`. @pm checks
    it with our homeserver (`console.openid_user`: people on this server only, as the console), then
    uses the link (checked and marked used with no `await` in between, so two tabs can't both use it),
-   and invites them. The page joins the room with its session, so `hagency_auto_accept.py` stays
-   limited to @pm's private chats. If the invite fails, the link goes back to unused. Someone already
+   and invites them, but only while the link's maker is still in the room as an owner or maintainer
+   (a power level left behind by someone who left counts for nothing; `check` then names no room).
+   The page joins the room with its session, so `hagency_auto_accept.py` stays
+   limited to @pm's private chats. If the server refuses the invite, the link goes back to unused, unless it was cancelled meanwhile;
+   if the server doesn't answer, the invite may have gone through, so the link stays used. Someone already
    in the room is sent there without using the link. @pm says hello in the room, naming who invited them.
 5. **Into Element.** The page signs its own session out (`/logout`: the device is gone) and opens
    Element at `#/room/<id>`, the only place it ever sends anyone (Element's origin is fixed in the

@@ -88,28 +88,43 @@ def look_up(token: object, now: float | None = None) -> tuple[str, dict | None]:
 
 
 def take(token: object, user: str, now: float | None = None) -> tuple[str, dict | None]:
-    """Use the link for `user`: (OK, the link) the first time only, else (why not, None)."""
+    """Use the link for `user`: (OK, the link) the first time only, else (why not, None). It counts
+    as used from here on; `give_back` reopens it only when the server said no to the invite."""
     now = time.time() if now is None else now
     state, link = look_up(token, now)
     if state != OK:
         return state, None
-    store()[hashed(token)] = {**link, "state": USED, "who": user, "at": now}   # no await since look_up
+    store()[hashed(token)] = {**link, "state": USED, "who": user, "at": now, "pending": True}   # no await since look_up
     return OK, link
 
 
-def give_back(token: object) -> None:
-    """The invite failed after `take`: the link works again (until it expires)."""
+def settle(token: object) -> None:
+    """The invite went through: the link stays used (or cancelled, if that came meanwhile)."""
     key = hashed(token)
     link = store().get(key) if key else None
-    if link is not None and link["state"] == USED:
-        store()[key] = {k: v for k, v in link.items() if k not in ("who", "at")} | {"state": OK}
+    if link is not None and link.pop("pending", None):
+        store()[key] = link
+
+
+def give_back(token: object) -> None:
+    """The server refused the invite: the link works again, unless it was cancelled meanwhile
+    (GPT review: a cancel during the invite must win) or has already settled."""
+    key = hashed(token)
+    link = store().get(key) if key else None
+    if link is not None and link["state"] == USED and link.get("pending"):
+        store()[key] = {k: v for k, v in link.items() if k not in ("who", "at", "pending")} | {"state": OK}
+
+
+def cancellable(link: dict, now: float) -> bool:
+    """Unused, or being used right now (its invite may still fail and must not reopen it)."""
+    return status(link, now) == OK or (link["state"] == USED and bool(link.get("pending")))
 
 
 def cancel(link_id: str, may_cancel, now: float | None = None) -> bool:
     """Cancel the unused link with this id if `may_cancel(link)` says so; True if one was cancelled."""
     now = time.time() if now is None else now
     for key, link in list(store().items()):
-        if link["id"] == link_id and status(link, now) == OK and may_cancel(link):
+        if link["id"] == link_id and cancellable(link, now) and may_cancel(link):
             store()[key] = {**link, "state": CANCELLED, "at": now}
             return True
     return False
@@ -120,7 +135,7 @@ def cancel_room(room: str, now: float | None = None) -> int:
     now = time.time() if now is None else now
     done = 0
     for key, link in list(store().items()):
-        if link["room"] == room and status(link, now) == OK:
+        if link["room"] == room and cancellable(link, now):
             store()[key] = {**link, "state": CANCELLED, "at": now}
             done += 1
     return done
