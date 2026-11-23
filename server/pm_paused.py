@@ -78,7 +78,7 @@ async def finish_merged(loop, room_id: str, repo: str) -> None:
             log.warning("couldn't check paused PR #%s on %s: %s", item["pr"], repo, str(e)[:200])
             continue
         if isinstance(info, dict) and info.get("state") == "MERGED":
-            item["stage"] = "done"
+            item.update(stage="done", ended=time.time())   # done now, not when it paused (the board's last 24 h)
             loop.save()
             await loop.say(room_id, f"PR #{item['pr']} merged by a person; #{num(key)} done")
 

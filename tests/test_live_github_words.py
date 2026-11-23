@@ -1,5 +1,6 @@
 """Words from the live GitHub test (2026-11-23): a new agent's PR, alone in a room."""
 import asyncio
+import time
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -9,13 +10,13 @@ from server import pm_paused
 
 
 class PullRequestText(unittest.TestCase):
-    def test_no_local_paths_or_preamble_reach_github(self):
+    def test_no_local_paths_reach_github(self):
         said = ("I’ll add `GH_LIVE_TEST.md` at the repository root and verify its exact contents without running Git.\n\n"
                 "Added [GH_LIVE_TEST.md](/Users/someone/claudeworkfolder/rooms/x/work/tree/GH_LIVE_TEST.md) at the "
                 "repository root; see also /home/someone/notes.txt. This was the only file edited.")
         out = public_safe(said)
-        self.assertTrue(out.startswith("Added GH_LIVE_TEST.md at the repository root"), out)
-        for leak in ("/Users/", "/home/", "someone", "I’ll"):
+        self.assertIn("Added GH_LIVE_TEST.md at the repository root", out)
+        for leak in ("/Users/", "/home/", "someone"):
             self.assertNotIn(leak, out)
         self.assertIn("This was the only file edited.", out)
 
@@ -27,9 +28,15 @@ class PullRequestText(unittest.TestCase):
                          "Saved (a local file) and (a local file)")                 # Windows and file:// too
         web = "See [guide](https://example.com/opt/guide) and https://example.com/tmp/x"
         self.assertEqual(public_safe(web), web)                                      # web links untouched
-        work = "I'll document the caveat. Fixed the regression.\n\nTests pass."
-        self.assertEqual(public_safe(work), work)                                    # more than a plan: kept
-        self.assertEqual(public_safe("I'll change it."), "I'll change it.")          # nothing else: kept
+        work = "I will be available for maintenance.\n\nTests pass."
+        self.assertEqual(public_safe(work), work)                                    # prose is never dropped
+        self.assertEqual(public_safe("[guide](</Users/alice/My Project/readme.md>) and C:/Users/alice/foo"),
+                         "guide and (a local file)")
+        both = "[x](file:///tmp/x)[web](https://example.org)"
+        self.assertEqual(public_safe(both), "x[web](https://example.org)")           # a web link next to it stays
+        started = time.time()
+        public_safe("[" * 20000 + "x](file://" + "a" * 20000)                        # linear, not quadratic
+        self.assertLess(time.time() - started, 1)
         self.assertEqual(public_safe("token ghp_abcdefghijklmnop123 here"), "token <redacted> here")
 
 
@@ -64,6 +71,7 @@ class AloneInARoom(unittest.TestCase):
             asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))                         # done: not asked again
         self.assertEqual(asked.await_count, 1)
         self.assertEqual(lp.state["o/r#166"]["stage"], "done")
+        self.assertGreater(lp.state["o/r#166"]["ended"], time.time() - 5)                 # done now, for the board
         self.assertEqual(lp.state["o/r#5"]["stage"], "stopped")
         self.assertIn("#166 done", lp.say.call_args.args[1])
 

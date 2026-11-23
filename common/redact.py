@@ -23,21 +23,24 @@ def room_safe(text: object, limit: int = MAX_ROOM_ERROR) -> str:
     return _PATH_RE.sub("<local path>", s)[:limit]
 
 
-_LOCAL = r"(?:file://\S*|(?:/(?:Users|home|private|var|tmp|opt|Volumes)/|~/)|[A-Za-z]:\\)"
-LOCAL_LINK_RE = re.compile(r"\[([^\]]*)\]\(\s*<?" + _LOCAL + r"[^\s]*?\)(?=\s|$|[.,;:!?])")
-LOCAL_PATH_RE = re.compile(r"(?<![\w:/.\-])" + _LOCAL + r"[^\s'\"`)\]]*")
-PREAMBLE_RE = re.compile(r"\A(?:I(?:'|’)ll|I will|Let me)\b(?:[^\n.!?]|[.!?](?=\S))*[.!?]?[ \t]*\n\s*\n(?=\S)")   # one sentence only
+_LOCAL = r"(?:file://|/(?:Users|home|private|var|tmp|opt|Volumes)/|~/|[A-Za-z]:[\\/])"
+LOCAL_START_RE = re.compile(_LOCAL)
+# Bounded label and target, no overlapping repeats: linear on any input (GPT review: quadratic before)
+LINK_RE = re.compile(r"\[([^\]\n]{0,300})\]\((<[^>\n]{0,500}>|[^)\s]{0,500})\)")
+LOCAL_PATH_RE = re.compile(r"(?<![\w:/.\-])" + _LOCAL + r"[^\s'\"`)\]>]*")
+
+
+def _unlink_local(m: re.Match) -> str:
+    """A Markdown link to a file on the agent's computer keeps only its text; web links stay as they are."""
+    return m.group(1) if LOCAL_START_RE.match(m.group(2).lstrip("<")) else m.group(0)
 
 
 def public_safe(text: object, *secrets: str) -> str:
     """An agent's summary as it goes to GitHub (a public pull request): credentials cut (secret_safe), links to
-    files on its computer keep only their text, other local paths (macOS, Linux, Windows, file://) go, and a
-    leading "I'll …" paragraph (its plan, not its result) is dropped when more follows. Live test 2026-11-23:
-    a PR showed /Users/<name>/… and "I'll add … without running Git". Web links are left alone (GPT review)."""
-    s = secret_safe(str(text).strip(), *secrets)
-    s = LOCAL_LINK_RE.sub(r"\1", s)
-    s = PREAMBLE_RE.sub("", s)
-    s = s.replace(str(Path.home()), "~")
+    files on its computer keep only their text, and other local paths (macOS, Linux, Windows, file://) go.
+    Live test 2026-11-23: a PR showed /Users/<name>/…. Web links are left alone (GPT review)."""
+    s = secret_safe(str(text).strip(), *secrets).replace(str(Path.home()), "~")
+    s = LINK_RE.sub(_unlink_local, s)
     return LOCAL_PATH_RE.sub("(a local file)", s)
 
 
