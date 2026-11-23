@@ -3,10 +3,20 @@
 // is in the page's meta tag): Google or GitHub through its SSO, or a username and password to its
 // /login. Our server never sees a password or a session, only an OpenID token, which proves who
 // signed in and nothing more. A loginToken coming back from SSO counts only in the tab that started
-// that sign-in (it is marked when the button is clicked), so a crafted link carrying someone else's
-// login token is ignored.
+// that very sign-in: the button stores a random nonce in this tab and puts it in the return address,
+// and only a return carrying it counts (GPT review), so a crafted link with someone else's login
+// token is ignored.
 "use strict";
-const SignIn = (() => {
+const SSO_PARAM = "sso";
+
+/** This tab's own SSO return: {idp, token} when `query` carries the nonce `mark` stored (recently), else null. */
+function ownReturn(mark, query, now) {
+  const token = query.get("loginToken"), nonce = query.get(SSO_PARAM);
+  const fresh = mark && typeof mark.idp === "string" && typeof mark.nonce === "string" && mark.nonce.length >= 32 && now < mark.until;
+  return token && fresh && nonce === mark.nonce ? {idp: mark.idp, token} : null;
+}
+
+const SignIn = typeof document === "undefined" ? null : (() => {
   const meta = n => document.querySelector(`meta[name="${n}"]`).content;
   const HS = meta("hagency-homeserver"), ELEMENT = meta("hagency-element");
   const SSO_MS = 10 * 60 * 1000;
@@ -24,11 +34,16 @@ const SignIn = (() => {
   const hs = (path, body, auth) => post(HS + "/_matrix/client/v3" + path, body, auth);
   const ssoUrl = (idp, back) => `${HS}/_matrix/client/v3/login/sso/redirect/${encodeURIComponent(idp)}?redirectUrl=${encodeURIComponent(back)}`;
 
-  /** The provider this tab's own SSO sign-in used, if it started one lately; used up by reading it. */
-  function startedSso(key) {
+  /** This tab's SSO mark ({idp, until, nonce}), used up by reading it. */
+  function takeMark(key) {
     let mark = null; try { mark = JSON.parse(store.get(key) || "null"); } catch (e) { /* damaged: none */ }
     store.drop(key);
-    return mark && typeof mark.idp === "string" && Date.now() < mark.until ? mark.idp : null;
+    return mark;
+  }
+  function nonce() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
   }
 
   /** A "Continue with …" button in `box` for each provider our homeserver lists; how many there are. */
@@ -41,19 +56,20 @@ const SignIn = (() => {
       const b = document.createElement("button");
       b.textContent = "Continue with " + String(p.name || p.id).slice(0, 40);
       b.className = "primary";
-      b.addEventListener("click", () => { store.set(key, JSON.stringify({idp: p.id, until: Date.now() + SSO_MS}));
-        location.assign(ssoUrl(p.id, location.origin + location.pathname)); });
+      b.addEventListener("click", () => { const n = nonce();
+        store.set(key, JSON.stringify({idp: p.id, until: Date.now() + SSO_MS, nonce: n}));
+        location.assign(ssoUrl(p.id, `${location.origin}${location.pathname}?${SSO_PARAM}=${n}`)); });
       box.appendChild(b);
     }
     return idps.length;
   }
 
-  /** A loginToken SSO brought back to this tab, or null; the address bar is cleaned either way. */
+  /** The sign-in SSO brought back to this tab ({login, idp}), or null. The mark is used up and the
+      query (loginToken, nonce) leaves the address bar either way; the fragment stays. */
   function returned(key) {
-    const idp = startedSso(key);
-    const back = new URLSearchParams(location.search).get("loginToken");
-    if (back) history.replaceState(null, "", location.pathname);
-    return back && idp ? {login: {type: "m.login.token", token: back}, idp} : null;
+    const query = new URLSearchParams(location.search), mine = ownReturn(takeMark(key), query, Date.now());
+    if (query.has("loginToken") || query.has(SSO_PARAM)) history.replaceState(null, "", location.pathname + location.hash);
+    return mine ? {login: {type: "m.login.token", token: mine.token}, idp: mine.idp} : null;
   }
 
   /** What the password form says: m.login.password for this username. */
@@ -97,3 +113,5 @@ const SignIn = (() => {
 
   return {HS, ELEMENT, $, store, post, hs, ssoUrl, ssoButtons, returned, form, login, openid, logout, openidOnly};
 })();
+
+if (typeof module === "object" && module.exports) module.exports = {ownReturn, SSO_PARAM};   // tests/test_home_steps_js.py

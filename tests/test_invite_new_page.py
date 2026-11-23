@@ -22,6 +22,7 @@ from tests.test_invite_links import NEW, fresh_store
 from tests.test_projects import ANNA, BETTY, PM, project
 
 PUBLIC, HS = "https://rooms.example.org", "https://matrix.example.org"
+REAL_OPENID_USER = console.openid_user        # before any test fakes it
 WHO = {"anna-openid": ANNA, "betty-openid": BETTY, "new-openid": NEW}
 
 
@@ -102,6 +103,30 @@ class MakeALink(IsolatedAsyncioTestCase):
         got = (await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!b"}))[1]
         self.assertEqual(got, {"state": "refused", "error": invite_links.refusal("!b", ANNA)})
         self.assertIn("today", got["error"])
+
+    async def test_the_chat_and_the_page_together_keep_the_limit(self):
+        """GPT review: the chat checked the limit, then awaited its private chat; a link made on the page
+        meanwhile took the last one, and the chat made one more anyway."""
+        for _ in range(invite_links.PER_PERSON_DAY - 1):
+            await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!b"})
+
+        async def private_room(person):
+            await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!b"})   # the last one, meanwhile
+            return "!dm"
+        self.lp.private_room = private_room
+        answer = await self.lp.make_invite_link(self.lp.client.rooms["!b"], ANNA)
+        self.assertIn("today", answer)
+        self.assertEqual(len(invite_links.store()), invite_links.PER_PERSON_DAY)
+        self.assertEqual(self.said, [])
+
+    async def test_a_token_that_cant_be_one_is_a_plain_no(self):
+        """GPT review: a lone surrogate in the JSON couldn't be URL-quoted: a 500. Now 401, no request made."""
+        with mock.patch.object(console, "openid_user", REAL_OPENID_USER), \
+                mock.patch.object(console.urllib.request, "build_opener") as asked:
+            r = await self.client.post("/invite/new/rooms", data='{"openid": "\\ud800"}',
+                                       headers={"Origin": PUBLIC, "Content-Type": "application/json"})
+        self.assertEqual(r.status, 401)
+        asked.assert_not_called()
 
     async def test_days_are_one_of_the_choices_else_the_default(self):
         for days, kept in ((30, 30), (1, 1), (999, 7), ("3", 7), (True, 7)):

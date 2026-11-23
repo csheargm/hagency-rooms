@@ -71,7 +71,7 @@ async function signedIn(body) {
   openid = r.openid;
   const me = await ask("/connect/new/me", {});
   if (me.status === 401) return signInAgain(SAYS.not_signed_in);
-  if (me.data.state !== "ok") return say(why(me));
+  if (me.data.state !== "ok") return me.data.state === "refused" ? say(why(me)) : signInAgain(why(me));   // else: try again
   say("");
   $("have").textContent = haveText(me.data);
   $("pick").hidden = !me.data.pick;
@@ -95,10 +95,10 @@ function start() {
   $("kind").addEventListener("change", showKind);
   $("go").addEventListener("click", go);
   SignIn.form($("password-box"), "Sign in", signedIn);
+  SignIn.ssoButtons($("sso"), IDP_KEY);    // there for a retry too (GPT review)
   const back = SignIn.returned(IDP_KEY);   // Google or GitHub brought this tab back: finish that sign-in
   if (back) return signedIn(back.login);
   $("signin").hidden = false;
-  SignIn.ssoButtons($("sso"), IDP_KEY);
 }
 
 if (typeof module === "object" && module.exports) {   // tests/test_home_steps_js.py runs these under node

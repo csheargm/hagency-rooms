@@ -96,7 +96,9 @@ class InviteLinks:
         dm = await self.private_room(sender)
         if dm is None:
             return "I couldn't open a private chat with you to send the link. Please try again in a minute."
-        token, link_id = invite_links.create(room.room_id, sender, days)
+        if refused := invite_links.refusal(room.room_id, sender):   # again: the page may have made one meanwhile (GPT review)
+            return refused
+        token, link_id = invite_links.create(room.room_id, sender, days)   # no await since that check
         await self.say(dm, LINK_DM.format(room=identity.plain(room.display_name), days=days,
                                           url=invite_page.link(token), id=link_id))
         log.info("invite link %s made for %s by %s", link_id, room.room_id, sender)   # the id, never the token

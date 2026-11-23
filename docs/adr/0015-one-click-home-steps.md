@@ -52,7 +52,11 @@ from the home page in a new tab (`target="_blank"`), so Element stays open:
    hold what the invite page did inline: SSO buttons, the one-tab `loginToken` check, the password form,
    the OpenID token, the page CSP (`connect-src` this origin and the homeserver only, no frames, no
    forms) and `verified()`. The new pages sign their own session out right after taking the OpenID
-   token: they keep nothing but that token, in memory, for at most its hour.
+   token: they keep nothing but that token, in memory, for at most its hour. A Google or GitHub return
+   counts only when it carries the random nonce this tab stored when its button was clicked (the return
+   address is `<page>?sso=<nonce>`; Synapse adds `loginToken` to it), not merely a recent click (GPT
+   review): a crafted link with someone else's login token can't sign this tab in as them. This also
+   applies to /invite.
 4. **Limits.** The new pages' calls count per client address and for everyone together
    (`signin_page.asks`, 30 and 600 per 10 minutes, as invite links), before the OpenID check, so a flood
    of made-up tokens never reaches Synapse.
@@ -68,6 +72,8 @@ from the home page in a new tab (`target="_blank"`), so Element stays open:
   the only places these pages send anyone are our homeserver's SSO and the Connect page.
 - People from other Matrix servers can't use these pages (their OpenID isn't checked here, as in 0014);
   they use @pm's chat as before.
+- As in 0014, if @pm is down at the moment Google or GitHub hands back, Caddy's error line for the 502
+  includes `?loginToken=...` (one use, about two minutes, on the VM only). Accepted, as there.
 - Signing in again: Element's own session isn't reused (0014), so a password user types it once more;
   Google and GitHub usually pass straight through.
 - Not tested here: a real install from the page's line on a real computer (the line and the code are

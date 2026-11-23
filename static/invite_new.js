@@ -40,7 +40,7 @@ async function signedIn(body) {
   openid = r.openid;
   const rooms = await ask("/invite/new/rooms", {});
   if (rooms.status === 401) return signInAgain(SAYS.not_signed_in);
-  if (rooms.data.state !== "ok" || !Array.isArray(rooms.data.rooms)) return say(why(rooms));
+  if (rooms.data.state !== "ok" || !Array.isArray(rooms.data.rooms)) return signInAgain(why(rooms));   // a way to try again
   if (!rooms.data.rooms.length) return say(SAYS.none);
   say("");
   $("room").replaceChildren(...rooms.data.rooms.map(room => new Option(String(room.name), String(room.id))));
@@ -76,10 +76,10 @@ function start() {
   $("go").addEventListener("click", go);
   $("copy").addEventListener("click", copy);
   SignIn.form($("password-box"), "Sign in", signedIn);
+  SignIn.ssoButtons($("sso"), IDP_KEY);    // there for a retry too (GPT review)
   const back = SignIn.returned(IDP_KEY);   // Google or GitHub brought this tab back: finish that sign-in
   if (back) return signedIn(back.login);
   $("signin").hidden = false;
-  SignIn.ssoButtons($("sso"), IDP_KEY);
 }
 
 if (typeof module === "object" && module.exports) {   // tests/test_home_steps_js.py runs these under node

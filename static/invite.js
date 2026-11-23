@@ -63,9 +63,9 @@ function openElement(room, idp) {
 }
 
 async function start() {
-  const back = SignIn.returned(IDP_KEY);   // read and used up first, whatever happens next (a new link clears it too)
-  const fromLink = location.hash.slice(1);
-  if (fromLink) history.replaceState(null, "", location.pathname);   // nor the token in the address bar
+  const fromLink = location.hash.slice(1);   // read before anything cleans the address (GPT review)
+  const back = SignIn.returned(IDP_KEY);   // the mark is used up first, whatever happens next (a new link clears it too)
+  if (fromLink) history.replaceState(null, "", location.pathname);   // neither the token nor the query stays
   if (fromLink) store.set(KEY, fromLink);
   token = fromLink || store.get(KEY);
   if (!token) return stop(SAYS.none);
@@ -77,9 +77,10 @@ async function start() {
   $("register").href = `${ELEMENT}/#/register`;
   // Only a sign-in this tab started (GPT review: a crafted link carrying someone else's login
   // token is ignored; a new tab has no IDP_KEY). The token is never used twice.
+  const buttons = SignIn.ssoButtons($("sso"), IDP_KEY).then(n => { $("new-sso").hidden = !n; });   // for a retry too
   if (back && !fromLink) return signIn(back.login, back.idp);
   $("signin").hidden = false;
-  $("new-sso").hidden = !(await SignIn.ssoButtons($("sso"), IDP_KEY));
+  await buttons;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
