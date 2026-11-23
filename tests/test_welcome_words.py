@@ -22,13 +22,13 @@ class WelcomeWords(welcome.Base):
         self.assertNotIn("your Codex or Claude Code", offer)
 
     def test_the_words_name_every_kind(self):
-        for kind in ("Codex", "Claude Code", "Hermes", "Ollama", "remote"):
+        for kind in ("Codex", "Claude Code", "Hermes", "Ollama", "hosted model"):   # remote: a hosted model
             self.assertIn(kind, agent_kinds.IN_WORDS)
         self.assertEqual(len(agent_kinds.KINDS), 5)              # a new kind: say it here too
 
     def test_the_home_page_and_the_server_agent_reply_say_the_same(self):
         page = HOME.read_text(encoding="utf-8")
-        self.assertIn(f"Bring your own ({agent_kinds.IN_WORDS}, on your computer)", page)
+        self.assertIn(f"Bring your own AI, running on your computer: {agent_kinds.IN_WORDS}.", page)
         self.assertNotIn(STALE, page)
         self.assertIn(agent_kinds.IN_WORDS, pm_first.SERVER_REPLY)
 

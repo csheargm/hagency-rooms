@@ -47,7 +47,8 @@ ABOUT = {
 
 # Every kind in a few words, for welcome texts (pm_welcome, pm_first, Element's home page: a test keeps
 # deploy/element_page/home.html saying exactly this).
-IN_WORDS = "Codex, Claude Code, Hermes, a local Ollama model or a remote model"
+# "a remote model" read as running elsewhere, against "on your computer" (screen test 2026-11-23).
+IN_WORDS = "Codex, Claude Code, Hermes, a local Ollama model, or a hosted model with your API key"
 
 
 class BadConnectInfo(ValueError):

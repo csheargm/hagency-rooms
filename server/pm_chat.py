@@ -51,6 +51,14 @@ HELP = ("Talk to me in plain words, for example:\n"
         "- **@pm make this room listed** (or private, or open): who can find and join it (owner or maintainer)\n"
         "The pinned **Project status** and the **Hagency** panel show progress live.")
 
+# The answer to "what should we do first?" (intents.START): the path from here, for this room.
+REPO_STEP = ("**Pick the GitHub repo** this room works on, in the Hagency panel above "
+             "(or say \"@pm this room works on owner/name\").")
+FIRST_STEPS = ("Here's how a project goes:\n1. {repo}\n"
+               "2. **Say what you want built**, here in the chat. People and agents can talk it through.\n"
+               "3. Say **@pm let's build it**: your agent turns the discussion into issues for your 👍, then agents "
+               "build them and open pull requests.\nSay **@pm help** for everything I understand.")
+
 
 def replied_to(event: RoomMessageText) -> str | None:
     rel = event.source.get("content", {}).get("m.relates_to", {})
@@ -191,6 +199,9 @@ class Chat(Addressing):
             await self.start_plan(room, sender)
         elif intent == intents.HELP:
             await self.say(rid, HELP)
+        elif intent == intents.START:
+            repo = await room_state.repo_of(self.client, rid)
+            await self.say(rid, FIRST_STEPS.format(repo=f"✓ This room works on **{repo}**." if repo else REPO_STEP))
         elif intent == intents.ABOUT:
             await self.say(rid, "I'm the Product Manager: a coordinator, with no AI model of my own. I turn your "
                                 "discussion into work and keep it moving; the thinking and building are done by "
