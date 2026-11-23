@@ -23,6 +23,19 @@ def room_safe(text: object, limit: int = MAX_ROOM_ERROR) -> str:
     return _PATH_RE.sub("<local path>", s)[:limit]
 
 
+LOCAL_LINK_RE = re.compile(r"\[([^\]]*)\]\((?:/(?:Users|home|private|var|tmp|opt|Volumes)/|~/)[^)]*\)")
+PREAMBLE_RE = re.compile(r"\A(?:I(?:'|’)ll|I will|Let me)\b[^\n]*\n+")
+
+
+def public_safe(text: object) -> str:
+    """An agent's summary as it goes to GitHub (a public pull request): links to files on its computer keep
+    only their text, other local paths go, and a leading "I'll …" line (its plan, not its result) is dropped.
+    Live test 2026-11-23: a PR showed /Users/<name>/… and "I'll add … without running Git"."""
+    s = LOCAL_LINK_RE.sub(r"\1", str(text).strip())
+    s = PREAMBLE_RE.sub("", s)
+    return room_safe(s, limit=len(s) + 1).replace("<local path>", "(a local file)")
+
+
 def secret_safe(text: object, *secrets: str) -> str:
     """text with the given secrets, and anything shaped like a credential, cut out."""
     out = str(text)

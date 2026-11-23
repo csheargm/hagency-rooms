@@ -131,8 +131,8 @@ class Planner:
             self.note_outcome(older.get("event_id"), "replaced by a newer plan, shown below it")
         after = AFTER_APPROVAL.get(await self.level(rid), AFTER_APPROVAL["off"])
         event_id = await self.say(rid, f"Here's the plan from your discussion:\n\n{planning.show(items)}\n\n"
-                                       f"**Click 👍 below** (or reply \"ok\") to open these {len(items)} "
-                                       f"issue(s). {after} To change it, tell me what to change.")
+                                       f"**Click 👍 below** (or reply \"ok\") to open "
+                                       f"{'this issue' if len(items) == 1 else f'these {len(items)} issues'}. {after} To change it, tell me what to change.")
         self.pending[rid] = {"kind": "plan", "event_id": event_id, "until": time.time() + CONFIRM_S,
                              "items": items, "agent": last["agent"], "by": last["by"], "repo": last.get("repo")}
         await self.offer_thumb(rid, event_id)

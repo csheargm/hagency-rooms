@@ -235,7 +235,7 @@ class Settings(Projects):
         if runs_in:
             return f"This room now discusses **{repo}**; its build loop runs in the room that already works on it.{past}"
         return (f"This room now works on **{repo}**. Check that it is ready (the agents' write access, the merge "
-                f"rule and the agent-ok label) with Check readiness under Project repo in the Hagency console.{past}")
+                f"rule and the agent-ok label) with **Check readiness** in the Hagency panel above.{past}")
 
     async def send_console_link(self, room: MatrixRoom, sender: str) -> None:
         """A one-time sign-in link to the console for this room, sent privately (it's a credential)."""

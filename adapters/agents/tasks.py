@@ -12,7 +12,7 @@ from pathlib import Path
 from adapters.agents import agents
 from common import github
 from adapters.agents import planning
-from common.redact import room_safe
+from common.redact import public_safe, room_safe
 from common.github import GitHubError, git, run, run_json
 
 MAX_DIFF_CHARS = 60_000
@@ -98,7 +98,7 @@ async def finish_build(agent: str, who_built: str, co: Checkout, summary: str) -
     await git([*co.g, *who, "commit", "--quiet", "--no-verify", "-m", f"{co.issue['title']}\n\nCloses #{n}"],
               agent, co.root)
     await git([*co.g, "push", "--quiet", "--no-verify", "-u", "origin", co.branch], agent, co.root)
-    body = f"Closes #{n}\n\nBuilt by `{agent}` ({who_built}) via the Hagency Rooms loop.\n\n{summary[:3000]}"
+    body = f"Closes #{n}\n\nBuilt by `{agent}` ({who_built}) via the Hagency Rooms loop.\n\n{public_safe(summary)[:3000]}"
     url = (await run(["pr", "create", "-R", co.repo, "--head", co.branch, "--title", co.issue["title"],
                       "--body", body], agent)).strip().splitlines()[-1]
     pr = int(url.rstrip("/").rsplit("/", 1)[1])

@@ -177,10 +177,11 @@ class Progress:
         except RuntimeError as e:             # loop.SendError: just the announcement; the fix is already on its way
             log.warning("couldn't announce the fix round in %s: %s", room_id, e)
 
-    async def stop(self, room_id: str, key: str, item: dict, why: str) -> bool:
+    async def stop(self, room_id: str, key: str, item: dict, why: str, steps: str | None = None) -> bool:
         item.update(stage="stopped", why=why)
         self.save()
-        await self.say(room_id, f"⏸ #{num(key)} is paused: {safe(why).rstrip('.')}.\n\n{next_steps(num(key), item.get('agent'))}")
+        await self.say(room_id, f"⏸ #{num(key)} is paused: {safe(why).rstrip('.')}.\n\n"
+                                f"{steps or next_steps(num(key), item.get('agent'))}")
         return True
 
     async def paused_here(self, rid: str) -> tuple[str | None, list[str]]:

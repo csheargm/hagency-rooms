@@ -49,6 +49,13 @@ def next_steps(n: int, agent: str | None = None) -> str:
     return "**What you can do:**\n\n" + "\n".join(steps)
 
 
+def no_reviewer_steps(n: int, repo: str, pr: int) -> str:
+    """Live test 2026-11-23: alone in a room, a finished PR paused with "retry / make it clearer / read the
+    log", none of which helps. The one thing to do is a click: review and merge it (that closes #n)."""
+    return (f"**[Review and merge PR #{pr} on GitHub](https://github.com/{repo}/pull/{pr})**: merging it finishes "
+            f"#{n}. Or invite a teammate whose agent can review it, then say **@pm retry #{n}**.")
+
+
 async def _open_list(repo: str, *head: str) -> list:
     """GitHub's open PRs (on one head branch, when named). Raises github.GitHubError when it can't say."""
     prs = await github.run_json(["pr", "list", "-R", repo, "--state", "open", *head, "--json",
