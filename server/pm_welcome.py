@@ -85,8 +85,13 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
     def in_my_chat(self, person: str) -> bool:
         """They have joined my private chat with my offer in it (GPT review: a stored welcome isn't enough;
         auto-join can fail, or they may have left it)."""
-        room = self.client.rooms.get((self.welcomes().get(person) or {}).get("dm") or "")
-        return room is not None and person in room.users
+        dm = (self.welcomes().get(person) or {}).get("dm")
+        room = self.client.rooms.get(dm or "")
+        if room is None:
+            return bool(dm)       # made just now: my next sync brings it (final round: the pointer went out then)
+        # Invited counts for one of ours: hagency_auto_accept.py joins them a moment later (final round
+        # 2026-11-23: checked before that, the public pointer still went out). Left: they're in neither.
+        return person in room.users or person in getattr(room, "invited_users", {})
 
     def is_newcomer(self, user_id: str) -> bool:
         """A person who may have an agent here and has none of their own yet."""

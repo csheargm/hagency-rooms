@@ -159,6 +159,18 @@ class JoinGreeting(Base):
         self.greet(NEW)
         self.assertEqual(self.said, [])
 
+    def test_invited_to_my_private_chat_counts_as_open(self):
+        """Final round: checked before auto-accept joined them, the public pointer still went out."""
+        self.lp._welcomes = {NEW: {"dm": "!dm", "offer": "$o", "done": []}}
+        self.lp.client.rooms["!dm"] = SimpleNamespace(users={PM: None}, invited_users={NEW: None})
+        self.greet(NEW)
+        self.assertEqual(self.said, [])
+
+    def test_a_chat_made_just_now_counts_as_open(self):
+        self.lp._welcomes = {NEW: {"dm": "!new", "offer": "$o", "done": []}}   # not in my rooms until my next sync
+        self.greet(NEW)
+        self.assertEqual(self.said, [])
+
     def test_one_who_left_my_private_chat_is_still_greeted(self):
         """GPT review: a stored welcome isn't enough; they may have left the chat, or never joined it."""
         self.lp._welcomes = {NEW: {"dm": "!dm", "offer": "$o", "done": []}}
