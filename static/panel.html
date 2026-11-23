@@ -11,6 +11,7 @@ header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;justify-conte
 h1{font-size:18px;margin:0;font-weight:650}.sub{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
 .chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:var(--card);
 border:1px solid var(--line);font-size:12px;color:var(--muted)}.chip.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+a.chip{color:var(--accent);font-weight:600;text-decoration:none}a.chip:hover{border-color:var(--accent)}
 .chip.role{background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .card h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:650}
@@ -32,7 +33,7 @@ background:var(--bg);color:var(--ink);flex:1;min-width:12em}input.code{flex:0;mi
 .agents li+li{border-top:1px solid var(--line)}.agents b{font-weight:600}.muted{color:var(--muted)}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 8px}
 </style>
-<div class="wrap"><header><div><h1 id="title">Hagency</h1><div class="sub" id="sub"></div></div><div id="who"></div></header>
+<div class="wrap"><header><div><h1 id="title">Hagency</h1><div class="sub" id="sub"></div></div><div class="sub"><a class="chip" href="__ELEMENT_HOME__" target="_blank" rel="noopener" data-home="1">🏠 Welcome steps</a><span id="who"></span></div></header>
 <div id="me" class="muted">Signing in…</div><div id="msg"></div><div id="controls" class="stack"></div><div id="p" class="stack"></div>
 <footer>Change anything here or by telling @pm in the chat.</footer></div>
 __SCRIPTS__
@@ -129,6 +130,16 @@ document.addEventListener("click", e => { const a = e.target.closest && e.target
   e.preventDefault(); navHref = a.href; const sent = navRequest = "nav-" + crypto.randomUUID();
   window.parent.postMessage({api: "fromWidget", widgetId: wid, requestId: sent, action: NAVIGATE, data: {uri: a.href}}, ELEMENT);
   setTimeout(() => { if (navRequest === sent) { navRequest = null; navFallback(); } }, NAV_WAIT_MS); });
+// "Welcome steps": Element's home page (common/bridge_config.ELEMENT_HOME). The widget API can't open it
+// (navigate takes only matrix.to links to a room or a person) and Element's sandbox forbids navigating its
+// window from here (seen live: SecurityError). Inside our own Element the panel shares its origin, so the
+// same link clicked in Element's own document opens the page in place; anywhere else it's a new tab.
+document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("a[data-home]");
+  if (!a || !embedded || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;   // a new tab, asked for (GPT review)
+  let doc;
+  try { doc = window.top.document; } catch (err) { return; }   // another origin: the link's own new tab is the way
+  e.preventDefault(); const link = doc.createElement("a"); link.href = "#/home";
+  doc.body.appendChild(link); link.click(); link.remove(); });
 // Refused, or no answer: a link to click (GPT review: a tab opened later, not by the click, is blocked).
 function navFallback() { $("msg").innerHTML = `Element didn't open the chat here: <a href="${esc(navHref)}" target="_blank"
   rel="noopener noreferrer">open your chat with Product Manager</a>.`; }
