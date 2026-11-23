@@ -43,7 +43,9 @@ from the home page in a new tab (`target="_blank"`), so Element stays open:
    is sent to My agents (a new agent needs a new name there).
 2. **Make an invite link, `/invite/new`** (`server/invite_new_page.py`, `static/invite_new.*`). Sign in;
    `POST /invite/new/rooms` lists the project rooms they are in as an owner or a maintainer (the rule of
-   `@pm invite link`: `pm_invite.link_refusal`, now shared by the chat and this page); `POST
+   `@pm invite link`: `pm_invite.link_refusal`, now shared by the chat and this page). Before making a
+   link it also reads the room's state from the server now (`room_state.joined_moderator`; unreadable:
+   no link), so a cached power level of someone just demoted counts for nothing (GPT re-check); `POST
    /invite/new/make {room, days}` makes the same link (`invite_links.create`, 1, 3, 7 or 30 days, the
    same per-room and per-person limits) and returns it to that page only. Not in a chat: the page shows
    it with a Copy button and how to cancel it ("cancel invite link <id>" to @pm). The id is logged,
@@ -72,6 +74,10 @@ from the home page in a new tab (`target="_blank"`), so Element stays open:
   the only places these pages send anyone are our homeserver's SSO and the Connect page.
 - People from other Matrix servers can't use these pages (their OpenID isn't checked here, as in 0014);
   they use @pm's chat as before.
+- The limit for everyone together (600 asks in 10 minutes per page) can be filled with made-up tokens
+  from many addresses, and then the page answers "too many" for a while; the chat still works. Kept:
+  it is what stops a flood from reaching Synapse (as /invite and the Connect page's status).
+- The chat's `@pm invite link` and redeeming a link still go by @pm's cached room, as 0014 decided.
 - As in 0014, if @pm is down at the moment Google or GitHub hands back, Caddy's error line for the 502
   includes `?loginToken=...` (one use, about two minutes, on the VM only). Accepted, as there.
 - Signing in again: Element's own session isn't reused (0014), so a password user types it once more;

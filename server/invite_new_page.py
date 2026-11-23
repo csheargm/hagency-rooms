@@ -14,6 +14,7 @@ from aiohttp import web
 from common import room_state
 from server import invite_links
 from server import invite_page
+from server import pm_invite
 from server import signin_page
 from server.signin_page import reply
 
@@ -21,6 +22,7 @@ log = logging.getLogger("loop")
 PAGE_PATH = "/invite/new"
 ASSETS = {f"{PAGE_PATH}/page.js": ("invite_new.js", "application/javascript")}
 ASKS = signin_page.asks("invite-new")
+NOT_IN = "You're not in that room."
 DAY_CHOICES = (1, 3, 7, 30)               # what the page offers; anything else is the default
 
 
@@ -43,8 +45,14 @@ async def make(loop, user: str, room_id: object, days: int) -> dict:
     """A new link to that room for `user`, if they may make one now."""
     room = loop.client.rooms.get(room_id) if isinstance(room_id, str) else None
     if room is None or user not in room.users or user in room.invited_users:
-        return {"state": "refused", "error": "You're not in that room."}
-    if refused := await loop.link_refusal(room, user):
+        return {"state": "refused", "error": NOT_IN}
+    try:                                      # read now, not my cached copy (GPT re-check): demoted or gone counts
+        standing = await room_state.joined_moderator(loop.client, room.room_id, user)
+    except room_state.StateUnreadable:
+        return {"state": "failed", "error": "I couldn't check that room just now. Please try again in a minute."}
+    if not standing:
+        return {"state": "refused", "error": pm_invite.ONLY_MODS}
+    if refused := await loop.link_refusal(room, user):   # its last step, the limits, has no await after it
         return {"state": "refused", "error": refused}
     token, link_id = invite_links.create(room.room_id, user, days)
     log.info("invite link %s made for %s by %s on the page", link_id, room.room_id, user)   # the id, never the token

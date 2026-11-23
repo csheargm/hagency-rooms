@@ -8,7 +8,7 @@ from unittest import IsolatedAsyncioTestCase, mock
 
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-from nio import RoomInviteResponse
+from nio import RoomGetStateResponse, RoomInviteResponse
 
 from server import console
 from server import invite_links
@@ -43,7 +43,7 @@ class MakeALink(IsolatedAsyncioTestCase):
             room.user_name = lambda u: {ANNA: "Anna"}.get(u)
         self.lp = Loop.__new__(Loop)
         self.lp.user_id, self.lp.dm_rooms, self.said = PM, {}, []
-        self.lp.client = SimpleNamespace(rooms=rooms, room_get_state=mock.AsyncMock(return_value=None),
+        self.lp.client = SimpleNamespace(rooms=rooms, room_get_state=mock.AsyncMock(side_effect=self.state),
                                          room_invite=mock.AsyncMock(return_value=RoomInviteResponse()))
 
         async def say(room_id, body, *a, **k):
@@ -54,6 +54,15 @@ class MakeALink(IsolatedAsyncioTestCase):
         self.client = TestClient(TestServer(app))
         await self.client.start_server()
         self.addAsyncCleanup(self.client.close)
+
+    async def state(self, room_id):
+        """The server's state now, as the cached rooms say (a test may change it behind the cache)."""
+        room = self.lp.client.rooms[room_id]
+        joined = [u for u in room.users if u not in room.invited_users]
+        return RoomGetStateResponse([*({"type": "m.room.member", "state_key": u, "content": {"membership": "join"}}
+                                       for u in joined),
+                                     {"type": "m.room.power_levels", "state_key": "",
+                                      "content": {"users": {u: room.power_levels.get_user_level(u) for u in joined}}}], room_id)
 
     async def post(self, path, body):
         r = await self.client.post(path, json=body, headers={"Origin": PUBLIC})
@@ -127,6 +136,26 @@ class MakeALink(IsolatedAsyncioTestCase):
                                        headers={"Origin": PUBLIC, "Content-Type": "application/json"})
         self.assertEqual(r.status, 401)
         asked.assert_not_called()
+
+    async def test_a_link_is_made_only_on_the_servers_state_now(self):
+        """GPT re-check: my cached copy of the room may be stale; a demoted owner makes no link."""
+        cached = self.state
+
+        async def demoted(room_id):
+            r = await cached(room_id)
+            r.events[-1]["content"]["users"][ANNA] = 0
+            return r
+        self.lp.client.room_get_state.side_effect = demoted
+        self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!a"}))[1],
+                         {"state": "refused", "error": pm_invite.ONLY_MODS})
+        self.lp.client.room_get_state.side_effect = None
+        self.lp.client.room_get_state.return_value = None                    # unreadable: fail closed
+        self.assertEqual((await self.post("/invite/new/make", {"openid": "anna-openid", "room": "!a"}))[1]["state"], "failed")
+        self.assertEqual(len(invite_links.store()), 0)
+
+    async def test_deeply_nested_json_is_a_plain_no(self):
+        r = await self.client.post("/invite/new/make", data="[" * 100000, headers={"Origin": PUBLIC, "Content-Type": "application/json"})
+        self.assertEqual(r.status, 403)
 
     async def test_days_are_one_of_the_choices_else_the_default(self):
         for days, kept in ((30, 30), (1, 1), (999, 7), ("3", 7), (True, 7)):

@@ -67,7 +67,7 @@ async def json_body(request) -> dict | None:
         return None
     try:
         body = await request.json()
-    except ValueError:
+    except (ValueError, RecursionError):   # deeply nested JSON too: a plain no, not a 500 (GPT re-check)
         return None
     return body if isinstance(body, dict) else None
 

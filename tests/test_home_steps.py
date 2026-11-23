@@ -132,6 +132,12 @@ class GetYourAgent(kind_flow.KindFlow):
         self.assertEqual(key["state"], "bad_pick")
         self.assertIsNone(registry.find(NEWB, None))
 
+    def test_a_choice_is_the_pickers_fields_only(self):
+        """GPT re-check: a string here went through a second JSON decode (deep nesting: a 500)."""
+        for pick in ("[" * 5000, '{"agent_kind": "claude"}', ["claude"]):
+            self.assertEqual(self.ask("/connect/new/code", {"openid": "newb-openid", "pick": pick})[1]["state"], "bad_pick")
+        self.assertIsNone(registry.find(NEWB, None))
+
     def test_someone_who_removed_their_first_agent_is_sent_to_my_agents(self):
         registry.update(NEWB, None, agent=registry.REMOTE)
         with mock.patch.object(registry, "first_removed", return_value=True):

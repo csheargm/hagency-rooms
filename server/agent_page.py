@@ -103,7 +103,9 @@ def routes(loop) -> list:
         if isinstance(found, web.Response):
             return found
         body, user = found
-        pick = body.get("pick")
-        return reply(await issue(loop, user, json.dumps(pick) if isinstance(pick, dict) else pick))
+        pick = body.get("pick")                   # the page sends the picker's fields, or null
+        if pick is not None and not isinstance(pick, dict):
+            return reply({"state": "bad_pick", "error": pm_kinds.HOW})
+        return reply(await issue(loop, user, json.dumps(pick) if pick else None))
     return [web.get(PAGE_PATH, page), *(web.get(p, signin_page.assets(ASSETS)) for p in ASSETS),
             web.post(f"{PAGE_PATH}/me", me), web.post(f"{PAGE_PATH}/code", code)]

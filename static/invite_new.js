@@ -48,7 +48,8 @@ async function signedIn(body) {
 }
 
 async function go() {
-  $("go").disabled = true;
+  $("go").disabled = true; $("made").hidden = true;   // never another room's link on show (GPT re-check)
+  const room = $("room").selectedOptions[0];
   const r = await ask("/invite/new/make", {room: $("room").value, days: Number($("days").value)});
   $("go").disabled = false;
   if (r.status === 401) return signInAgain(SAYS.not_signed_in);
@@ -56,6 +57,7 @@ async function go() {
   if (!link) return say(why(r));
   say("");
   $("link").textContent = link;
+  $("made-title").textContent = `Your invite link to ${room ? room.textContent : "the room"}`;
   $("about").textContent = aboutText(Number(r.data.days), String(r.data.id || ""));
   $("copy").textContent = "Copy link";
   $("made").hidden = false;
@@ -74,6 +76,7 @@ function copy() {
 
 function start() {
   $("go").addEventListener("click", go);
+  $("room").addEventListener("change", () => { $("made").hidden = true; });
   $("copy").addEventListener("click", copy);
   SignIn.form($("password-box"), "Sign in", signedIn);
   SignIn.ssoButtons($("sso"), IDP_KEY);    // there for a retry too (GPT review)
