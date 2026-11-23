@@ -31,7 +31,8 @@ class UnrecordedPR(unittest.TestCase):
     def setUp(self):
         for target, name, value in ((room_state, "is_moderator", mock.AsyncMock(return_value=True)),
                                     (room_state, "repo_of", mock.AsyncMock(return_value=REPO)),
-                                    (Loop, "level", mock.AsyncMock(return_value="autonomous"))):
+                                    (Loop, "level", mock.AsyncMock(return_value="autonomous")),
+                                    (pm_paused, "_open_numbers", mock.AsyncMock(return_value=None))):   # issues: all open
             p = mock.patch.object(target, name, value)
             p.start()
             self.addCleanup(p.stop)
