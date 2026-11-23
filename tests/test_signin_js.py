@@ -74,7 +74,8 @@ class SsoReturn(unittest.TestCase):
     def test_an_sso_return_signs_in_only_with_this_tabs_nonce(self):
         mark = json.dumps({"idp": "google", "until": 10**13, "nonce": NONCE})
         signed = self.page(f"https://r/invite?loginToken=t&sso={NONCE}", {"hagency-invite": "OLD", "hagency-invite-idp": mark})
-        self.assertIn({"type": "m.login.token", "token": "t", "initial_device_display_name": "Hagency invite link"},
+        self.assertIn({"type": "m.login.token", "token": "t", "initial_device_display_name": "Hagency invite link",
+                       "refresh_token": True},                     # expires by itself: never kept (GPT review)
                       [c[2] for c in signed if c[0] == "fetch"])
         crafted = self.page("https://r/invite?loginToken=t&sso=" + "cd" * 16, {"hagency-invite": "OLD", "hagency-invite-idp": mark})
         self.assertNotIn("m.login.token", json.dumps(crafted))

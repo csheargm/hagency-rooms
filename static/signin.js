@@ -88,10 +88,14 @@ const SignIn = typeof document === "undefined" ? null : (() => {
     box.appendChild(f);
   }
 
-  /** {session, user} for a sign-in, or {error: "wrong" | "offline" | "refused"}. */
+  /** {session, user} for a sign-in, or {error: "wrong" | "offline" | "refused"}. The session asks for a
+      refresh token, which this page never keeps: its access token then expires by itself within
+      minutes (Synapse's refreshable_access_token_lifetime), even if the tab closes before the sign-out
+      (GPT review). */
   async function login(body, device) {
     let r;
-    try { r = await hs("/login", {...body, initial_device_display_name: device}); } catch (e) { return {error: "offline"}; }
+    try { r = await hs("/login", {...body, initial_device_display_name: device, refresh_token: true}); }
+    catch (e) { return {error: "offline"}; }
     if (r.status !== 200 || !r.data.access_token) return {error: body.type === "m.login.password" ? "wrong" : "refused"};
     return {session: r.data.access_token, user: r.data.user_id};
   }

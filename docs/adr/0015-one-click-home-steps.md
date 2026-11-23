@@ -64,7 +64,9 @@ from the home page in a new tab (`target="_blank"`), so Element stays open:
    session, posts its access token once, and @pm asks our homeserver `/whoami` with it (people on this
    server only, no guests; a token of any other shape is refused before any request). @pm uses it for
    that one call, never keeps or logs it, and the page signs that session out as soon as @pm answers
-   (`SignIn.handOver`). @pm answers with its own page session (30 minutes, that page only, in the page's
+   (`SignIn.handOver`). Every page sign-in asks for a refresh token it never keeps, so its access token
+   expires by itself within Synapse's refreshable lifetime (5 minutes by default) even if the tab closes
+   before the sign-out (GPT review); this covers /invite's session too. @pm answers with its own page session (30 minutes, that page only, in the page's
    memory) for the rest. This bends 0014's "@pm never sees a session" for these two pages, on purpose:
    @pm already holds the server's registration secret and admin power, so a session it sees for one
    request adds nothing it couldn't do, while an OpenID token adds a door for everyone else.
