@@ -137,6 +137,27 @@ class Turns(unittest.TestCase):
         self.assertIn('web_search="disabled"', argv)                     # no OpenAI-hosted search there
         self.assertNotIn('web_search="live"', argv)
 
+    def test_an_owner_turn_on_another_provider_drops_openai_hosted_features(self):
+        """Live test 2026-11-23: the owner's plugins and computer/browser use made a 147k-token request,
+        past llama3.2's context; Ollama refused every turn. With them off: about 2.6k tokens."""
+        for kind, creds in (("ollama", {"model": "qwen3:8b"}), ("remote", REMOTE)):
+            if kind == "remote":
+                codex_provider.save_key(self.folder, KEY, REMOTE["base_url"])
+            _, seen = self.turn(kind, creds)
+            for feature in agents.CODEX_FEATURES_OFF:
+                self.assertIn(f"features.{feature}=false", seen["argv"], (kind, feature))
+        _, seen = self.turn("codex", {})                              # their own Codex keeps all of it
+        self.assertNotIn("features.plugins=false", seen["argv"])
+
+    def test_a_failure_says_the_clis_own_error_not_its_log_lines(self):
+        log = "2026-11-23T06:24:21.548588Z ERROR codex_models_manager::manager: failed to refresh available models"
+        out = "\n".join([log, log, "ERROR: Reconnecting... 5/5",
+                         "ERROR: stream disconnected before completion: request (147017 tokens) exceeds the available context size"])
+        self.assertEqual(agents.failure_reason(out), "stream disconnected before completion: request (147017 tokens) "
+                                                     "exceeds the available context size")
+        self.assertEqual(agents.failure_reason(f"{log}\nboom\n{log}"), "boom")
+        self.assertEqual(agents.failure_reason(log), log)                 # nothing else: the log line, not nothing
+
     def test_a_locked_turn_keeps_the_lockdown(self):
         _, seen = self.turn("ollama", {"model": "qwen3:8b"}, owner=False)
         self.assertIn('sandbox_mode="read-only"', seen["argv"])
