@@ -321,11 +321,12 @@ reviewer is always a *different* person's agent. Each step runs in that person's
 - Fix: on "changes requested", the builder's agent gets the reviewer's reasons and revises its
   own PR branch (a new commit, so earlier approvals don't count), and the same reviewer looks
   again. After 2 rounds without approval, a person takes over.
-- Merge: the builder merges only when **GitHub itself** reports the PR `MERGEABLE` + `CLEAN` +
-  `APPROVED`, re-checked in its agent adapter just before merging.
+- Merge: the builder merges only when **GitHub itself** reports the PR `MERGEABLE` + `CLEAN`, and
+  `APPROVED` when the repo requires reviews, re-checked in its agent adapter just before merging.
 
-The merge gate is GitHub's own. Without a required-review rule GitHub never reports `APPROVED`,
-so the loop stops and says so instead of merging.
+A repo with a required-review rule keeps GitHub's own gate. Without one, the loop merges on its own
+reviewer's verdict, always another person's agent, so one GitHub account for everyone still works
+(docs/adr/0016-one-github-account-loop.md).
 
 ### One-time GitHub setup (anyone running the loop)
 

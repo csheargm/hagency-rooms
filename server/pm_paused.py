@@ -60,6 +60,11 @@ def no_reviewer_steps(n: int, repo: str, pr: int) -> str:
     return f"**[Review and merge it on GitHub](https://github.com/{repo}/pull/{pr})**. Once it's merged, #{n} is done."
 
 
+def approve_steps(repo: str, pr: int) -> str:
+    """The repo requires an approval its agents' one GitHub account can't give (ADR 0016): a person clicks."""
+    return f"**[Approve and merge it on GitHub](https://github.com/{repo}/pull/{pr})**. Once it's merged, it's done here."
+
+
 PAUSED_CHECK_S = 300
 
 

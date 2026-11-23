@@ -45,16 +45,33 @@ class OwnPullRequest(unittest.TestCase):
         with mock.patch.object(tasks, "run", run), mock.patch.object(tasks.own_account, "run_json", run_json):
             return asyncio.run(tasks.submit_review("h-agent", 168, 170, "abc", "APPROVE", "Looks right.", "o/r"))
 
-    def test_one_account_for_both_agents_says_to_use_another(self):
-        """Live: both agents used one GitHub account; GitHub answered 422 to approving its own PR."""
-        with self.assertRaises(tasks.TaskError) as e:
-            self.run_review("CSHEARGM")
-        self.assertIn("Sign h-agent in with a different GitHub account", str(e.exception))
-        self.assertNotIn("422", str(e.exception))
+    def test_one_account_for_both_agents_posts_the_verdict_as_a_comment(self):
+        """ADR 0016: one GitHub account for both agents must not block the loop."""
+        calls = []
+
+        async def run(args, agent):
+            calls.append(args)
+            if "event=APPROVE" in args:
+                raise github.GitHubError("gh api -X failed: gh: Unprocessable Entity (HTTP 422)")
+            return ""
+
+        async def run_json(args, agent):
+            return {"login": "csheargm"} if args[:2] == ["api", "user"] else {"author": {"login": "CSHEARGM"}}
+        with mock.patch.object(tasks, "run", run), mock.patch.object(tasks.own_account, "run_json", run_json):
+            out = asyncio.run(tasks.submit_review("h-agent", 168, 170, "abc", "APPROVE", "Looks right.", "o/r"))
+        self.assertEqual(out["verdict"], "approve")
+        self.assertIn("as a comment", out["line"])                          # says what GitHub recorded
+        self.assertIn("event=COMMENT", calls[-1])
+        self.assertTrue(any(a.startswith("body=Verdict: APPROVE") for a in calls[-1]))
 
     def test_a_422_for_another_reason_is_raised_as_it_was(self):
         with self.assertRaises(github.GitHubError):
             self.run_review("someone-else")
+
+    def test_a_repo_that_requires_an_approval_pauses_with_a_link(self):
+        from server import pm_paused
+        said = pm_paused.approve_steps("o/r", 170)
+        self.assertIn("[Approve and merge it on GitHub](https://github.com/o/r/pull/170)", said)
 
     def test_planning_marker_is_only_the_real_filing_line(self):
         self.assertTrue(pm_plan.FILED_RE.match("Opened #168, #169. The agents start on them now."))
