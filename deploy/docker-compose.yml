@@ -49,7 +49,8 @@ services:
     # The same release with Element's own modules in /modules, loaded at start; only widget-lifecycle
     # is configured (element_home.py: our panel opens without two permission prompts).
     image: ghcr.io/element-hq/element-web/modules:v1.12.35
-    volumes: ["./element-config.json:/app/config.json:ro"]
+    volumes: ["./element-config.json:/app/config.json:ro",
+              "./element-nginx.conf:/etc/nginx/conf.d/hagency.conf:ro"]   # links element_page/element-fixes.css
     networks: [edge]
     logging: *logs
     restart: unless-stopped
