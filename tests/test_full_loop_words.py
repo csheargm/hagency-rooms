@@ -60,6 +60,7 @@ class OwnPullRequest(unittest.TestCase):
         with mock.patch.object(tasks, "run", run), mock.patch.object(tasks.own_account, "run_json", run_json):
             out = asyncio.run(tasks.submit_review("h-agent", 168, 170, "abc", "APPROVE", "Looks right.", "o/r"))
         self.assertEqual(out["verdict"], "approve")
+        self.assertIn("as a comment", out["line"])                          # says what GitHub recorded
         self.assertIn("event=COMMENT", calls[-1])
         self.assertTrue(any(a.startswith("body=Verdict: APPROVE") for a in calls[-1]))
 

@@ -261,7 +261,7 @@ class Progress:
         elif ok and item["stage"] == "approved":
             item["stage"] = "ready"
             await self.say(room_id, f"PR #{item['pr']} ready — a person merges")
-        elif not ok and item["stage"] == "approved" and info.get("reviewDecision") in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
+        elif not ok and item["stage"] in ("approved", "ready") and info.get("reviewDecision") in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
             await self.stop(room_id, key, item, f"the repo's rules need a GitHub approval of PR #{item['pr']} from an "
                             "account other than the one that opened it", approve_steps(item["repo"], item["pr"]))
         self.save()

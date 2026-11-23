@@ -156,5 +156,6 @@ async def merge_ready(pr: int, agent: str | None = None, repo: str = REPO) -> tu
     info = await run_json(["pr", "view", str(pr), "-R", repo, "--json",
                            "state,mergeable,mergeStateStatus,reviewDecision,headRefOid"], agent)
     ok = (info.get("state") == "OPEN" and info.get("mergeable") == "MERGEABLE"
-          and info.get("mergeStateStatus") == "CLEAN" and (info.get("reviewDecision") or "") in ("APPROVED", ""))
+          and info.get("mergeStateStatus") == "CLEAN" and bool(info.get("headRefOid"))
+          and info.get("reviewDecision") in ("APPROVED", ""))   # gh's "" means none required; missing: not ready
     return ok, info
