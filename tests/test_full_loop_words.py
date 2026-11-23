@@ -27,26 +27,31 @@ class Discussion(unittest.TestCase):
 
 
 class OwnPullRequest(unittest.TestCase):
-    def test_an_approval_github_refuses_is_posted_as_a_comment(self):
-        """Live: both agents used one GitHub account; GitHub answered 422 to approving its own PR."""
-        calls = []
-
+    def run_review(self, author):
         async def run(args, agent):
-            calls.append(args)
             if "event=APPROVE" in args:
                 raise github.GitHubError("gh api -X failed: gh: Unprocessable Entity (HTTP 422)")
             return ""
-        with mock.patch.object(tasks, "run", run):
-            out = asyncio.run(tasks.submit_review("h-agent", 168, 170, "abc", "APPROVE", "Looks right.", "o/r"))
-        self.assertEqual(out["verdict"], "approve")
-        self.assertIn("event=COMMENT", calls[-1])
-        self.assertTrue(any(a.startswith("body=Verdict: APPROVE") for a in calls[-1]))
 
-    def test_other_github_errors_still_fail(self):
-        async def run(args, agent):
-            raise github.GitHubError("HTTP 403")
-        with mock.patch.object(tasks, "run", run), self.assertRaises(github.GitHubError):
-            asyncio.run(tasks.submit_review("h-agent", 1, 2, "abc", "APPROVE", "ok", "o/r"))
+        async def run_json(args, agent):
+            return {"login": "csheargm"} if args[:2] == ["api", "user"] else {"author": {"login": author}}
+        with mock.patch.object(tasks, "run", run), mock.patch.object(tasks.own_account, "run_json", run_json):
+            return asyncio.run(tasks.submit_review("h-agent", 168, 170, "abc", "APPROVE", "Looks right.", "o/r"))
+
+    def test_one_account_for_both_agents_says_to_use_another(self):
+        """Live: both agents used one GitHub account; GitHub answered 422 to approving its own PR."""
+        with self.assertRaises(tasks.TaskError) as e:
+            self.run_review("CSHEARGM")
+        self.assertIn("Sign h-agent in with a different GitHub account", str(e.exception))
+        self.assertNotIn("422", str(e.exception))
+
+    def test_a_422_for_another_reason_is_raised_as_it_was(self):
+        with self.assertRaises(github.GitHubError):
+            self.run_review("someone-else")
+
+    def test_planning_marker_is_only_the_real_filing_line(self):
+        self.assertTrue(pm_plan.FILED_RE.match("Opened #168, #169. The agents start on them now."))
+        self.assertFalse(pm_plan.FILED_RE.match("Opened the door for you."))
 
 
 if __name__ == "__main__":
