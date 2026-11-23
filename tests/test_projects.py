@@ -374,7 +374,6 @@ class MakeAndFind(Base):
         self.lp._seen = {}
         with mock.patch("common.matrix_calls.presence", mock.AsyncMock(return_value=True)):
             self.assertEqual(run(self.lp.agent_note(BETTY)), " Your agent comes along when you join.")
-        self.lp._asked_live = {}                                  # a fresh minute: the answer above is kept for one
         with mock.patch("common.matrix_calls.presence", mock.AsyncMock(side_effect=OSError("down"))):
             self.assertEqual(run(self.lp.agent_note(BETTY)), " Your agent joins once it's connected on your computer.")
 

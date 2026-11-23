@@ -62,17 +62,16 @@ class Presence(Removal, StopStart, KindReports):   # pm_remove.py: Remove, forge
         "it joins once it's connected" for an agent that connected seconds before and joined a second later."""
         if self.agent_online(agent):
             return True
-        asked = self.__dict__.setdefault("_asked_live", {})   # agent → (when, answer): one ask a minute (GPT review)
-        when, answer = asked.get(agent, (0.0, False))
-        if time.time() - when < CHECK_S:
-            return answer
+        offline = self.__dict__.setdefault("_offline_asked", {})   # agent → when it was last asked and wasn't online:
+        if time.monotonic() - offline.get(agent, -CHECK_S) < CHECK_S:   # one ask a minute (GPT review); "online" is
+            return False                                              # never kept: the minute check takes over
         try:
-            answer = bool(await asyncio.wait_for(matrix_calls.presence(self.client, f"@{agent}:{SERVER_NAME}"), LIVE_WAIT_S))
+            if await asyncio.wait_for(matrix_calls.presence(self.client, f"@{agent}:{SERVER_NAME}"), LIVE_WAIT_S):
+                return True
         except (OSError, asyncio.TimeoutError, ClientError, RuntimeError) as e:   # only the wording depends on it
             log.warning("couldn't ask for %s's presence: %s", agent, e)
-            answer = False
-        asked[agent] = (time.time(), answer)
-        return answer
+        offline[agent] = time.monotonic()
+        return False
 
     def has_connected_agent(self, person: str) -> bool:
         """At least one of this person's agents has ever connected (pm_agents.py: ➕ only then)."""
