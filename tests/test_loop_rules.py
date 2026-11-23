@@ -111,12 +111,15 @@ class TaskRules(unittest.TestCase):
     def test_ambient_token_overrides_scrubbed(self):
         self.assertTrue({"GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GH_HOST"} <= set(github.SCRUBBED_ENV))
 
-    def test_merge_ready_needs_github_approval(self):
-        async def fake(args, agent=None):
-            return {"state": "OPEN", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN", "reviewDecision": ""}
-        with mock.patch.object(github, "run_json", fake):
-            ok, _ = asyncio.run(github.merge_ready(5))
-        self.assertFalse(ok, "no required-review protection → never merge-ready")
+    def test_merge_ready_follows_the_repos_review_rule(self):
+        """ADR 0016: a repo that requires no review merges on the loop's own reviewer; one that does needs APPROVED."""
+        for decision, ready in (("", True), (None, True), ("APPROVED", True), ("REVIEW_REQUIRED", False),
+                                ("CHANGES_REQUESTED", False)):
+            async def fake(args, agent=None, d=decision):
+                return {"state": "OPEN", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN", "reviewDecision": d}
+            with mock.patch.object(github, "run_json", fake):
+                ok, _ = asyncio.run(github.merge_ready(5))
+            self.assertEqual(ok, ready, decision)
 
 
 class LoopResults(unittest.TestCase):

@@ -12,7 +12,7 @@ from adapters.agents import agents
 from common import github
 from common import room_state
 from common.redact import markup_safe as safe
-from server.pm_paused import finish_merged, next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
+from server.pm_paused import approve_steps, finish_merged, next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
 
 log = logging.getLogger("loop")
 
@@ -261,9 +261,9 @@ class Progress:
         elif ok and item["stage"] == "approved":
             item["stage"] = "ready"
             await self.say(room_id, f"PR #{item['pr']} ready — a person merges")
-        elif not ok and item["stage"] == "approved" and info.get("reviewDecision") != "APPROVED":
-            await self.stop(room_id, key, item, f"GitHub reports PR #{item['pr']} as "     # protection missing?
-                            f"{info.get('reviewDecision') or 'needing no review'}; check the repo's branch rules")
+        elif not ok and item["stage"] == "approved" and info.get("reviewDecision") in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
+            await self.stop(room_id, key, item, f"the repo's rules need a GitHub approval of PR #{item['pr']} from an "
+                            "account other than the one that opened it", approve_steps(item["repo"], item["pr"]))
         self.save()
 
     async def advance_close(self, room_id: str, key: str, item: dict, lvl: str) -> None:

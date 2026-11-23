@@ -148,9 +148,11 @@ async def submit_review(agent: str, n: int, pr: int, head: str, verdict: str, te
         await run(["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", f"event={verdict}",
                    "-f", f"commit_id={head}", "-f", f"body={body}"], agent)
     except GitHubError as e:
-        if "422" in str(e) and await own_account.opened_it(agent, pr, repo):
-            raise TaskError(own_account.SAME_ACCOUNT.format(agent=agent, pr=pr)) from e
-        raise
+        if "422" not in str(e) or not await own_account.opened_it(agent, pr, repo):
+            raise
+        await run(["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", "event=COMMENT",   # one account:
+                   "-f", f"commit_id={head}", "-f", f"body={own_account.AS_COMMENT.format(verdict=verdict)}{body}"],
+                  agent)   # GitHub won't let it approve its own PR; the verdict still goes to @pm (ADR 0016)
     word = "approved" if verdict == "APPROVE" else "changes requested on"
     return {"kind": "review", "issue": n, "pr": pr, "sha": head, "verdict": verdict.lower(),
             "reasons": room_safe(text, MAX_FEEDBACK), "line": f"{word} PR #{pr}"}

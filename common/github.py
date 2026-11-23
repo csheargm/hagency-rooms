@@ -1,9 +1,8 @@
 """GitHub access for agents: every call runs the `gh` CLI (no shell) under that agent's own
-identity, i.e. its own GH_CONFIG_DIR in .gh/<agent>/ (git-ignored; tokens stay in the keyring).
+identity, i.e. its own GH_CONFIG_DIR in .gh/<agent>/ (git-ignored; the token in its hosts.yml).
 
-GitHub — not this code — is the merge gate: a PR is merge-ready only when GitHub itself
-reports it MERGEABLE + CLEAN + APPROVED, which needs the repo's branch protection / ruleset.
-Without required reviews GitHub never reports APPROVED, so the loop fails closed.
+A PR is merge-ready only when GitHub itself reports it MERGEABLE + CLEAN, and APPROVED when the
+repo requires reviews; without that rule the loop's own reviewer decides (ADR 0016).
 """
 import asyncio
 import json
@@ -151,9 +150,11 @@ async def git(args: list[str], agent: str, cwd: Path) -> str:
 
 
 async def merge_ready(pr: int, agent: str | None = None, repo: str = REPO) -> tuple[bool, dict]:
-    """GitHub's own verdict on whether PR can merge now (needs required-review protection)."""
+    """GitHub's own verdict on whether PR can merge now. A repo that requires reviews must show APPROVED; one
+    that requires none ("") merges on the loop's own reviewer, another person's agent (ADR 0016: one GitHub
+    account for everyone must not block the loop, owner 2026-11-23)."""
     info = await run_json(["pr", "view", str(pr), "-R", repo, "--json",
                            "state,mergeable,mergeStateStatus,reviewDecision,headRefOid"], agent)
     ok = (info.get("state") == "OPEN" and info.get("mergeable") == "MERGEABLE"
-          and info.get("mergeStateStatus") == "CLEAN" and info.get("reviewDecision") == "APPROVED")
+          and info.get("mergeStateStatus") == "CLEAN" and (info.get("reviewDecision") or "") in ("APPROVED", ""))
     return ok, info

@@ -1,13 +1,12 @@
 """A reviewing agent on the same GitHub account as the PR's author (adapters/agents/tasks.submit_review).
 
 Full-loop live test 2026-11-23: both agents used one GitHub account, and GitHub refuses (HTTP 422) an approval
-of a PR its own account opened. The loop merges only on GitHub's own approval from another account
-(github.merge_ready), so the fix is a second account, said plainly instead of "gh api -X failed: … (HTTP 422)".
+of a PR its own account opened. The owner decided one account must not block the loop (ADR 0016): the review is
+posted as a comment carrying the verdict, and a repo that requires no reviews merges on that verdict.
 """
 from common.github import GitHubError, run_json
 
-SAME_ACCOUNT = ("{agent} is signed in to the same GitHub account that opened PR #{pr}, and GitHub doesn't let an "
-                "account approve its own pull request. Sign {agent} in with a different GitHub account")
+AS_COMMENT = "Verdict: {verdict} (posted as a comment: GitHub doesn't let an account approve its own pull request)\n\n"
 
 
 async def opened_it(agent: str, pr: int, repo: str) -> bool:
