@@ -21,7 +21,7 @@ class NoGitHubIdentity(unittest.TestCase):
             asyncio.run(github.run(["issue", "list"], agent="nt-agent"))
         said = room_safe(e.exception)                    # what the room shows (local paths cut)
         self.assertIn("isn't signed in to GitHub yet", said)
-        self.assertIn("GH_CONFIG_DIR=.gh/nt-agent gh auth login --web", said)
+        self.assertIn("GH_CONFIG_DIR=.gh/nt-agent gh auth login --web --insecure-storage", said)
         self.assertIn("@pm retry", said)
         self.assertNotIn("<local path>", said)
 

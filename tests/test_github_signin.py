@@ -41,7 +41,9 @@ class Offer(unittest.TestCase):
         cmd, env = self.runs[0]
         self.assertEqual(cmd[:3], ["gh", "auth", "login"])
         self.assertIn("--web", cmd)
+        self.assertIn("--insecure-storage", cmd)                # GPT review: the keychain is shared by all agents
         self.assertEqual(env["GH_CONFIG_DIR"], str(self.root / AGENT))
+        self.assertEqual(env["GIT_CONFIG_GLOBAL"], str(self.root / AGENT / "gitconfig"))   # never the owner's git
         for k in github.SCRUBBED_ENV:
             self.assertNotIn(k, env)
         self.assertEqual(stat.S_IMODE(os.stat(self.root / AGENT).st_mode), 0o700)
@@ -73,6 +75,11 @@ class Offer(unittest.TestCase):
     def test_a_failed_or_abandoned_sign_in_is_not_fatal(self):
         self.assertFalse(self.offer("y", run=self.gh(signs_in=False, code=1)))
         self.assertFalse(self.offer("y", run=mock.Mock(side_effect=OSError("gh vanished"))))
+        with mock.patch("builtins.print"):
+            self.assertFalse(github_signin.offer(AGENT, "/app", ask=mock.Mock(side_effect=EOFError), run=self.fail,
+                                                 which=lambda n: "gh", interactive=True))   # Ctrl-D
+        with mock.patch.object(github_signin.os, "chmod", side_effect=PermissionError("no")):
+            self.assertFalse(self.offer("y", run=self.fail))
 
 
 if __name__ == "__main__":
