@@ -86,6 +86,14 @@ class GitHubError(RuntimeError):
     pass
 
 
+# Live test 2026-11-23: a newcomer's agent failed with "(.gh/<agent>/ not signed in)", which said nothing
+# they could act on; "retry" can't help until it is signed in (docs/GITHUB_SETUP.md, step 1).
+NO_IDENTITY = ("{agent} isn't signed in to GitHub yet, so it can't open issues or pull requests. On its computer, "
+               "in the .hagency/app folder in its owner's home folder, its owner runs: GH_CONFIG_DIR=.gh/{agent} "
+               "gh auth login --web (needs the GitHub CLI, gh), then says \"@pm retry\" with the issue number")
+# (rooms never show local paths: redact.room_safe cuts them, so the folder is said in words)
+
+
 def identity_dir(agent: str) -> Path | None:
     """The agent's gh config dir, or None if the person hasn't signed that identity in."""
     d = IDENTITY_ROOT / agent
@@ -105,7 +113,7 @@ async def run(args: list[str], agent: str | None = None, cwd: Path | None = None
     if agent is not None:
         d = identity_dir(agent)
         if d is None:
-            raise GitHubError(f"{agent} has no GitHub identity (.gh/{agent}/ not signed in)")
+            raise GitHubError(NO_IDENTITY.format(agent=agent))
         env["GH_CONFIG_DIR"] = str(d)
         for k in SCRUBBED_ENV:
             env.pop(k, None)

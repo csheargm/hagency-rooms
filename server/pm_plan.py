@@ -24,7 +24,8 @@ HISTORY = 200                     # room events read for the discussion
 # What happens once the plan is approved, by the room's mode (so "autonomous" is never a surprise).
 AFTER_APPROVAL = {"autonomous": "Then the room runs on its own: build → review → merge, no more 👍 needed.",
                   "assist": "Then agents build and review; a person merges each change.",
-                  "off": "The room is stopped, so nothing starts until the owner picks assist or autonomous."}
+                  "off": "Nothing starts building until the owner says \"@pm let us approve each change\" "
+                         "or \"@pm take it all the way\"."}   # live test: "assist or autonomous" was jargon
 
 
 # Live test 2026-11-23 (a 3B local model): "⚠️ plan didn't work: the plan wasn't valid JSON: Expecting ','
