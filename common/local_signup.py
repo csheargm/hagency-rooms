@@ -2,7 +2,7 @@
 
   python bin/local_signup.py setup         # once: sign-up with a token, new accounts join #welcome
   python bin/local_signup.py token [uses]  # an invite token for Element's sign-up page (default 1 use, 7 days)
-  python bin/local_signup.py exempt-pm     # @pm's messages aren't rate limited (deploy/bootstrap.sh, each deploy)
+  python bin/local_signup.py exempt-pm     # @pm's larger message budget (deploy/bootstrap.sh, each deploy)
 
 `setup` edits data/homeserver.yaml with the same settings the public server gets
 (deploy/configure_synapse.py) and restarts this folder's Synapse only if something changed.
@@ -95,15 +95,19 @@ def new_token(uses: int = 1, days: int = TOKEN_DAYS) -> str:
     return r["token"]
 
 
+# @pm's message budget (Synapse's default rc_message: 0.2/s, burst 10). Positive on purpose (GPT review):
+# 0 would also lift Synapse's room-creation, invite and join limits for @pm.
+PM_RATE = {"messages_per_second": 5, "burst_count": 50}
+
+
 def exempt_pm() -> None:
-    """@pm's own messages are never rate limited (Synapse's per-user override; 0 = no limit). Overnight
-    live test 2026-11-23: under load @pm got 429s and slept on each, so "@pm help" took two minutes and
-    a slow room creation was retried into two rooms with the same name."""
+    """@pm's own messages get a larger budget (Synapse's per-user override). Overnight live test
+    2026-11-23: under load @pm got 429s and slept on each, so "@pm help" took two minutes and a slow room
+    creation was retried into two rooms with the same name."""
     user = urllib.parse.quote(f"@{github.PM_BOT}:{SERVER_NAME}")
-    r = admin_call("POST", f"/_synapse/admin/v1/users/{user}/override_ratelimit",
-                   {"messages_per_second": 0, "burst_count": 0})
-    if r.get("messages_per_second") != 0:
-        raise SystemExit(f"Synapse refused @pm's rate-limit exemption: {r.get('errcode')} {r.get('error')}")
+    r = admin_call("POST", f"/_synapse/admin/v1/users/{user}/override_ratelimit", PM_RATE)
+    if any(r.get(k) != v for k, v in PM_RATE.items()):
+        raise SystemExit(f"Synapse refused @pm's message budget: {r.get('errcode')} {r.get('error')}")
 
 
 def main() -> None:
@@ -117,7 +121,7 @@ def main() -> None:
                           "sign_up": f"{ELEMENT_ORIGIN}/#/register"}))
     elif cmd == "exempt-pm":
         exempt_pm()
-        print("@pm isn't rate limited")
+        print(f"@pm's message budget: {PM_RATE['messages_per_second']}/s, burst {PM_RATE['burst_count']}")
     else:
         raise SystemExit(__doc__)
 
