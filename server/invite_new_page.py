@@ -7,6 +7,7 @@ GET /invite/new signs the person in (signin_page.py, static/signin.js; who it is
 The link is shown on that page only (not in a chat); it is the same link @pm's "invite link" makes
 (invite_links.create, ADR 0014), with the same limits. Its id, never its token, is logged.
 """
+import asyncio
 import logging
 
 from aiohttp import web
@@ -23,6 +24,8 @@ PAGE_PATH = "/invite/new"
 ASSETS = {f"{PAGE_PATH}/page.js": ("invite_new.js", "application/javascript")}
 SCOPE = "invite-new"                       # its page sessions and limits (page_session.py)
 NOT_IN = "You're not in that room."
+SLOW = "I couldn't check your rooms just now. Please try again in a minute."
+WAIT_S = 20
 DAY_CHOICES = (1, 3, 7, 30)               # what the page offers; anything else is the default
 
 
@@ -49,7 +52,7 @@ async def make(loop, user: str, room_id: object, days: int) -> dict:
     try:                                      # read now, not my cached copy (GPT re-check): demoted or gone counts
         standing = await room_state.joined_moderator(loop.client, room.room_id, user)
     except room_state.StateUnreadable:
-        return {"state": "failed", "error": "I couldn't check that room just now. Please try again in a minute."}
+        return {"state": "failed", "error": SLOW}
     if not standing:
         return {"state": "refused", "error": pm_invite.ONLY_MODS}
     if refused := await loop.link_refusal(room, user):   # its last step, the limits, has no await after it
@@ -61,10 +64,16 @@ async def make(loop, user: str, room_id: object, days: int) -> dict:
 
 def routes(loop) -> list:
     async def rooms(body, user):
-        return {"state": "ok", "rooms": await rooms_of(loop, user)}
+        try:                                  # nio retries a slow server without end: bounded (GPT re-check)
+            return {"state": "ok", "rooms": await asyncio.wait_for(rooms_of(loop, user), WAIT_S)}
+        except asyncio.TimeoutError:
+            return {"state": "failed", "error": SLOW}
 
     async def new_link(body, user):
-        return await make(loop, user, body.get("room"), days_of(body.get("days")))
+        try:                                  # make() has no await after its last check: a timeout never half-makes one
+            return await asyncio.wait_for(make(loop, user, body.get("room"), days_of(body.get("days"))), WAIT_S)
+        except asyncio.TimeoutError:
+            return {"state": "failed", "error": SLOW}
     return [web.get(PAGE_PATH, signin_page.page("invite_new.html")), *(web.get(p, signin_page.assets(ASSETS)) for p in ASSETS),
             web.post(f"{PAGE_PATH}/rooms", page_session.handler(SCOPE, rooms)),
             web.post(f"{PAGE_PATH}/make", page_session.handler(SCOPE, new_link))]

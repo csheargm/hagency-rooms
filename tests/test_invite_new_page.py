@@ -2,6 +2,7 @@
 opens /invite/new, signs in (the homeserver's answer to "whose OpenID token is this" is stubbed),
 sees the project rooms where they may make links, makes one, and a newcomer uses it on the invite
 page (ADR 0014) and is invited. Run: .venv/bin/python -m unittest tests.test_invite_new_page"""
+import asyncio
 import re
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, mock
@@ -155,6 +156,17 @@ class MakeALink(IsolatedAsyncioTestCase):
         self.lp.client.room_get_state.side_effect = None
         self.lp.client.room_get_state.return_value = None                    # unreadable: fail closed
         self.assertEqual((await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!a"}))[1]["state"], "failed")
+        self.assertEqual(len(invite_links.store()), 0)
+
+    async def test_a_server_that_never_answers_is_a_retry_not_a_hang(self):
+        """GPT re-check: nio retries a slow homeserver without end; the page got no answer at all."""
+        async def never(room_id):
+            await asyncio.sleep(3600)
+        self.lp.client.room_get_state.side_effect = never
+        with mock.patch.object(invite_new_page, "WAIT_S", 0.05):
+            made = (await self.post("/invite/new/make", {"access_token": "anna-token", "room": "!a"}))[1]
+            listed = (await self.post("/invite/new/rooms", {"access_token": "betty-token"}))[1]   # betty: a state read per room
+        self.assertEqual((made, listed), ({"state": "failed", "error": invite_new_page.SLOW},) * 2)
         self.assertEqual(len(invite_links.store()), 0)
 
     async def test_deeply_nested_json_is_a_plain_no(self):
