@@ -201,7 +201,7 @@ class Served(unittest.TestCase):
         self.assertIn("Element's home page links to @pm", names)
         self.assertIn("Element's home page has the step ① and ③ buttons", names)
         self.assertIn("Get your agent and Make an invite link served (ADR 0015)", names)
-        self.assertIn("the privacy policy served", names)
+        self.assertIn("the privacy policy served at /privacy", names)
 
     def test_privacy_has_a_short_address_and_is_linked_from_home(self):
         rooms = (HERE / "Caddyfile").read_text().split("{$ROOMS_DOMAIN} {")[1].split("\n}")[0]
@@ -212,7 +212,7 @@ class Served(unittest.TestCase):
     def test_privacy_page_is_written_out_with_the_rest(self):
         page = element_home.files(VALUES)["privacy.html"]
         self.assertIn("<h1>Privacy</h1>", page)
-        self.assertIn("90 days", page)          # must match configure_synapse's media_retention:
+        self.assertIn("no one has opened it for 90 days", page)   # Synapse purges media unused that long:
         self.assertIn("local_media_lifetime: 90d", (HERE / "configure_synapse.py").read_text())
 
 

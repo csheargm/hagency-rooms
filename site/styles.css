@@ -39,4 +39,5 @@ h1 span {
 .lobby { margin-left: 8px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
 .lobby:hover, .lobby:focus-visible { color: var(--accent); }
 footer { position: relative; padding: 24px 0; text-align: center; color: var(--muted); font-size: 12px; }
+footer a { color: inherit; }
 @media (prefers-reduced-motion: reduce) { .enter { transition: none; } .enter:hover { transform: none; } }
