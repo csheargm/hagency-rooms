@@ -25,7 +25,7 @@ terminal once per agent, in `~/.hagency/app`, replacing `<agent>` with `anna-age
 agent's Matrix name):
 
 ```bash
-mkdir -p .gh/<agent> && chmod 700 .gh/<agent> && GH_CONFIG_DIR=$PWD/.gh/<agent> gh auth login --hostname github.com --git-protocol https --web --insecure-storage
+mkdir -p .gh/<agent> && chmod 700 .gh/<agent> && GH_CONFIG_DIR=$PWD/.gh/<agent> GIT_CONFIG_GLOBAL=$PWD/.gh/<agent>/gitconfig GIT_CONFIG_NOSYSTEM=1 gh auth login --hostname github.com --git-protocol https --web --insecure-storage
 ```
 
 The command prints a one-time code. Press Enter and open github.com/login/device in a browser

@@ -54,7 +54,7 @@ class Offer(unittest.TestCase):
             self.assertFalse(github_signin.offer(AGENT, "/app", ask=lambda p: "n", run=self.gh(), which=lambda n: "gh",
                                                  interactive=True))
         self.assertEqual(self.runs, [])
-        self.assertIn("GH_CONFIG_DIR=.gh/anna-agent gh auth login", str(said.call_args_list))
+        self.assertIn("GH_CONFIG_DIR=.gh/anna-agent GIT_CONFIG_GLOBAL=", str(said.call_args_list))
 
     def test_already_signed_in_asks_nothing(self):
         (self.root / AGENT).mkdir(parents=True)
@@ -78,6 +78,9 @@ class Offer(unittest.TestCase):
         with mock.patch("builtins.print"):
             self.assertFalse(github_signin.offer(AGENT, "/app", ask=mock.Mock(side_effect=EOFError), run=self.fail,
                                                  which=lambda n: "gh", interactive=True))   # Ctrl-D
+            self.assertFalse(github_signin.offer(AGENT, "/app", ask=mock.Mock(side_effect=OSError("tty gone")),
+                                                 run=self.fail, which=lambda n: "gh", interactive=True))
+        self.assertIn("GIT_CONFIG_GLOBAL=.gh/anna-agent/gitconfig", github_signin.LATER.format(app="/app", agent=AGENT))
         with mock.patch.object(github_signin.os, "chmod", side_effect=PermissionError("no")):
             self.assertFalse(self.offer("y", run=self.fail))
 

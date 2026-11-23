@@ -15,13 +15,18 @@ from server import pm_plan
 
 
 class NoGitHubIdentity(unittest.TestCase):
+    def test_a_long_agent_name_still_fits_the_rooms_limit(self):
+        said = room_safe(github.NO_IDENTITY.format(agent="alice-at-matrix-org-a5829e99c7-agent"))
+        self.assertTrue(said.endswith("--insecure-storage"), said)
+        self.assertIn("@pm retry", said)
+
     def test_it_says_what_to_run_where_and_survives_the_rooms_path_filter(self):
         with mock.patch.object(github, "IDENTITY_ROOT", Path(tempfile.mkdtemp())), \
                 self.assertRaises(github.GitHubError) as e:
             asyncio.run(github.run(["issue", "list"], agent="nt-agent"))
         said = room_safe(e.exception)                    # what the room shows (local paths cut)
-        self.assertIn("isn't signed in to GitHub yet", said)
-        self.assertIn("GH_CONFIG_DIR=.gh/nt-agent gh auth login --web --insecure-storage", said)
+        self.assertIn("needs a GitHub sign-in", said)
+        self.assertIn("A=nt-agent; GH_CONFIG_DIR=.gh/$A GIT_CONFIG_GLOBAL=.gh/$A/gitconfig gh auth login --web --insecure-storage", said)
         self.assertIn("@pm retry", said)
         self.assertNotIn("<local path>", said)
 

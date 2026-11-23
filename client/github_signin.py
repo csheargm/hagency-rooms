@@ -19,7 +19,8 @@ from client.ask_line import ask_line
 from common import github
 
 LOGIN = ["gh", "auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web", "--insecure-storage"]
-LATER = "  Later, in {app}: GH_CONFIG_DIR=.gh/{agent} " + " ".join(LOGIN)
+LATER = ("  Later, in {app}: GH_CONFIG_DIR=.gh/{agent} GIT_CONFIG_GLOBAL=.gh/{agent}/gitconfig GIT_CONFIG_NOSYSTEM=1 "
+         + " ".join(LOGIN))
 
 
 def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, interactive=None) -> bool:
@@ -37,7 +38,7 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
     try:
         answer = ask_line("Sign your agent in to GitHub now, so it can open issues and pull requests? "
                           "Use the GitHub account it should work as. [Y/n]", ask).lower()
-    except EOFError:                          # Ctrl-D: a no (GPT review: never keeps the agent from starting)
+    except (EOFError, OSError):               # Ctrl-D, a lost terminal: a no (GPT review: never keeps the agent from starting)
         answer = "n"
     if answer not in ("", "y", "yes"):
         print(LATER.format(app=app, agent=agent))
