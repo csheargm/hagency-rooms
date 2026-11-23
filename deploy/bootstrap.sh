@@ -125,3 +125,6 @@ dc exec -T pm .venv/bin/python deploy/health.py --internal "$MATRIX_DOMAIN" "$SE
 # The owner's Synapse admin account (for Synapse Admin): its first password is random and kept
 # nowhere; the owner sets their own with `invite.sh owner-password` (docs/DEPLOY_ORACLE.md).
 dc exec -T pm .venv/bin/python deploy/admin_user.py ensure owner
+# @pm's larger message budget (idempotent): under load its replies were minutes late (live test). A warning,
+# never a failed deploy: everything is up by now (GPT review); the next deploy applies it again.
+dc exec -T pm .venv/bin/python bin/local_signup.py exempt-pm || echo "⚠ couldn't set @pm's message budget; replies may lag under load"

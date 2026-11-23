@@ -51,5 +51,24 @@ class Setup(unittest.TestCase):
         self.assertEqual(self.config.read_text(), before)
 
 
+
+class ExemptPm(unittest.TestCase):
+    """Overnight live test 2026-11-23: @pm got 429s under load; replies came minutes late."""
+    def test_it_sets_the_override_for_pm_only_and_fails_loudly(self):
+        with mock.patch.object(local_signup, "admin_call", return_value=dict(local_signup.PM_RATE)) as call:
+            local_signup.exempt_pm()
+        method, path, body = call.call_args.args
+        self.assertEqual(method, "POST")
+        self.assertTrue(path.startswith("/_synapse/admin/v1/users/%40pm%3A") and path.endswith("/override_ratelimit"), path)
+        self.assertEqual(body, local_signup.PM_RATE)
+        self.assertTrue(all(v > 0 for v in body.values()))      # 0 would lift room-creation/invite/join limits too
+        with mock.patch.object(local_signup, "admin_call", return_value={"errcode": "M_FORBIDDEN"}), \
+                self.assertRaises(SystemExit):
+            local_signup.exempt_pm()
+
+    def test_each_deploy_applies_it(self):
+        self.assertIn("dc exec -T pm .venv/bin/python bin/local_signup.py exempt-pm || echo",
+                      (ROOT / "deploy" / "bootstrap.sh").read_text())
+
 if __name__ == "__main__":
     unittest.main()
