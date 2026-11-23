@@ -14,6 +14,7 @@ from server import console
 from server import invite_links
 from server import invite_page
 from server import remote_agent
+from server import signin_page
 from server.loop import Loop
 from tests.test_invite_links import NEW, fresh_store
 from tests.test_projects import ANNA, PM, project
@@ -27,7 +28,7 @@ class Page(IsolatedAsyncioTestCase):
         self.path = fresh_store(self)
         for p in (mock.patch.dict("os.environ", {"HAGENCY_PUBLIC_CONSOLE": PUBLIC}),
                   mock.patch.object(remote_agent, "PUBLIC_HOMESERVER", HS),
-                  mock.patch.object(invite_page, "ELEMENT_ORIGIN", PUBLIC),
+                  mock.patch.object(signin_page, "ELEMENT_ORIGIN", PUBLIC),
                   mock.patch.object(console, "openid_user", side_effect=lambda t: NEW if t == "good-openid" else None)):
             p.start()
             self.addCleanup(p.stop)
