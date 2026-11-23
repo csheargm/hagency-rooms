@@ -2,12 +2,12 @@
 
 # Element Web (rooms.hagencylabs.xyz), plus @pm's console on the same name: the side panel, the
 # console page (and its card scripts: panel.SCRIPTS), its sign-in and actions, and bring-your-own pairing (/connect, the Connect page
-# /connect/start, and the installers /connect.sh and /connect.ps1).
+# /connect/start, and the installers /connect.sh and /connect.ps1), and invite links (/invite: docs/adr/0014).
 {$ROOMS_DOMAIN} {
 	handle /_synapse/admin* {
 		respond 404
 	}
-	@pm path /panel /panel-agents.js /panel-project.js /panel-github.js /console /console/* /auth/* /connect /connect/* /connect.sh /connect.ps1
+	@pm path /panel /panel-agents.js /panel-project.js /panel-github.js /console /console/* /auth/* /connect /connect/* /connect.sh /connect.ps1 /invite /invite/*
 	handle @pm {
 		reverse_proxy pm:8650
 	}
