@@ -117,6 +117,17 @@ class Kept(unittest.TestCase):
             self.assertEqual(admin_session.current("admin-bot", "pw"), "made-meanwhile")
         self.assertEqual((free, self.logins), ([0.01], []))
 
+    def test_the_wait_is_bounded_and_an_old_session_is_signed_out_once(self):
+        self.file.parent.mkdir(parents=True)
+        self.file.write_text(json.dumps({"token": "old", "at": time.time() - admin_session.MAX_AGE_S - 1}))
+        self.limited, slept = 99, []
+        with mock.patch.object(admin_session.time, "sleep", slept.append), \
+                mock.patch.object(admin_session, "limited", lambda pause: (_ for _ in ()).throw(admin_session.Limited(600))), \
+                self.assertRaises(admin_session.setup_accounts.AccountError):
+            admin_session.current("admin-bot", "pw")
+        self.assertEqual(sum(slept), admin_session.setup_accounts.LOGIN_WAIT_S)   # 600 + 300, not 600 + 600
+        self.assertEqual(self.calls.count(("/_matrix/client/v3/logout", "old")), 1)
+
     def test_a_temp_file_that_cant_be_made_signs_the_session_out(self):
         with mock.patch.object(admin_session.tempfile, "mkstemp", side_effect=OSError("no inodes")), \
                 self.assertRaises(OSError):

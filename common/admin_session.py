@@ -66,7 +66,8 @@ def write(token: str) -> None:
     except OSError:
         with contextlib.suppress(OSError, TypeError):
             os.unlink(tmp)
-        retire(token)                         # not kept: never left signed in untracked
+        with contextlib.suppress(OSError):    # the write error is the one to report (GPT review)
+            retire(token)                         # not kept: never left signed in untracked
         raise
 
 
@@ -82,14 +83,15 @@ def current(user: str, password: str, failed: str | None = None) -> str:
     """The kept token if young enough and not the one that just failed; else sign in, under the lock.
     A sign-in Synapse holds back is waited out OUTSIDE the lock (GPT review: other admin calls queued for
     up to LOGIN_WAIT_S), then the file is read again: another process may have signed in meanwhile."""
-    waited = 0.0
+    waited, retired = 0.0, set()
     while True:
         with locked():
             kept = read()
             if kept and kept["token"] != failed and 0 <= time.time() - kept["at"] < MAX_AGE_S:
                 return kept["token"]          # another process may have replaced it meanwhile: use theirs
-            if kept and kept["token"] != failed:
-                retire(kept["token"])         # an hour old
+            if kept and kept["token"] != failed and kept["token"] not in retired:
+                retire(kept["token"])         # an hour old: once, even if a held-back sign-in loops
+                retired.add(kept["token"])
             try:
                 token = setup_accounts.try_login(user, password, sleep=limited)
             except Limited as e:
@@ -101,6 +103,7 @@ def current(user: str, password: str, failed: str | None = None) -> str:
                 return token
         if waited >= setup_accounts.LOGIN_WAIT_S:
             raise setup_accounts.AccountError(f"Synapse is still limiting @{user}'s sign-ins; try again later")
+        pause = min(pause, setup_accounts.LOGIN_WAIT_S - waited)   # the budget is the whole wait (GPT review)
         log.warning("Synapse limits %s's sign-ins: waiting %.0fs", user, pause)
         time.sleep(pause)
         waited += pause
