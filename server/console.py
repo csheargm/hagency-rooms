@@ -160,7 +160,7 @@ async def runs_in(loop, room_id: str, user: str) -> dict | None:
     return {"name": loop.room_name(other), "link": f"{ELEMENT_ORIGIN}/#/room/{urllib.parse.quote(other)}"}
 
 
-PANEL_LINK = "Your invite link is copied. Paste it to the person you're inviting (it's in our private chat too)."
+PANEL_LINK = "Your invite link is ready. Send it to the person you're inviting (it's in our private chat too)."
 
 
 async def act(loop, room_id: str, user: str, action: str, value: str, agent: str = "") -> str | dict:
