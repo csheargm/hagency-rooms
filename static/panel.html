@@ -117,8 +117,29 @@ async function start() {
     const r = await post("/auth/link", {code});
     return r.session ? signedIn(r.session) : failed(r.error || OFFLINE); }
   if (session) { signingIn(); return refresh(); }
-  if (!embedded) return showSignIn();
+  if (!embedded) {
+    const lent = await borrowSession();   // the Element tab's panel is signed in: no second sign-in
+    return lent ? signedIn(lent) : showSignIn();
+  }
   capable ? askOpenId() : signingIn();      // a session that expired: ask Element again
+}
+// Popped out: first ask the panel still open in Element (same browser, this origin only) for its session over a
+// BroadcastChannel; nothing is stored. Only a whole-page tab asks, and only the embedded panel answers.
+const HANDOFF = typeof BroadcastChannel === "function" ? new BroadcastChannel("hagency-panel") : null;
+if (HANDOFF && embedded) HANDOFF.onmessage = ev => {
+  if (ev.data && ev.data.ask === "session" && session) HANDOFF.postMessage({session});
+};
+let borrowed = false;                     // once per tab: a rejected one goes to sign-in, never round again (GPT review)
+function borrowSession() {               // resolves to a session from the Element tab, or null within a second
+  if (!HANDOFF || embedded || window.top !== window.self || borrowed || q.has("loginToken")) return Promise.resolve(null);
+  borrowed = true;                         // (a Google or GitHub return finishes that sign-in instead)
+  return new Promise(done => {
+    const timer = setTimeout(() => { HANDOFF.onmessage = null; done(null); }, 1000);
+    HANDOFF.onmessage = ev => {
+      if (ev.data && typeof ev.data.session === "string") { clearTimeout(timer); HANDOFF.onmessage = null; done(ev.data.session); }
+    };
+    HANDOFF.postMessage({ask: "session"});
+  });
 }
 // Outside Element: sign in with our homeserver, as Get your agent does (signin.js); @pm sees the throwaway
 // session once, at /auth/page, and answers with the panel's own session (owner: the pop-out was blank).

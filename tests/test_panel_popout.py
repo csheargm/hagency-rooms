@@ -56,6 +56,13 @@ class Page(unittest.TestCase):
         self.assertIn("showSignIn()", panel.PAGE)
         self.assertNotIn("__HAGENCY_", panel.PAGE)
 
+    def test_a_pop_out_first_borrows_the_element_tabs_session(self):
+        """Owner: "Why it shows a sign in page" — the panel in Element is already signed in."""
+        self.assertIn('new BroadcastChannel("hagency-panel")', panel.PAGE)
+        self.assertIn("if (HANDOFF && embedded) HANDOFF.onmessage", panel.PAGE)     # only Element's panel answers
+        self.assertIn("lent ? signedIn(lent) : showSignIn()", panel.PAGE)
+        self.assertIn("borrowed = true;", panel.PAGE)                                # once per tab
+
 
 if __name__ == "__main__":
     unittest.main()
