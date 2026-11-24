@@ -25,6 +25,7 @@ from common import matrix_calls
 from server import project_rooms
 from common import registry
 from server import remote_people
+from server import pm_signups
 from server import server_admins
 from common.bridge_config import ROOT, SERVER_NAME
 from common.lifecycle import is_stale
@@ -133,7 +134,10 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         elif not self.is_welcome_room(room):
             await self.on_room_join(room, event.state_key)      # pm_lobby.py: one line, once, with 👍
         elif self.is_newcomer(event.state_key):
+            new = event.state_key not in self.welcomes()   # a live join only, never the start-up scan (GPT review)
             await self.greet_from_welcome(room.room_id, event.state_key)
+            if new and event.state_key in self.welcomes():
+                pm_signups.notify(self, event.state_key)   # the operator hears of each new sign-up, once
 
     async def greet_from_welcome(self, welcome_id: str, person: str) -> None:
         """The private offer, plus ONE line in Welcome naming them: Element lists my private chat as
@@ -144,9 +148,8 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         if made_now and await self.greet(person) is None:
             return                            # greeted once; a failure is retried at the next join or start
         if identity.split(person)[1] == SERVER_NAME and (made_now or self.in_my_chat(person)):
-            # made_now: my chat was just created, so it isn't in my synced rooms yet (final round 2026-11-23)
-            return   # my chat opens by itself for them (hagency_auto_accept.py), and Welcome's topic and the home
-            # page point to it; a public "Welcome, @…!" for every newcomer was noise everyone saw (screen test 2026-11-23)
+            return   # made_now: my chat isn't synced yet. It opens by itself (hagency_auto_accept.py); a public
+            # "Welcome, @…!" for every newcomer was noise everyone saw (screen tests 2026-11-23)
         entry, pointing = self.welcomes()[person], self.__dict__.setdefault("_pointing", set())
         if entry.get("pointed") or entry.get("done") or person in pointing:
             return                            # said already, or they found my chat (they clicked a button)
