@@ -25,6 +25,7 @@ from common import matrix_calls
 from server import project_rooms
 from common import registry
 from server import remote_people
+from server import pm_signups
 from server import server_admins
 from common.bridge_config import ROOT, SERVER_NAME
 from common.lifecycle import is_stale
@@ -143,6 +144,8 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         made_now = person not in self.welcomes()
         if made_now and await self.greet(person) is None:
             return                            # greeted once; a failure is retried at the next join or start
+        if made_now:
+            await pm_signups.tell_operator(self, person)   # the operator hears of each new sign-up, once
         if identity.split(person)[1] == SERVER_NAME and (made_now or self.in_my_chat(person)):
             # made_now: my chat was just created, so it isn't in my synced rooms yet (final round 2026-11-23)
             return   # my chat opens by itself for them (hagency_auto_accept.py), and Welcome's topic and the home
