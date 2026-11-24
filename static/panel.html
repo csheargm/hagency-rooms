@@ -1,5 +1,5 @@
 <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hagency</title>
+<title>Hagency</title><meta name="hagency-homeserver" content="__HAGENCY_HOMESERVER__"><meta name="hagency-element" content="__HAGENCY_ELEMENT__">
 <style>
 :root{--bg:#f7f7f8;--card:#fff;--ink:#17191c;--muted:#6b7078;--line:#e4e6ea;--accent:#0b6e4f;--accent-soft:#e3f2ec;
 --warn:#8a5a00;--warn-soft:#fff4dc;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
@@ -37,8 +37,13 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 8px}
 <div id="me" class="muted">Signing in…</div><div id="msg"></div><div id="controls" class="stack"></div><div id="p" class="stack"></div>
 <footer>Change anything here or by telling @pm in the chat.</footer></div>
 __SCRIPTS__
+<script src="/auth/signin.js"></script>
 <script>
-const q = new URLSearchParams(location.search), room = q.get("room"), wid = q.get("widgetId");
+const q = new URLSearchParams(location.search), wid = q.get("widgetId");
+// Popped out of Element (its ↗ button) the panel signs people in itself; Google or GitHub return to this
+// address without ?room, so the room is kept in this tab while they're away (sessionStorage).
+const room = q.get("room") || (() => { try { return sessionStorage.getItem("hagency-room"); } catch (e) { return null; } })();
+try { if (room) sessionStorage.setItem("hagency-room", room); } catch (e) { /* blocked: the room is in the address */ }
 // The Element apps allowed to frame the panel (panel.EMBEDDERS); ELEMENT: the one that does, from its
 // capabilities request (Element speaks first), and from then on only that one.
 const EMBEDDERS = __EMBEDDERS__;
@@ -111,8 +116,37 @@ async function start() {
     const r = await post("/auth/link", {code});
     return r.session ? signedIn(r.session) : failed(r.error || OFFLINE); }
   if (session) { signingIn(); return refresh(); }
-  if (!embedded) return void ($("me").innerHTML = 'Say <b>@pm send me my console link</b> in the room to sign in here.');
+  if (!embedded) return showSignIn();
   capable ? askOpenId() : signingIn();      // a session that expired: ask Element again
+}
+// Outside Element: sign in with our homeserver, as Get your agent does (signin.js); @pm sees the throwaway
+// session once, at /auth/page, and answers with the panel's own session (owner: the pop-out was blank).
+const IDP_KEY = "hagency-panel-idp";
+let signingInNow = false;                  // one attempt at a time (GPT review: overlapping ones raced)
+function showSignIn() {
+  clearTimeout(watchdog);
+  if (window.top !== window.self || typeof SignIn === "undefined" || !SignIn) return void ($("me").innerHTML = 'Say <b>@pm send me my console link</b> in the room to sign in here.');
+  const back = SignIn.returned(IDP_KEY);   // Google or GitHub brought this tab back
+  if (room) history.replaceState(null, "", location.pathname + "?room=" + encodeURIComponent(room));
+  if (back) return pageSignIn(back.login);
+  say("Sign in to see this room's Hagency panel.");
+  $("controls").innerHTML = '<section class="card"><div id="sso" class="field"></div><div id="password-box"></div></section>';
+  SignIn.ssoButtons($("sso"), IDP_KEY);
+  SignIn.form($("password-box"), "Sign in", pageSignIn);
+}
+async function pageSignIn(body) {
+  if (signingInNow) return;
+  signingInNow = true;
+  signingIn();
+  let r;
+  try { r = await SignIn.handOver(body, "Hagency panel", "/auth/page"); } finally { signingInNow = false; }
+  if (r.error || !r.data || typeof r.data.session !== "string") {
+    showSignIn();
+    return failed(r.error === "wrong" ? "Wrong username or password." : r.status === 429 ? "Too many sign-ins just now; "
+                  + "please wait a few minutes." : (r.data && r.data.error) || OFFLINE);
+  }
+  $("controls").innerHTML = "";
+  signedIn(r.data.session);
 }
 let msgMark = "";                         // the line came from Connect GitHub: githubMsgAfter (panel_github.js)
 async function act(action, value, agent) { $("msg").textContent = "…";
@@ -187,6 +221,8 @@ async function show() {
       headers: {"Authorization": "Bearer " + sent}});
     if (r.status === 401) { if (sent !== session) return;
       session = null; try { sessionStorage.removeItem("hagency-session"); } catch (e) { /* blocked */ }
+      if (!embedded) { $("p").innerHTML = ""; $("controls").innerHTML = ""; $("title").textContent = "Hagency";
+        return start(); }                    // popped out: back to its sign-in, never Element's error (GPT review)
       return ++expired > 2 ? failed(NO_ANSWER) : start(); }
     s = await r.json(); } catch (e) { return failed(OFFLINE); }
   if (s.error) return failed(s.error);

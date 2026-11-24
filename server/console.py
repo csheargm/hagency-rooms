@@ -237,7 +237,7 @@ NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 def routes(loop, panel_html_fn) -> list:
-    from server import agent_page, connect_page, invite_new_page, invite_page, signin_page   # here: they use this module (a cycle)
+    from server import agent_page, connect_page, invite_new_page, invite_page, panel_signin, signin_page   # here: a cycle
     global panel_html
     panel_html = panel_html_fn
 
@@ -280,7 +280,7 @@ def routes(loop, panel_html_fn) -> list:
         done = await act(loop, str(body.get("room", "")), user, str(body.get("action", "")),
                          str(body.get("value", "")), str(body.get("agent", ""))[:120])
         return reply(done if isinstance(done, dict) else {"result": done})   # a dict: the result plus the invite link
-    return [web.post("/auth/openid", auth_openid), web.post("/auth/link", auth_link),
+    return [web.post("/auth/openid", auth_openid), web.post("/auth/link", auth_link), panel_signin.route(allowed, reply, new_session),
             web.get("/console/state", state), web.post("/console/action", action),
             *connect_page.routes(), *invite_page.routes(loop),   # the Connect page and installer; invite links
             *signin_page.routes(), *agent_page.routes(loop), *invite_new_page.routes(loop)]   # ADR 0015: home page steps

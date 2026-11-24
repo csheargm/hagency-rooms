@@ -38,7 +38,8 @@ REFRESH_MS = 3000
 SIGNIN_MS = 20000                 # no answer from Element by then: the panel says so instead of "Signing in…"
 EMBEDDERS = panel_embedders()      # who may frame the panel (no X-Frame-Options: it can't name several)
 HEADERS = {"Content-Security-Policy": f"frame-ancestors 'self' {' '.join(EMBEDDERS)}; default-src 'self'; "
-                                      "script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline'",
+                                      "script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline'; "
+                                      f"connect-src 'self' {remote_agent.PUBLIC_HOMESERVER}",   # popped out: signs in there
            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
 
 
@@ -62,6 +63,8 @@ log = logging.getLogger("loop")
 
 PAGE = (STATIC / "panel.html").read_text(encoding="utf-8").replace("__REFRESH_MS__", str(REFRESH_MS))
 PAGE = PAGE.replace("__SIGNIN_MS__", str(SIGNIN_MS))
+PAGE = PAGE.replace("__HAGENCY_HOMESERVER__", html.escape(remote_agent.PUBLIC_HOMESERVER, quote=True))   # signin.js, popped out
+PAGE = PAGE.replace("__HAGENCY_ELEMENT__", html.escape(ELEMENT_ORIGIN, quote=True))
 PAGE = PAGE.replace("__ELEMENT_HOME__", html.escape(ELEMENT_HOME, quote=True))
 PAGE = PAGE.replace("__SCRIPTS__", "".join(f'<script src="{name}"></script>' for name in SCRIPTS))
 
