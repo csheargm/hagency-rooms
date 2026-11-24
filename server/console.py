@@ -160,7 +160,10 @@ async def runs_in(loop, room_id: str, user: str) -> dict | None:
     return {"name": loop.room_name(other), "link": f"{ELEMENT_ORIGIN}/#/room/{urllib.parse.quote(other)}"}
 
 
-async def act(loop, room_id: str, user: str, action: str, value: str, agent: str = "") -> str:
+PANEL_LINK = "Your invite link is ready. Send it to the person you're inviting (it's in our private chat too)."
+
+
+async def act(loop, room_id: str, user: str, action: str, value: str, agent: str = "") -> str | dict:
     """Do one change as `user`, through @pm's own checks (each also posts its usual chat line);
     `agent`: which of their agents (empty: their first)."""
     room = loop.client.rooms.get(room_id)
@@ -187,8 +190,9 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         return await loop.github_action(user, value)
     if action in console_repo.ACTIONS:    # the room's repo: choose, remove, check readiness
         return await console_repo.act(loop, room, user, action, value)
-    if action == "invite_link":           # pm_invite.py: the link goes to our private chat
-        return await loop.make_invite_link(room, user)
+    if action == "invite_link":           # pm_invite.py: shown here to copy, and sent to our private chat too
+        said, url = await loop.invite_link_and_url(room, user)
+        return {"result": PANEL_LINK, "link": url} if url else said
     if action == "visibility":            # pm_projects.py: who can find and join this room
         answer = await loop.set_visibility(room, user, value)
         await loop.say(room_id, answer)
@@ -273,8 +277,9 @@ def routes(loop, panel_html_fn) -> list:
         user = scoped(request, str(body.get("room", ""))) if body else None
         if not user:
             return reply({"error": "sign in"}, 401)
-        return reply({"result": await act(loop, str(body.get("room", "")), user, str(body.get("action", "")),
-                                          str(body.get("value", "")), str(body.get("agent", ""))[:120])})
+        done = await act(loop, str(body.get("room", "")), user, str(body.get("action", "")),
+                         str(body.get("value", "")), str(body.get("agent", ""))[:120])
+        return reply(done if isinstance(done, dict) else {"result": done})   # a dict: the result plus the invite link
     return [web.post("/auth/openid", auth_openid), web.post("/auth/link", auth_link),
             web.get("/console/state", state), web.post("/console/action", action),
             *connect_page.routes(), *invite_page.routes(loop),   # the Connect page and installer; invite links

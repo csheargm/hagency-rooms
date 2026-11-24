@@ -91,18 +91,24 @@ class InviteLinks:
 
     async def make_invite_link(self, room: MatrixRoom, sender: str, days: int = invite_links.DEFAULT_DAYS) -> str:
         """Send `sender` a new link to `room` privately; what to tell them where they asked."""
+        return (await self.invite_link_and_url(room, sender, days))[0]
+
+    async def invite_link_and_url(self, room: MatrixRoom, sender: str,
+                                  days: int = invite_links.DEFAULT_DAYS) -> tuple[str, str | None]:
+        """make_invite_link, plus the link itself for the panel to show and copy (owner, 2026-11-23: "should
+        it just generate one on the spot so I can copy and paste"); None when no link was made."""
         if refused := await self.link_refusal(room, sender):
-            return refused
+            return refused, None
         dm = await self.private_room(sender)
         if dm is None:
-            return "I couldn't open a private chat with you to send the link. Please try again in a minute."
+            return "I couldn't open a private chat with you to send the link. Please try again in a minute.", None
         if refused := invite_links.refusal(room.room_id, sender):   # again: the page may have made one meanwhile (GPT review)
-            return refused
+            return refused, None
         token, link_id = invite_links.create(room.room_id, sender, days)   # no await since that check
-        await self.say(dm, LINK_DM.format(room=identity.plain(room.display_name), days=days,
-                                          url=invite_page.link(token), id=link_id))
+        url = invite_page.link(token)
+        await self.say(dm, LINK_DM.format(room=identity.plain(room.display_name), days=days, url=url, id=link_id))
         log.info("invite link %s made for %s by %s", link_id, room.room_id, sender)   # the id, never the token
-        return SENT.format(name=identity.split(sender)[0].lstrip("@"))
+        return SENT.format(name=identity.split(sender)[0].lstrip("@")), url
 
     async def may_cancel(self, link: dict, sender: str) -> bool:
         room = self.client.rooms.get(link["room"])
