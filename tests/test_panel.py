@@ -98,6 +98,10 @@ class CardScripts(unittest.TestCase):
         caddy = (ROOT / "deploy" / "Caddyfile").read_text()
         routed = re.search(r"@pm path ([^\n]+)", caddy).group(1).split()
         loaded = re.findall(r'<script src="([^"]+)"></script>', panel.PAGE)
+        from server import signin_page
+        self.assertIn(signin_page.SCRIPT_PATH, loaded)                  # popped out: signs in itself (panel_signin)
+        self.assertIn("/auth/*", routed)                                 # ...and Caddy sends it to @pm
+        loaded = [name for name in loaded if name != signin_page.SCRIPT_PATH]
         self.assertEqual(sorted(loaded), sorted(panel.SCRIPTS))
         for name in loaded:
             self.assertIn(f"/{name}", routed, f"{name} isn't in the Caddyfile's @pm route")
