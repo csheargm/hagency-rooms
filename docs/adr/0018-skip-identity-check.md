@@ -13,8 +13,9 @@ can't read encrypted rooms), so the check protects almost nothing here and block
 - Element's config: `"force_verification": false` (deploy/element_home.py). The screen gets an X; people
   skip it (one "Are you sure?") and go straight in.
 - `/.well-known/matrix/client`: `"io.element.e2ee": {"force_disable": true}` (deploy/Caddyfile). New rooms and
-  DMs made in Element aren't encrypted, and accounts without keys that are in no encrypted room are never
-  asked to set any up, so they never see the screen.
+  DMs made in Element aren't encrypted, and accounts without keys that are in no encrypted room are normally
+  never asked to set any up (Element reads the well-known after the first sync; if that read is slow or
+  fails, it may still offer setup, which they can skip).
 
 No setting in this Element version removes the screen for an account that already has keys
 (MatrixChat.postLoginSetup checks none); the X is the closest.
