@@ -51,11 +51,15 @@ def pm_id(server_name: str) -> str:
 
 
 def element_config(values: dict) -> dict:
-    """Element points at this homeserver, shows Hagency's home page and branding, and trusts our panel."""
+    """Element points at this homeserver, shows Hagency's home page and branding, trusts our panel, and lets
+    people skip the identity check after sign-in (ADR 0018)."""
     rooms = f"https://{values['ROOMS_DOMAIN']}{PREFIX}"
     return {"default_server_config": {"m.homeserver": {"base_url": f"https://{values['MATRIX_DOMAIN']}",
                                                        "server_name": values["SERVER_NAME"]}},
             "disable_custom_urls": False, "disable_guests": True, "brand": BRAND, "features": FEATURES,
+            # An X on "Confirm your digital identity" after sign-in (default true: no way past it but a reset).
+            # Hagency's rooms aren't encrypted (bots can't read them): ADR 0018.
+            "force_verification": False,
             "setting_defaults": SETTING_DEFAULTS,
             "embedded_pages": {"home_url": f"{rooms}/home.html"},
             "branding": {"auth_header_logo_url": f"{rooms}/logo.svg", "welcome_background_url": f"{rooms}/background.svg"},
