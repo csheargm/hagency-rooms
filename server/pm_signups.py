@@ -3,6 +3,7 @@ person signed up"). OPERATOR in deploy/.env (docker-compose passes HAGENCY_OPERA
 tells them in its private chat with them, once per person, when it first welcomes a new account of this
 server. Never other servers' people, agents or bots, and never the operator about themself.
 """
+import asyncio
 import logging
 import os
 import re
@@ -30,5 +31,12 @@ async def tell_operator(loop, person: str) -> None:
         dm = await loop.private_room(boss)
         if dm is not None:
             await loop.say(dm, NOTICE.format(who=identity.plain(person)))
-    except RuntimeError as e:                 # loop.SendError: the sign-up itself is unaffected
+    except (RuntimeError, OSError) as e:      # loop.SendError, the DM record: the sign-up itself is unaffected
         log.warning("couldn't tell the operator about %s: %s", person, e)
+
+
+def notify(loop, person: str) -> None:
+    """tell_operator in the background: never holding up the welcome (GPT review); a restart lets it finish."""
+    job = asyncio.create_task(tell_operator(loop, person))
+    loop.busy.add(job)
+    job.add_done_callback(loop.busy.discard)

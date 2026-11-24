@@ -1,5 +1,6 @@
 """The operator hears about each new sign-up (server/pm_signups.py). Owner 2026-11-23: "how do we know if the
 new person signed up"."""
+import asyncio
 import os
 from unittest import mock
 
@@ -23,14 +24,25 @@ class Notice(Base):
     def to_operator(self):
         return [body for room, body in self.said if room == f"!dm-{ANNA}"]
 
+    def join(self, who, prev=None):
+        async def go():                       # the notice runs in the background: let it finish
+            await self.lp.on_welcome_member(WELCOME_ROOM, member(who, prev=prev))
+            await asyncio.gather(*list(self.lp.busy))
+        self.run_(go())
+
     def test_a_new_account_is_told_to_the_operator_once(self):
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))
-        self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW, prev="leave")))   # rejoins: not new
+        self.join(NEW)
+        self.join(NEW, prev="leave")                                            # rejoins: not new
         self.assertEqual(self.to_operator(), [pm_signups.NOTICE.format(who=r"@newbie1:bridge.localhost")])
 
     def test_never_the_operator_other_servers_agents_or_bots(self):
         for who in (ANNA, FAR, "@newbie1-agent:bridge.localhost", "@x-bot:bridge.localhost"):
             self.run_(pm_signups.tell_operator(self.lp, who))
+        self.assertEqual(self.to_operator(), [])
+
+    def test_the_start_up_scan_tells_nobody(self):
+        """GPT review: a lost welcome record must not turn every existing member into a "new sign-up"."""
+        self.run_(self.lp.greet_from_welcome("!welcome", NEW))
         self.assertEqual(self.to_operator(), [])
 
     def test_no_operator_set_or_a_bad_one_means_nobody_is_told(self):
@@ -45,5 +57,5 @@ class Notice(Base):
             return "$offer"
         self.lp.say = broken
         with self.assertLogs("loop", level="WARNING"):
-            self.run_(self.lp.on_welcome_member(WELCOME_ROOM, member(NEW)))
+            self.join(NEW)
         self.assertIn(NEW, self.lp._welcomes)                                  # greeted all the same
