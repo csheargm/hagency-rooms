@@ -118,8 +118,8 @@ async function start() {
     return r.session ? signedIn(r.session) : failed(r.error || OFFLINE); }
   if (session) { signingIn(); return refresh(); }
   if (!embedded) {
-    const borrowed = await borrowSession();   // the Element tab's panel is signed in: no second sign-in
-    return borrowed ? signedIn(borrowed) : showSignIn();
+    const lent = await borrowSession();   // the Element tab's panel is signed in: no second sign-in
+    return lent ? signedIn(lent) : showSignIn();
   }
   capable ? askOpenId() : signingIn();      // a session that expired: ask Element again
 }
@@ -129,8 +129,10 @@ const HANDOFF = typeof BroadcastChannel === "function" ? new BroadcastChannel("h
 if (HANDOFF && embedded) HANDOFF.onmessage = ev => {
   if (ev.data && ev.data.ask === "session" && session) HANDOFF.postMessage({session});
 };
+let borrowed = false;                     // once per tab: a rejected one goes to sign-in, never round again (GPT review)
 function borrowSession() {               // resolves to a session from the Element tab, or null within a second
-  if (!HANDOFF || embedded || window.top !== window.self) return Promise.resolve(null);
+  if (!HANDOFF || embedded || window.top !== window.self || borrowed || q.has("loginToken")) return Promise.resolve(null);
+  borrowed = true;                         // (a Google or GitHub return finishes that sign-in instead)
   return new Promise(done => {
     const timer = setTimeout(() => { HANDOFF.onmessage = null; done(null); }, 1000);
     HANDOFF.onmessage = ev => {

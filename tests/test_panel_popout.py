@@ -60,7 +60,8 @@ class Page(unittest.TestCase):
         """Owner: "Why it shows a sign in page" — the panel in Element is already signed in."""
         self.assertIn('new BroadcastChannel("hagency-panel")', panel.PAGE)
         self.assertIn("if (HANDOFF && embedded) HANDOFF.onmessage", panel.PAGE)     # only Element's panel answers
-        self.assertIn("borrowed ? signedIn(borrowed) : showSignIn()", panel.PAGE)
+        self.assertIn("lent ? signedIn(lent) : showSignIn()", panel.PAGE)
+        self.assertIn("borrowed = true;", panel.PAGE)                                # once per tab
 
 
 if __name__ == "__main__":
