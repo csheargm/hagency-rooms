@@ -230,5 +230,17 @@ class Served(unittest.TestCase):
         self.assertIn("local_media_lifetime: 90d", (HERE / "configure_synapse.py").read_text())
 
 
+class IdentityCheck(unittest.TestCase):
+    """ADR 0018: after signing in, people could only get past "Confirm your digital identity" with a reset."""
+    def test_element_offers_a_skip(self):
+        values = {"ROOMS_DOMAIN": "rooms.example", "MATRIX_DOMAIN": "matrix.example", "SERVER_NAME": "example"}
+        self.assertIs(element_home.element_config(values)["force_verification"], False)
+
+    def test_the_well_known_turns_encryption_off_for_new_rooms(self):
+        caddy = (Path(__file__).resolve().parent / "Caddyfile").read_text()
+        line = next(ln for ln in caddy.splitlines() if '"m.homeserver"' in ln and "respond" in ln)
+        self.assertIn('"io.element.e2ee": {"force_disable": true}', line)
+
+
 if __name__ == "__main__":
     unittest.main()

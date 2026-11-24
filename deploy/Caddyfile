@@ -50,7 +50,8 @@
 	handle /.well-known/matrix/client {
 		header Content-Type application/json
 		header Access-Control-Allow-Origin *
-		respond `{"m.homeserver": {"base_url": "https://{$MATRIX_DOMAIN}"}}`
+		# io.element.e2ee.force_disable: no new encrypted rooms, and no identity setup for accounts without keys (ADR 0018)
+		respond `{"m.homeserver": {"base_url": "https://{$MATRIX_DOMAIN}"}, "io.element.e2ee": {"force_disable": true}}`
 	}
 	handle /_synapse/admin* {
 		respond 404
