@@ -122,9 +122,10 @@ async function start() {
 // Outside Element: sign in with our homeserver, as Get your agent does (signin.js); @pm sees the throwaway
 // session once, at /auth/page, and answers with the panel's own session (owner: the pop-out was blank).
 const IDP_KEY = "hagency-panel-idp";
+let signingInNow = false;                  // one attempt at a time (GPT review: overlapping ones raced)
 function showSignIn() {
   clearTimeout(watchdog);
-  if (typeof SignIn === "undefined" || !SignIn) return void ($("me").innerHTML = 'Say <b>@pm send me my console link</b> in the room to sign in here.');
+  if (window.top !== window.self || typeof SignIn === "undefined" || !SignIn) return void ($("me").innerHTML = 'Say <b>@pm send me my console link</b> in the room to sign in here.');
   const back = SignIn.returned(IDP_KEY);   // Google or GitHub brought this tab back
   if (room) history.replaceState(null, "", location.pathname + "?room=" + encodeURIComponent(room));
   if (back) return pageSignIn(back.login);
@@ -134,11 +135,15 @@ function showSignIn() {
   SignIn.form($("password-box"), "Sign in", pageSignIn);
 }
 async function pageSignIn(body) {
+  if (signingInNow) return;
+  signingInNow = true;
   signingIn();
-  const r = await SignIn.handOver(body, "Hagency panel", "/auth/page");
+  let r;
+  try { r = await SignIn.handOver(body, "Hagency panel", "/auth/page"); } finally { signingInNow = false; }
   if (r.error || !r.data || typeof r.data.session !== "string") {
     showSignIn();
-    return failed(r.error === "wrong" ? "Wrong username or password." : (r.data && r.data.error) || OFFLINE);
+    return failed(r.error === "wrong" ? "Wrong username or password." : r.status === 429 ? "Too many sign-ins just now; "
+                  + "please wait a few minutes." : (r.data && r.data.error) || OFFLINE);
   }
   $("controls").innerHTML = "";
   signedIn(r.data.session);
@@ -216,6 +221,8 @@ async function show() {
       headers: {"Authorization": "Bearer " + sent}});
     if (r.status === 401) { if (sent !== session) return;
       session = null; try { sessionStorage.removeItem("hagency-session"); } catch (e) { /* blocked */ }
+      if (!embedded) { $("p").innerHTML = ""; $("controls").innerHTML = ""; $("title").textContent = "Hagency";
+        return start(); }                    // popped out: back to its sign-in, never Element's error (GPT review)
       return ++expired > 2 ? failed(NO_ANSWER) : start(); }
     s = await r.json(); } catch (e) { return failed(OFFLINE); }
   if (s.error) return failed(s.error);

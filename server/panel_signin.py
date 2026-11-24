@@ -25,7 +25,7 @@ def route(allowed, reply, new_session):
             return reply(signin_page.TOO_MANY, 429)
         try:
             body = await request.json()
-        except ValueError:                   # not JSON: refused like a wrong token
+        except (ValueError, RecursionError):   # not JSON, or absurdly nested: refused like a wrong token
             body = {}
         user = await asyncio.to_thread(page_session.whoami, body.get("access_token") if isinstance(body, dict) else None)
         return reply({"session": new_session(user)} if user else {"error": FAILED})
