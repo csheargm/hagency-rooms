@@ -19,7 +19,8 @@ OUT = "element-home"                          # generated next to bootstrap.sh; 
 PREFIX = "/hagency"                           # where Caddy serves OUT's files (Caddyfile: @hagency)
 PM_PLACEHOLDER = "__PM_ID__"
 FIXES_CSS = "element-fixes.css"             # Element's own style bugs; element-nginx.conf links it
-STATIC = ("logo.svg", "background.svg", "privacy.html", FIXES_CSS)   # privacy.html: Google sign-in links it
+TRANSLATIONS = "translations.json"           # Element's wording, overridden: "Remove this device" → "Sign out"
+STATIC = ("logo.svg", "background.svg", "privacy.html", FIXES_CSS, TRANSLATIONS)   # privacy.html: Google sign-in links it
 # Our own panel's widget URL as @pm adds it (panel.widget_url; test_panel checks they agree). Element
 # matches it exactly against the widget's template URL: no other widget is pre-approved.
 PANEL_TEMPLATE = "/panel?room=$matrix_room_id"
@@ -62,6 +63,7 @@ def element_config(values: dict) -> dict:
             "force_verification": False,
             "setting_defaults": SETTING_DEFAULTS,
             "embedded_pages": {"home_url": f"{rooms}/home.html"},
+            "custom_translations_url": f"{rooms}/{TRANSLATIONS}",   # owner: no obvious way to sign out
             "branding": {"auth_header_logo_url": f"{rooms}/logo.svg", "welcome_background_url": f"{rooms}/background.svg"},
             WIDGET_LIFECYCLE: {"widget_permissions": {panel_url(values): PANEL_APPROVED}}}
 

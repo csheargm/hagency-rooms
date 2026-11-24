@@ -172,7 +172,8 @@ class Written(unittest.TestCase):
                 os.umask(old)
             site = Path(d) / element_home.OUT
             self.assertEqual(site.stat().st_mode & 0o777, 0o755)
-            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "element-fixes.css", "home.html", "logo.svg", "privacy.html"])
+            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "element-fixes.css", "home.html", "logo.svg", "privacy.html",
+                                                                  "translations.json"])
             for f in site.iterdir():
                 self.assertEqual(f.stat().st_mode & 0o777, 0o644, f.name)
             self.assertIn("#/user/@pm:matrix.example.org", (site / "home.html").read_text())
@@ -228,6 +229,18 @@ class Served(unittest.TestCase):
         self.assertIn("<h1>Privacy</h1>", page)
         self.assertIn("no one has opened it for 90 days", page)   # Synapse purges media unused that long:
         self.assertIn("local_media_lifetime: 90d", (HERE / "configure_synapse.py").read_text())
+
+
+class SignOutWording(unittest.TestCase):
+    """Owner: Settings said "Remove this device", not the usual "Sign out"."""
+    def test_element_loads_our_wording_and_it_says_sign_out(self):
+        values = {"ROOMS_DOMAIN": "rooms.example", "MATRIX_DOMAIN": "matrix.example", "SERVER_NAME": "example"}
+        url = element_home.element_config(values)["custom_translations_url"]
+        self.assertEqual(url, f"https://rooms.example{element_home.PREFIX}/{element_home.TRANSLATIONS}")
+        self.assertIn(element_home.TRANSLATIONS, element_home.STATIC)              # published with the page
+        words = json.loads((element_home.SOURCE / element_home.TRANSLATIONS).read_text())
+        self.assertEqual(words["action|sign_out"], {"en": "Sign out"})
+        self.assertTrue(all(set(v) == {"en"} for v in words.values()))
 
 
 class IdentityCheck(unittest.TestCase):

@@ -1,0 +1,6 @@
+{
+  "action|sign_out": {"en": "Sign out"},
+  "auth|logout_dialog|description": {"en": "Sign out of Hagency Rooms on this browser?"},
+  "auth|logout_dialog|continue": {"en": "Sign out"},
+  "auth|logout_dialog|skip_key_backup": {"en": "Sign out anyway"}
+}
