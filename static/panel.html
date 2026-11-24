@@ -118,9 +118,19 @@ let msgMark = "";                         // the line came from Connect GitHub: 
 async function act(action, value, agent) { $("msg").textContent = "…";
   const r = await post("/console/action", {room, action, value, agent: agent || ""});
   $("msg").textContent = r.result === "ok" ? "Done." : (r.result || r.error);
+  if (r.link) showLink(r.link);             // the invite link: shown with Copy, and copied at once
   msgMark = action === "github" && value === "connect" ? "pending" : "";
   if (msgMark && pmChat && !inPmChat) $("msg").innerHTML = esc($("msg").textContent) + " " + pmChatLink("Open our private chat");
   refresh(); }
+function showLink(link) {                  // panel_github.js copyCode: the clipboard, else selected for Ctrl+C
+  $("msg").innerHTML = `${esc($("msg").textContent)}<div class="field"><input id="invlink" readonly value="${esc(link)}">
+    <button id="invcopy">Copy</button></div>`;
+  $("invcopy").dataset.copy = link;
+  const copy = () => copyCode($("invcopy"), $("invlink"),
+                              navigator.clipboard || {writeText: () => Promise.reject(new Error("none"))});
+  $("invcopy").onclick = copy;             // not data-copy: that click handler selects GitHub's code field
+  copy();
+}
 function pmChatLink(text) {
   if (!pmChat) return esc(text);           // no private chat with @pm yet: plain words
   return `<a href="https://matrix.to/#/${esc(encodeURIComponent(pmChat))}" target="_blank" rel="noopener noreferrer" data-pmchat="1">${esc(text)}</a>`;

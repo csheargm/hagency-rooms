@@ -207,8 +207,9 @@ class Flow(Base):
 
     def test_from_the_panel_button(self):
         self.lp.is_person = lambda room, user: True
-        self.assertEqual(run(console.act(self.lp, "!a", ANNA, "invite_link", "")),
-                         "I've sent you an invite link in our private chat, anna.")
+        done = run(console.act(self.lp, "!a", ANNA, "invite_link", ""))
+        self.assertEqual(done["result"], console.PANEL_LINK)               # owner: on the spot, to copy
+        self.assertIn(done["link"], self.said[0][1])                       # and the same link in our private chat
         self.assertRegex(self.said[0][1], TOKEN_RE)
         self.assertEqual(run(console.act(self.lp, "!a", BETTY, "invite_link", "")), pm_invite.ONLY_MODS)
 
