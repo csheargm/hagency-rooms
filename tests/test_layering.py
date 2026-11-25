@@ -30,7 +30,8 @@ MAY_IMPORT = {
     "mcp_tools": {"mcp_tools", "adapters", "common"},
 }
 BIN = ROOT / "bin"
-ROOT_ENTRIES = {"README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", "requirements.txt", ".github", ".gitignore",
+ROOT_ENTRIES = {"README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", "requirements.txt", "VERSION",   # VERSION: the release number (common/version.py)
+                ".github", ".gitignore",
                 "adapters", "bin", "client", "common", "deploy", "docs", "local", "mcp_tools", "server", "site",
                 "static", "tests"}
 # Run by path in a fresh Python from another folder, its target only looked up (never run: loop.py would start @pm).

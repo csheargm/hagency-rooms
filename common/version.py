@@ -32,34 +32,49 @@ def parse(commit: object, when: object) -> dict | None:
     return {"commit": commit, "time": int(text)} if int(text) > 0 else None
 
 
-def _from_git(root: Path) -> dict | None:
+def _git(root: Path, *args: str) -> str | None:
     try:
-        out = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%H%n%ct"], capture_output=True,
-                             text=True, timeout=GIT_TIMEOUT_S, check=True).stdout.split()
-    except (OSError, subprocess.SubprocessError):
-        return None                           # no git, or not a checkout: the version is simply unknown (shown as such)
-    return parse(*out) if len(out) == 2 else None
+        return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+                              timeout=GIT_TIMEOUT_S, check=True).stdout
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None                           # no git, not a checkout, or not in that commit: simply unknown (shown as such)
+
+
+def _from_git(root: Path) -> dict | None:
+    out = (_git(root, "log", "-1", "--format=%H%n%ct") or "").split()
+    found = parse(*out) if len(out) == 2 else None
+    if found:                                 # VERSION as that commit has it, never an edited copy (GPT review)
+        found = _numbered(found, _git(root, "show", f"{found['commit']}:{NUMBER_FILE}"))
+    return found
+
+
+def _numbered(found: dict | None, text: str | None) -> dict | None:
+    """`found` with "number" when `text` (a VERSION file's) is major.minor.patch."""
+    num = (text or "").strip()
+    return {**found, "number": num} if found and NUMBER_RE.fullmatch(num) else found
+
+
+def _read(path: Path) -> str | None:
+    try:
+        return path.read_text()
+    except (OSError, ValueError):             # ValueError: not text (UnicodeDecodeError, GPT review): as if absent
+        return None
 
 
 def number(root: Path) -> str | None:
     """The release number in `root`'s VERSION file, or None (no file, or not major.minor.patch)."""
-    try:
-        text = (root / NUMBER_FILE).read_text().strip()
-    except OSError:
-        return None                           # code from before release numbers: shown without one
+    text = (_read(root / NUMBER_FILE) or "").strip()
     return text if NUMBER_RE.fullmatch(text) else None
 
 
 def of(root: Path) -> dict | None:
     """The code at `root`: its REVISION file if it has one, else its git HEAD; None if neither says.
-    With its release number as "number" when its VERSION file gives one."""
-    try:
-        lines = (root / REVISION_FILE).read_text().split()
-        found = parse(*lines[:2]) if len(lines) >= 2 else None
-    except OSError:
-        found = _from_git(root)               # no file: a checkout
-    num = number(root) if found else None
-    return {**found, "number": num} if num else found
+    With its release number as "number" when its VERSION file gives one (in a checkout, HEAD's)."""
+    text = _read(root / REVISION_FILE)
+    if text is None:
+        return _from_git(root)                # no file: a checkout
+    lines = text.split()
+    return _numbered(parse(*lines[:2]), _read(root / NUMBER_FILE)) if len(lines) >= 2 else None   # deploy.sh's copy
 
 
 def label(v: dict | None) -> str:

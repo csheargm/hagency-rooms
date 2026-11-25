@@ -39,21 +39,24 @@ def valid(content: object) -> dict | None:
     if not isinstance(content, dict) or not set(content) <= KEYS or content.get("own", "yes") != "yes":
         return None
     return _checked(content.get("commit"), content.get("time") if isinstance(content.get("time"), str) else None,
-                    "own" in content, content.get("number"))
+                    "own" in content, content.get("number", NONE))
+
+
+NONE = object()                               # "number" left out (older agents), unlike a present null (GPT review)
 
 
 def _checked(commit: object, when: object, own: bool, number: object) -> dict | None:
     parsed = version.parse(commit, when) if when is not None else None
-    if parsed is None or not (number is None or isinstance(number, str) and version.NUMBER_RE.fullmatch(number)):
+    if parsed is None or not (number is NONE or isinstance(number, str) and version.NUMBER_RE.fullmatch(number)):
         return None
-    return {**parsed, "own": own, **({"number": number} if number else {})}
+    return {**parsed, "own": own, **({} if number is NONE else {"number": number})}
 
 
 def stored(entry: object) -> dict | None:
     """A report as agents.json keeps it (valid()'s shape), re-checked: a damaged record is none."""
     if not isinstance(entry, dict) or not {"commit", "time", "own"} <= set(entry) <= KEYS or not isinstance(entry["own"], bool):
         return None
-    return _checked(entry["commit"], entry["time"] if type(entry["time"]) is int else None, entry["own"], entry.get("number"))
+    return _checked(entry["commit"], entry["time"] if type(entry["time"]) is int else None, entry["own"], entry.get("number", NONE))
 
 
 async def send(client: AsyncClient, pm_id: str, report: dict | None) -> bool:
