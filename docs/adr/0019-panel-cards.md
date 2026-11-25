@@ -35,8 +35,9 @@ like describing a small app and getting it. Changing Hagency's own code per pers
 - The task and its result pass through the room's chat like a plan does, so members see one line each
   ("…please make a Hagency panel card for anna", "panel card ready: …"); the card's HTML is in those
   events' content, so a member reading the raw event could see it (it holds no data, only the drawing).
-- Accepted risks (reviews, 2026-11-25): browsers without `webrtc 'block'` (Firefox) let a card reach a
-  STUN server, and DNS prefetch isn't covered everywhere. A card is the person's own agent's work, made
+- Accepted risks (reviews and live test, 2026-11-25): WebRTC isn't blocked (`webrtc 'block'` had no effect
+  in Chromium: a test card reached a STUN server), and DNS prefetch isn't covered everywhere. Fetches,
+  images, the panel page, its storage and cookies, popups and navigating anywhere were all blocked live. A card is the person's own agent's work, made
   for them, and gets only what they already see, so a leak needs their own agent to turn against them.
   A card can postMessage to Element's window; Element answers the panel's frame, never the card.
 - Cards are views: they are made in any mode, Off included.

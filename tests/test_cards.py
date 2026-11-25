@@ -62,7 +62,7 @@ class Contract(unittest.TestCase):
 
     def test_the_prompt_tells_the_agent_the_data_and_the_rules(self):
         prompt = cards.card_prompt("a chart of builds")
-        for text in ("a chart of builds", cards.DATA_DOC, "TITLE:", "```html", "network"):
+        for text in ("a chart of builds", cards.DATA_DOC, "TITLE:", "```html", "network", "don't repeat it inside"):
             self.assertIn(text, prompt)
         self.assertNotIn("The card is now", prompt)
         self.assertIn("The card is now:\n```html\n<b>old</b>", cards.card_prompt("bigger", "<b>old</b>"))

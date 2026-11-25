@@ -110,7 +110,7 @@
       if (await cardAct("card_change", id + "\n" + text)) { input.value = ""; cardBox.querySelector("[data-change]").style.display = "none"; }
     } else if (b.dataset.card === "remove") {
       if (b.dataset.armed !== "1") {         // two clicks: a card is gone for good
-        b.dataset.armed = "1"; b.textContent = "Click again to remove";
+        b.dataset.armed = "1"; b.textContent = "Confirm";   // same width: a longer label wrapped and moved the button (live test)
         setTimeout(() => { b.dataset.armed = ""; b.textContent = "Remove"; }, ARM_MS);
         return;
       }
