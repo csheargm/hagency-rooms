@@ -25,6 +25,7 @@ from aiohttp import web
 from common import agent_kinds
 from server import console_personal
 from server import console_repo
+from server import console_update
 from server import pm_cards
 from common import customize
 from server import fed_openid
@@ -188,9 +189,11 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         return await add_agent(loop, user, value)
     if action == "code":                  # a never-connected agent's fresh Connect page (console_agents)
         return await fresh_code(loop, user, agent or None)
-    if action == "update":                # Your cards' "Update my agent": a connected agent's Connect page again
+    if action == "update":                # "Update my agent" (Your cards; My agents: "agents"): its Connect page again
         said = await fresh_code(loop, user, agent or None, update=True)
-        return {"result": "ok", "says": said} if said == UPDATE else said
+        return {"result": "ok", "says": console_update.BY_HAND if value == "agents" else said} if said == UPDATE else said
+    if action == "selfupdate":            # console_update.py: My agents' Update, the agent updates itself (ADR 0020)
+        return await console_update.request(loop, user, agent or None)
     if action == "github":                # pm_github.py: Connect / Disconnect GitHub, for themselves only
         return await loop.github_action(user, value)
     if action in console_repo.ACTIONS:    # the room's repo: choose, remove, check readiness

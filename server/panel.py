@@ -14,6 +14,7 @@ import markdown
 from aiohttp import web
 
 from server import console
+from server import console_update
 from common.bridge_config import ELEMENT_HOME, ELEMENT_ORIGIN, panel_embedders
 from server import github_proof
 from server import remote_agent
@@ -22,6 +23,7 @@ from common import identity
 from server import ownership
 from common import registry
 from common import paths
+from common import version
 
 PORT = console.PORT
 HOST = os.environ.get("PANEL_HOST", "127.0.0.1")     # the public server's container: 0.0.0.0, behind Caddy
@@ -67,6 +69,8 @@ PAGE = PAGE.replace("__SIGNIN_MS__", str(SIGNIN_MS))
 PAGE = PAGE.replace("__HAGENCY_HOMESERVER__", html.escape(remote_agent.PUBLIC_HOMESERVER, quote=True))   # signin.js, popped out
 PAGE = PAGE.replace("__HAGENCY_ELEMENT__", html.escape(ELEMENT_ORIGIN, quote=True))
 PAGE = PAGE.replace("__ELEMENT_HOME__", html.escape(ELEMENT_HOME, quote=True))
+SERVER_VERSION = console_update.SERVER         # what deploy.sh deployed (REVISION), or this checkout's HEAD
+PAGE = PAGE.replace("__VERSION__", f'<br>Hagency Rooms {html.escape(version.label(SERVER_VERSION))}' if SERVER_VERSION else "")
 PAGE = PAGE.replace("__SCRIPTS__", "".join(f'<script src="{name}"></script>' for name in SCRIPTS))
 
 

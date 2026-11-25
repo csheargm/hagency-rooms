@@ -15,8 +15,27 @@ function agentStatus(a) {
   // Screen test: a never-connected agent's only way to a fresh code was typing a command in the chat.
   const fresh = a.online !== true && !a.connected
     ? `<button data-a="code" data-v="" data-g="${esc(a.name)}">Get a fresh code</button>` : "";
-  return `<span class="chip">${word}</span>${a.stopped ? ' <span class="chip">Stopped</span>' : ""} ${stopButton(a)} ${disconnect}
+  return `<span class="chip">${word}</span>${a.stopped ? ' <span class="chip">Stopped</span>' : ""} ${codeChip(a)} ${stopButton(a)} ${disconnect}
     ${fresh} ${removeButton(a)}`;
+}
+// Versions (console_update.py, ADR 0020): its code against this server's. Update: it updates itself on its
+// computer; one whose code predates that gets "Update my agent" (its Connect page, run there once).
+function codeChip(a) {
+  if (!a.remote || !(a.online === true || a.connected)) return "";
+  const chip = (word, tip) => `<span class="chip"${tip ? ` title="${esc(tip)}"` : ""}>${word}</span>`;
+  if (a.code === "current") return chip("Up to date", a.code_version);
+  if (a.code === "own") return chip("Your own version", a.code_version);
+  if (a.code !== "behind" && !a.code_fallback) return "";
+  const button = a.online !== true || a.code_updating ? ""
+    : a.code_fallback ? `<button data-a="update" data-v="agents" data-g="${esc(a.name)}">Update my agent</button>`
+    : `<button data-a="selfupdate" data-v="" data-g="${esc(a.name)}">Update</button>`;
+  return chip("Update available", a.code_version) + " " + button;
+}
+function codeHint(a) {
+  if (!a.remote || !(a.online === true || a.connected)) return "";
+  const says = a.code_says;               // console_update.status: the words, one place
+  const ver = a.code_version ? `Version ${esc(a.code_version)}` : "";
+  return says || ver ? `<div class="hint">${[esc(says), ver].filter(Boolean).join(" · ")}</div>` : "";
 }
 // Stop / Start (pm_stop.py): it stays signed in on its computer and ignores messages until Start. Only for
 // one that has connected; Hermes answers through its own gateways, so it is stopped on its computer.
@@ -69,7 +88,7 @@ function agentRow(a, version, several, personal) {
     + (a.runs ? ` <span class="chip">${esc(a.runs)}</span>` : "");   // the AI it runs (pm_kinds.describe)
   const where = a.here ? ' <span class="chip">in this room</span>'
     : a.invited ? ' <span class="chip">invited to this room</span>' : "";
-  return `<li><div>${title}${where}${agentHint(a, personal)}${stopHint(a)}</div>
+  return `<li><div>${title}${where}${agentHint(a, personal)}${stopHint(a)}${codeHint(a)}</div>
     <div>${agentStatus(a)}</div></li>${renameRow(a)}
     <li><div class="hint">Comes along when I join a project room${a.first ? "" : " (or invite it yourself)"}</div>${agentSeg("follow", a.name, ["always", "ask", "never"], a.follow)}</li>
     ${a.first && version ? `<li><div class="hint">Code it runs: your own version (${esc(version)})</div>

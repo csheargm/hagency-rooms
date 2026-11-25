@@ -36,7 +36,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 8px}
 </style>
 <div class="wrap"><header><div><h1 id="title">Hagency</h1><div class="sub" id="sub"></div></div><div class="sub"><a class="chip" href="__ELEMENT_HOME__" target="_blank" rel="noopener" data-home="1">🏠 Welcome steps</a><span id="who"></span></div></header>
 <div id="me" class="muted">Signing in…</div><div id="msg"></div><div id="controls" class="stack"></div><div id="cards" class="stack"></div><div id="p" class="stack"></div>
-<footer>Change anything here or by telling @pm in the chat.</footer></div>
+<footer>Change anything here or by telling @pm in the chat.__VERSION__</footer></div>
 __SCRIPTS__
 <script src="/auth/signin.js"></script>
 <script>
@@ -173,7 +173,7 @@ async function pageSignIn(body) {
 let msgMark = "";                         // the line came from Connect GitHub: githubMsgAfter (panel_github.js)
 async function act(action, value, agent) { $("msg").textContent = "…";
   const r = await post("/console/action", {room, action, value, agent: agent || ""});
-  $("msg").textContent = r.result === "ok" ? "Done." : (r.result || r.error);
+  $("msg").textContent = r.result === "ok" ? (r.says || "Done.") : (r.result || r.error);   // says: Update my agent
   if (r.link) showLink(r.link);             // the invite link: shown with Copy, and copied at once
   msgMark = action === "github" && value === "connect" ? "pending" : "";
   if (msgMark && pmChat && !inPmChat) $("msg").innerHTML = esc($("msg").textContent) + " " + pmChatLink("Open our private chat");
