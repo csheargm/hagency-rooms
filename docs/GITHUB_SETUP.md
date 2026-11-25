@@ -80,8 +80,8 @@ betty-agent  second-account           write
 Each `✗` line names one problem and how to fix it. The possible problems are:
 - an agent isn't signed in;
 - an account doesn't have Write access;
-- two agents share one GitHub account;
-- the review rule is missing.
+- the repo's review rule is on, but its agents share one GitHub account (so nobody can approve);
+- the `agent-ok` label is missing.
 
 ## 5. Run
 

@@ -69,7 +69,11 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
 
 def link(creds: dict | None, server: str | None, prove) -> bool:
     """The agent is signed in: link its account to the person as well (one sign-in for both)."""
-    login = prove(creds, server) if creds and server else None
+    try:
+        login = prove(creds, server) if creds and server else None
+    except KeyboardInterrupt:                 # Ctrl-C during the check: the agent still starts (GPT re-check)
+        print()
+        login = None
     print(f"✓ Signed in to GitHub as @{login}. You and your agent both use it." if login else
           "✓ your agent is signed in to GitHub")
     return True

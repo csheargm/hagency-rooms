@@ -187,7 +187,7 @@ function showLink(link) {                  // the invite link, with its own Copy
       $("invcopy").textContent = "Copied ✓";
     } catch (e) {                           // refused (the frame or a lost click): selected, so Ctrl+C copies it
       $("invlink").focus(); $("invlink").select();
-      $("invcopy").textContent = (/Mac/.test(navigator.platform) ? "Selected: press ⌘C" : "Selected: press Ctrl+C");
+      $("invcopy").textContent = (typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "Selected: press ⌘C" : "Selected: press Ctrl+C");
     }
   };
   $("invcopy").onclick = copy;

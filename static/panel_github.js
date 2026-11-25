@@ -29,7 +29,7 @@ async function copyCode(b, field, clipboard) {
     b.textContent = "Copied ✓";
   } catch (e) {                           // refused or missing: selecting it is the fallback, said on the button
     if (field) { field.focus(); field.select(); }
-    b.textContent = (/Mac/.test(navigator.platform) ? "Selected: press ⌘C" : "Selected: press Ctrl+C");
+    b.textContent = (typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "Selected: press ⌘C" : "Selected: press Ctrl+C");
   }
 }
 // The line under the buttons after Connect GitHub ("Your code is on the GitHub card…") is stale once

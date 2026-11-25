@@ -47,9 +47,11 @@ MAX_KEYS = 10_000
 
 
 def _allowed(key: str, per_hour: int, now: float) -> bool:
-    if len(_asked) > MAX_KEYS:                # review: one entry per address forever; the quiet ones go
+    if key not in _asked and len(_asked) >= MAX_KEYS:   # review: never more than MAX_KEYS addresses
         for stale in [k for k, ts in _asked.items() if not ts or now - ts[-1] >= 3600]:
             del _asked[stale]
+        if len(_asked) >= MAX_KEYS:           # all recent: a new address waits (GPT re-check: no unbounded growth)
+            return False
     recent = _asked[key] = [t for t in _asked.get(key, []) if now - t < 3600]
     if len(recent) >= per_hour:
         return False
@@ -158,7 +160,7 @@ def routes() -> list:
         now = time.time()
         if "Origin" in request.headers:
             return web.json_response({"error": "not an agent's sign-in"}, status=403, headers=NO_STORE)
-        if not (_allowed(f"client:{client_of(request)}", PER_CLIENT_PER_HOUR, now) and _allowed("*", ALL_PER_HOUR, now)):
+        if not (_allowed("*", ALL_PER_HOUR, now) and _allowed(f"client:{client_of(request)}", PER_CLIENT_PER_HOUR, now)):
             return web.json_response({"error": "too many checks; try in an hour"}, status=429, headers=NO_STORE)
         return None
 

@@ -86,7 +86,7 @@ class Presence(Removal, StopStart, KindReports):   # pm_remove.py: Remove, forge
         self._checked = now
         try:
             await asyncio.to_thread(admin_session.expire)   # admin-bot's kept sign-in never outlives its hour
-        except OSError as e:                  # the lock or file: tried again at the next check
+        except (OSError, ValueError) as e:    # the lock, file or answer: tried again at the next check
             log.warning("couldn't retire admin-bot's old session: %s", e)
         await self.prune_registry(now)        # pm_remove.py: Synapse can't say a deactivated account's presence
         people = registry.load()
