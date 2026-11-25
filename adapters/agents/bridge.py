@@ -16,12 +16,12 @@ from nio import (AsyncClient, InviteMemberEvent, LoginResponse, MatrixRoom, Mego
 
 from adapters.agents import agents
 from adapters.agents.agent_stop import BridgeStop
+from adapters.agents.agent_update import BridgeUpdate
 from adapters.agents.bridge_custom import BridgeCustom
 from adapters.agents import bridge_followup
 from adapters.agents.bridge_voice import BridgeVoice
 from common import github
 from common import identity
-from common import kind_report
 from common import lifecycle
 from adapters.agents import room_context
 from common.redact import room_safe, secret_safe
@@ -29,7 +29,7 @@ from common import room_state
 from adapters.agents import tasks
 from adapters.agents import workdirs
 
-from common.bridge_config import CREDENTIALS, HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password
+from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password
 TYPING_REFRESH_S = 20       # re-send typing before the 30s server timeout lapses
 TYPING_TIMEOUT_MS = 30_000
 MAX_REPLY_CHARS = 30_000
@@ -41,7 +41,7 @@ ENCRYPTED_NOTE = ("I can't read encrypted rooms yet, so I can't see messages her
                   "Please talk to me in a room without encryption.")
 
 
-class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeStop):   # agent_stop.py: Stop / Start
+class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeStop, BridgeUpdate):   # Stop / Start, Update
     def __init__(self, owner: str, backend: str, allow_members: bool = False, buttons_only: bool = False):
         self.backend, self.allow_members, self.buttons_only = backend, allow_members, buttons_only
         self.owner_id = identity.person_id(owner, SERVER_NAME)     # full IDs only: should_ignore compares them
@@ -268,9 +268,9 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
             self.client.add_event_callback(self.on_custom_reaction, ReactionEvent)  # bridge_custom.py
         await lifecycle.first_sync(self.client, f"{self.owner}-agent", self.sync_point, register,
                                    lambda ms: setattr(self, "started_ms", ms))
-        await kind_report.send(self.client, f"@{github.PM_BOT}:{SERVER_NAME}", CREDENTIALS)   # My agents: the AI I run
+        await self.report_and_listen()   # agent_update.py: the AI and code I run; my owner's Update clicks
         log.info("%s online (backend=%s, allow_members=%s)", self.user_id, self.backend, self.allow_members)
-        await lifecycle.serve(self.client, f"{self.owner}-agent", self.sync_point, self.tasks)
+        await self.serve_until_updated()   # agent_update.py: an update restarts me on the new code
 
 
 def step_key(task: dict) -> tuple:

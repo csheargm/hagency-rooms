@@ -23,6 +23,7 @@ from common import github
 from common import registry
 from common.saved_dict import SavedDict
 from common import paths
+from common.version import SHA_RE   # one commit-id rule (ADR 0020)
 
 ROOT = Path(os.environ.get("HAGENCY_HOME") or paths.ROOT)   # official folder, even inside live-*/
 COPIES = ROOT / "custom"
@@ -44,7 +45,6 @@ SENSITIVE = {"bridge.py", "bridge_voice.py", "bridge_custom.py", "agents.py", "c
 # Git-ignored things a live version shares with the official folder (passwords, sessions, state).
 SHARED = (".env", ".venv", ".gh", "data", "rooms", "logs", "agents.json")
 OWNER_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 GO_BACK = re.compile(r"\b(go|switch) back to the official\b", re.I)   # typed to the agent or to @pm
 
 

@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from common import test_limits
+from common import code_report
 from common import pm_kinds
 from common import bridge_config
 from common import identity
@@ -31,6 +32,7 @@ FIRST_LABEL = "main"                 # what the first agent is called when its p
 MORE = "more"                        # a person's further agents, in their line
 FIRST_GONE = "first_removed"         # their first agent was removed for good: only named ones from now on
 REPORTED = "reported"                # the AI its computer says it runs (pm_kind_reports.py)
+CODE = "code"                        # the code it says it runs (code_report.py, ADR 0020)
 PER_PERSON_DEFAULT = test_limits.pick(3, 5)
 LOCALPART_RE = re.compile(r"[a-z0-9._=-]{1,120}")   # a recorded agent account name (Matrix localpart characters)
 LOCK = threading.RLock()             # @pm's read-modify-writes of this file (its loop and set-up threads)
@@ -176,8 +178,8 @@ def _picked(entry: dict) -> dict:
     """The AI an agent runs (pm_kinds.py), as picked, and as its computer reported it ("reported":
     pm_kind_reports.py, shown only, never offered back); a damaged record: none."""
     found = pm_kinds.choice(*(entry.get(k) if isinstance(entry.get(k), str) else "" for k in pm_kinds.FIELDS))
-    said = pm_kinds.reported(entry.get(REPORTED))
-    return {**(found if isinstance(found, dict) else {}), **({REPORTED: said} if said else {})}
+    said, code = pm_kinds.reported(entry.get(REPORTED)), code_report.stored(entry.get(CODE))
+    return {**(found if isinstance(found, dict) else {}), **({REPORTED: said} if said else {}), **({CODE: code} if code else {})}
 
 
 def name_of(agent: dict) -> str:

@@ -8,6 +8,7 @@ adds a further one (pm_agents.py), as before.
 import time
 
 from common import pm_kinds
+from server import console_update
 from server import ownership
 from common import registry
 from server import remote_people
@@ -26,7 +27,8 @@ def my_agents(loop, room, room_id: str, user: str) -> list[dict]:
                           "remote": a["agent"] == registry.REMOTE, "online": loop.agent_online(a["localpart"]),
                           "stopped": a["stopped"], "hermes": a.get("agent_kind") == "hermes",   # pm_stop.py
                           "connected": loop.ever_connected(a["localpart"]),   # pm_presence.py: online at least once
-                          "here": ownership.joined(room, aid), "invited": aid in getattr(room, "invited_users", {})})
+                          "here": ownership.joined(room, aid), "invited": aid in getattr(room, "invited_users", {}),
+                          **console_update.status(loop, a)})   # Up to date / Update available (ADR 0020)
     return found
 
 

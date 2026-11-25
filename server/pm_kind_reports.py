@@ -13,35 +13,63 @@ import logging
 
 from nio import InviteMemberEvent, UnknownToDeviceEvent
 
+from common import code_report
 from common import kind_report
 from common import pm_kinds
 from common import registry
 from common.bridge_config import SERVER_NAME
+from server import console_update
 
 log = logging.getLogger("loop")
 
 
-def record(sender: str, content: object) -> bool:
-    """Store `sender`'s report on its own entry; False (nothing written) when the sender isn't one of
-    this server's agents on a person's computer, the report is refused, or nothing changed."""
+def own_agent(sender: object) -> str | None:
+    """The agent account (localpart) of `sender` when it is one of this server's, else None."""
     suffix = f":{SERVER_NAME}"
     if not (isinstance(sender, str) and sender.startswith("@") and sender.endswith(suffix)):
+        return None
+    return sender[1:-len(suffix)]
+
+
+def _store(sender: str, field: str, said: dict, what: str) -> bool:
+    """Write `said` as `field` on the sender's own entry, if it is an agent on a person's computer."""
+    agent = own_agent(sender)
+    with registry.LOCK:                       # a Remove in between can't make the write miss (GPT re-check)
+        owner = registry.owner_of(agent) if agent else None
+        found = registry.find(owner, agent) if owner else None
+        if found is None or found["localpart"] != agent or found["agent"] != registry.REMOTE:
+            log.info("ignored %s report from %s: not an agent on a person's computer", what, sender)
+            return False
+        if found.get(field) == said:
+            return False                      # every start reports: unchanged, nothing written
+        registry.update(owner, None if found["first"] else agent, **{field: said})   # whole: an old model goes
+    return True
+
+
+def record(sender: str, content: object) -> bool:
+    """Store `sender`'s AI report on its own entry; False (nothing written) when the sender isn't one of
+    this server's agents on a person's computer, the report is refused, or nothing changed."""
+    if own_agent(sender) is None:
         return False
     said = pm_kinds.reported(content)
     if said is None:                          # never logged: a refused report may hold what looked like a key
         log.warning("ignored %s's AI report: it isn't one this server takes", sender)
         return False
-    agent = sender[1:-len(suffix)]
-    with registry.LOCK:                       # a Remove in between can't make the write miss (GPT re-check)
-        owner = registry.owner_of(agent)
-        found = registry.find(owner, agent) if owner else None
-        if found is None or found["localpart"] != agent or found["agent"] != registry.REMOTE:
-            log.info("ignored an AI report from %s: not an agent on a person's computer", sender)
-            return False
-        if found.get(registry.REPORTED) == said:
-            return False                      # every start reports: unchanged, nothing written
-        registry.update(owner, None if found["first"] else agent, **{registry.REPORTED: said})   # whole: an old model goes
+    if not _store(sender, registry.REPORTED, said, "an AI"):
+        return False
     log.info("%s runs %s (its own report)", sender, said["agent_kind"])
+    return True
+
+
+def record_code(sender: str, content: object) -> bool:
+    """The same for its code report (code_report.py, ADR 0020): which commit it runs."""
+    said = code_report.valid(content) if own_agent(sender) else None
+    if said is None:
+        log.warning("ignored %s's code report: it isn't one this server takes", sender)
+        return False
+    if not _store(sender, registry.CODE, said, "a code"):
+        return False
+    log.info("%s runs code %s%s (its own report)", sender, said["commit"][:7], " (its owner's own)" if said["own"] else "")
     return True
 
 
@@ -52,9 +80,12 @@ class KindReports:
         self.client.add_to_device_callback(self.on_kind_report, UnknownToDeviceEvent)
 
     async def on_kind_report(self, event: UnknownToDeviceEvent) -> None:
-        if event.type != kind_report.EVENT_TYPE:
+        content = event.source.get("content")
+        if event.type == code_report.RESULT_TYPE:   # console_update.py: how an Update click went
+            return console_update.answered(self, own_agent(event.sender), content)
+        if event.type not in (kind_report.EVENT_TYPE, code_report.EVENT_TYPE):
             return
         try:
-            record(event.sender, event.source.get("content"))
+            (record if event.type == kind_report.EVENT_TYPE else record_code)(event.sender, content)
         except OSError as e:                  # agents.json unwritable: only the badge waits (the next start reports
-            log.error("couldn't record %s's AI report: %s", event.sender, e)   # again); never stops @pm's sync
+            log.error("couldn't record %s's report: %s", event.sender, e)   # again); never stops @pm's sync
