@@ -29,6 +29,9 @@ by hand when you change chat behaviour, e.g. `.venv/bin/python -m tests.test_e2e
   growing it past that.
 - **No secrets.** Never commit `.env`, tokens, passwords or room data.
 - **The why.** Say why in the commit message, not just what changed.
+- **A release number.** The pull request that makes a release bumps `VERSION` (major.minor.patch:
+  patch for fixes, minor for features, major for changes people must act on). After it merges, tag
+  that commit `v<number>` on GitHub. The panel's footer and My agents show it next to the commit.
 - **Security.** Changes to the owner check or the agent sandbox need a note in the PR
   description; see [SECURITY.md](SECURITY.md).
 

@@ -43,6 +43,32 @@ class Version(unittest.TestCase):
         head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         self.assertEqual(here["commit"], head)
 
+    def test_the_release_number_comes_from_version(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "REVISION").write_text(f"{NEW['commit']}\n{NEW['time']}\n")
+        for bad in ("1.0", "v1.0.0", "1.0.0-rc1", "", "1.0.0\n2.0.0"):
+            (d / "VERSION").write_text(bad)
+            self.assertEqual(version.of(d), NEW, bad)                    # not a number: shown without one
+        (d / "VERSION").write_bytes(b"\xff\xfe")
+        self.assertEqual(version.of(d), NEW)                             # not text: as if absent (GPT review)
+        (d / "VERSION").write_text("1.2.3\n")
+        self.assertEqual(version.of(d), {**NEW, "number": "1.2.3"})
+        self.assertEqual(version.label(version.of(d)), "v1.2.3 · bbbbbbb · 2025-11-25")
+        self.assertRegex((ROOT / "VERSION").read_text(), r"^[0-9]+\.[0-9]+\.[0-9]+\n$")   # the repo's own
+        committed = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:{version.NUMBER_FILE}"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(version.of(ROOT)["number"], committed)         # HEAD's, even with VERSION edited here
+        self.assertTrue(version.current(NEW, {**NEW, "number": "9.9.9"}))              # commits decide, never numbers
+
+    def test_a_checkout_shows_its_commits_number_never_an_edited_copy(self):
+        d = Path(tempfile.mkdtemp())
+        git = lambda *a: subprocess.run(["git", "-C", str(d), *a], check=True, capture_output=True)
+        git("init", "-q")
+        (d / "VERSION").write_text("1.0.0\n")
+        git("add", "VERSION")
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "v")
+        (d / "VERSION").write_text("9.9.9\n")                           # edited, not committed
+        self.assertEqual(version.of(d)["number"], "1.0.0")
+
     def test_only_whole_seconds_and_full_commits(self):
         for when in ("+5", "1_000", " 5", "0", "-1", "", True, 1.5, "999999999999"):   # the last: year 33658 (GPT review)
             self.assertIsNone(version.parse("a" * 40, when), when)
@@ -115,6 +141,15 @@ class Reports(flows.Base):
         self.assertEqual(self.row()["code"], "own")
         self.assertEqual(asyncio.run(console_update.request(self.lp, CX, "cx-agent")), console_update.SAYS["own"])
         self.lp.client.to_device.assert_not_awaited()
+
+    def test_an_agent_reports_its_number_and_the_row_shows_it(self):
+        self.start({**OLD, "number": "1.0.0"})
+        self.assertEqual(self.row()["code_version"], "v1.0.0 · aaaaaaa · 2025-11-22")
+        self.start(OLD)                                # code from before VERSION: no number
+        self.assertEqual(self.row()["code_version"], "aaaaaaa · 2025-11-22")
+        for bad in ("1.0", "v1", 1, "", "1.0.0 ; rm", None):          # None: a present null (GPT review)
+            self.assertIsNone(code_report.valid({"commit": "a" * 40, "time": "5", "number": bad}), bad)
+        self.assertIsNone(code_report.stored({"commit": "a" * 40, "time": 5, "own": False, "number": "x"}))
 
     def test_another_account_cant_set_someone_elses_version(self):
         self.start(OLD)
@@ -203,7 +238,9 @@ class Panel(unittest.TestCase):
         return subprocess.run([NODE, "-e", prog, json.dumps(agent)], capture_output=True, text=True, timeout=30, check=True).stdout
 
     def test_each_state_shows_its_words_and_button(self):
-        self.assertIn("Up to date", self.row(code="current", code_version="bbbbbbb · 2025-11-25"))
+        current = self.row(code="current", code_version="v1.0.0 · bbbbbbb · 2025-11-25")
+        self.assertIn("Up to date", current)
+        self.assertIn("v1.0.0 · bbbbbbb", current)
         behind = self.row(code="behind", code_version="aaaaaaa · 2025-11-22")
         self.assertIn('data-a="selfupdate"', behind)
         self.assertIn("Update available", behind)
