@@ -149,7 +149,7 @@ const ctx = {console, URLSearchParams, JSON, String, Promise, Date, encodeURICom
   document: {getElementById: el, addEventListener() {}, activeElement: null},
   sessionStorage: {getItem: () => "s", setItem() {}, removeItem() {}}, setTimeout: () => 0, clearTimeout() {}, setInterval() {},
   fetch: async () => ({status: 200, json: async () => JSON.parse(view)})};
-ctx.window = ctx; ctx.parent = ctx;
+ctx.window = ctx; ctx.parent = ctx; ctx.addEventListener = () => {};   // a window has it (panel_cards.js)
 vm.createContext(ctx); vm.runInContext(cards, ctx); vm.runInContext(page, ctx);
 setImmediate(() => setImmediate(() => setImmediate(() => process.stdout.write(els.controls.innerHTML))));
 """

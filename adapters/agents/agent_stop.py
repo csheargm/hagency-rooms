@@ -25,7 +25,7 @@ KEY_PREFIX = "agent:"     # Matrix refuses a state_key starting with "@" unless 
 REPLY = ("I'm stopped right now. {owner} can start me again in the Hagency panel "
          "(My agents → Start), or by telling Product Manager \"start my agent\".")
 PM_ID = f"@{github.PM_BOT}:{SERVER_NAME}"
-ANSWERED_KINDS = ("plan", "file_issues")   # pm_plan.py: one request, no resend; an error result tells its asker
+ANSWERED_KINDS = ("plan", "file_issues", "card")   # pm_plan.py: one request, no resend; an error result tells its asker
 TASK_LINE = "{kind} skipped: my owner stopped me (Start in the Hagency panel)"
 
 log = logging.getLogger("bridge")

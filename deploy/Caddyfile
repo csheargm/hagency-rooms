@@ -7,7 +7,7 @@
 	handle /_synapse/admin* {
 		respond 404
 	}
-	@pm path /panel /panel-agents.js /panel-project.js /panel-github.js /console /console/* /auth/* /connect /connect/* /connect.sh /connect.ps1 /invite /invite/*
+	@pm path /panel /panel-agents.js /panel-project.js /panel-github.js /panel-cards.js /console /console/* /auth/* /connect /connect/* /connect.sh /connect.ps1 /invite /invite/*
 	handle @pm {
 		reverse_proxy pm:8650
 	}

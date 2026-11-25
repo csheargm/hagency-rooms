@@ -146,7 +146,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
 
     async def run_task(self, room_id: str, task: dict) -> None:
         what = f"PR #{task.get('pr')}" if task.get("pr") else f"#{task.get('issue')}"
-        claimed = {"plan": "planning from the discussion…", "file_issues": "opening the planned issues…"}.get(
+        claimed = {"plan": "planning from the discussion…", "file_issues": "opening the planned issues…", "card": "making a panel card…"}.get(
             task.get("kind"), f"{task.get('kind')}: claimed {what}")
         await self.send(room_id, claimed, source=github.linkify(claimed, task.get("repo")))
         typing = asyncio.create_task(self.keep_typing(room_id))
@@ -154,14 +154,14 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
             async with self.turns:
                 kind = task.get("kind")
                 room_repo = await room_state.repo_of(self.client, room_id)
-                if not room_repo or task.get("repo") != room_repo:   # only the room's bound repo (never None)
+                if kind != "card" and (not room_repo or task.get("repo") != room_repo):   # the room's bound repo (a card needs none)
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "wrong repo", "line": f"{kind} refused: the task isn't for this room's repo"}
                 elif kind in tasks.AUTONOMOUS_ONLY and await room_state.level(self.client, room_id) != "autonomous":
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "room is no longer autonomous", "line": f"{kind} skipped: room is no longer autonomous"}
                 else:
-                    base = ROOT / "rooms" / self.owner / "work" / room_context.repo_dir(room_repo)
+                    base = ROOT / "rooms" / self.owner / "work" / (room_context.repo_dir(room_repo) if room_repo else "no-repo")
                     result = await tasks.handle(f"{self.owner}-agent", self.backend, base, task)
         finally:
             typing.cancel()
@@ -275,7 +275,8 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
 
 def step_key(task: dict) -> tuple:
     """A loop step's identity across resends (each resend has a new task_id)."""
-    return (str(task.get("repo")), task.get("kind"), str(task.get("issue")), str(task.get("pr")))
+    return (str(task.get("repo")), task.get("kind"), str(task.get("issue")), str(task.get("pr")),
+            task.get("task_id") if task.get("kind") == "card" else None)   # each card ask is its own (pm_cards.py)
 
 
 def main() -> None:

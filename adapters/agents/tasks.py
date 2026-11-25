@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from adapters.agents import agents
+from adapters.agents.card_task import card   # panel cards (ADR 0019)
 from adapters.agents import own_account
 from common import github
 from adapters.agents import planning
@@ -276,7 +277,7 @@ async def file_issues(agent: str, backend: str, base: Path, task: dict) -> dict:
 
 
 HANDLERS = {"build": build, "review": review, "merge": merge, "verify": verify, "close": close,
-            "plan": plan, "file_issues": file_issues, "fix": fix}
+            "plan": plan, "file_issues": file_issues, "fix": fix, "card": card}
 AUTONOMOUS_ONLY = {"merge", "close"}       # agent adapters re-check the room level before these
 
 
