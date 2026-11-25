@@ -33,12 +33,18 @@ const ctx = {JSON, Object, Number, Math, Set, Promise, setTimeout: () => 0, room
 ctx.window = ctx; ctx.addEventListener = () => {};
 vm.createContext(ctx); vm.runInContext(process.argv[1], ctx);
 const view = {cards: {items: [], max: 6, making: null, changing: null, error: "Your agent runs older code and needs an update first.",
-  agent_here: true, unable: null, update: "anna-agent", data: {}}, mode: "off"};
+  agent_here: true, unable: null, update: "anna-agent", failed_at: 1, data: {}}, mode: "off"};
 ctx.showCards(view);
 const shown = els.cardupdate.style.display;
 handlers.click({target: update}); handlers.click({target: update});      // a double click
-setImmediate(() => setImmediate(() => { ctx.showCards(view);
-  process.stdout.write(JSON.stringify({shown, posted, after: els.cardupdate.style.display, says: els.cardsays.textContent})); }));
+setImmediate(() => setImmediate(() => {
+  handlers.click({target: update});                                       // again, after it was sent, before a redraw
+  const early = els.cardupdate.style.display;
+  ctx.showCards(view);
+  const after = els.cardupdate.style.display;
+  ctx.showCards({...view, cards: {...view.cards, failed_at: 2}});        // the same agent fails again: a new button
+  process.stdout.write(JSON.stringify({shown, posted, early, after, again: els.cardupdate.style.display,
+                                       says: els.cardsays.textContent})); }));
 """
 
 
@@ -57,13 +63,15 @@ class UpdateButton(unittest.TestCase):
         got = self.click({"result": "ok", "sent": True, "says": "Product Manager is sending you its Connect page."})
         self.assertEqual(got["shown"], "")                               # shown with the old-code notice
         self.assertEqual(got["posted"], [{"room": "!r", "action": "update", "value": "", "agent": "anna-agent"}])   # one code
+        self.assertEqual(got["early"], "none")                           # sent: gone at once, no second code
         self.assertEqual(got["after"], "none")                           # sent: @pm's answer instead
+        self.assertEqual(got["again"], "")                               # a new failure brings it back
         self.assertIn("Connect page", got["says"])
 
     def test_a_failure_keeps_the_button_to_try_again(self):
         got = self.click({"result": "I couldn't open a private chat with just you; please try again"})
         self.assertEqual(got["after"], "")
-        self.assertIn("couldn't open", got["says"])
+        self.assertEqual(len(got["posted"]), 2)                          # the later click could try again
 
 
 

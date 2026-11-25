@@ -23,13 +23,14 @@
     $("cardsays").textContent = says || (c.error ? "⚠️ " + c.error : "");   // the latest click's answer first
     $("cardsays").style.color = !says && c.error ? "var(--warn)" : "";
     document.querySelector('[data-card="make"]').disabled = !!c.making;
-    if (c.update !== updateAgent) { updateAgent = c.update || ""; updateSent = false; }   // a new notice: a new button
+    const notice = c.update ? c.update + "@" + c.failed_at : "";
+    if (notice !== updateNotice) { updateNotice = notice; updateAgent = c.update || ""; updateSent = false; }   // each failure: a new button
     $("cardupdate").style.display = updateAgent && !updateSent ? "" : "none";   // other answers leave it (GPT review)
     $("cardupdate").querySelector("button").disabled = updating;
   }
   // Old agent code (pm_cards.OLD_CODE): @pm sends that agent's Connect page. One request at a time: a second
   // click would issue a second code and make the first one dead (GPT review); a failure keeps the button.
-  let updateAgent = "", updating = false, updateSent = false;
+  let updateNotice = "", updateAgent = "", updating = false, updateSent = false;
   const NO_AGENT = "Your agent makes your cards. Bring it into this room first (My agents).";
   function box(card) {
     const el = document.createElement("section");
@@ -105,9 +106,10 @@
     if (!b) return;
     const cardBox = b.closest("[data-card-id]"), id = cardBox && cardBox.dataset.cardId;
     if (b.dataset.card === "update") {
-      if (!updateAgent || updating) return;
+      if (!updateAgent || updating || updateSent) return;   // sent: a second code would make the first one dead
       updating = b.disabled = true;
       try { await cardAct("update", "", updateAgent); } finally { updating = b.disabled = false; }
+      if (updateSent) document.getElementById("cardupdate").style.display = "none";   // before the next redraw too
     } else if (b.dataset.card === "make") {
       const input = document.getElementById("cardask"), text = input.value.trim();
       if (!text) return void input.focus();

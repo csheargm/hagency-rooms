@@ -226,7 +226,7 @@ def view(loop, room, user: str) -> dict:
             "changing": job.get("card") if job and "task_id" in job else None,
             "error": job["error"] if job and "error" in job else None,
             "agent_here": agent is not None, "max": MAX_PER_PERSON, "unable": cannot(user, agent),
-            "update": update_for(user, agent, job),
+            "update": update_for(user, agent, job), "failed_at": job.get("at") if job else None,   # each failure its own
             "data": card_data(loop, room, user)}
 
 
