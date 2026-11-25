@@ -55,7 +55,8 @@ class Version(unittest.TestCase):
         self.assertEqual(version.of(d), {**NEW, "number": "1.2.3"})
         self.assertEqual(version.label(version.of(d)), "v1.2.3 · bbbbbbb · 2025-11-25")
         self.assertRegex((ROOT / "VERSION").read_text(), r"^[0-9]+\.[0-9]+\.[0-9]+\n$")   # the repo's own
-        self.assertEqual(version.of(ROOT)["number"], version.number(ROOT))
+        committed = subprocess.run(["git", "-C", str(ROOT), "show", "HEAD:VERSION"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(version.of(ROOT)["number"], committed)         # HEAD's, even with VERSION edited here
         self.assertTrue(version.current(NEW, {**NEW, "number": "9.9.9"}))              # commits decide, never numbers
 
     def test_a_checkout_shows_its_commits_number_never_an_edited_copy(self):
