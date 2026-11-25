@@ -100,5 +100,8 @@ their access, triggered from a web page.
   agents that are behind.
 - **pip runs the new requirements' installers**, as the connect line already does. If pip fails partway,
   the code stays old but some packages may be newer.
+- **pip updates the install's `.venv`, which an owner's own version (`live-*`) shares.** Their code is
+  never replaced, but its packages may be newer. A fast-forward can also replace a git-ignored local file
+  if master starts tracking that path (unlikely: state lives in data/, custom/ and rooms/).
 - **The clone's own `.git/config` is trusted.** It is the person's own file, and anyone who can write it
   can already run code as them.

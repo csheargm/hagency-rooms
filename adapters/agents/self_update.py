@@ -18,7 +18,7 @@ from pathlib import Path
 from common import paths
 from common.version import SHA_RE
 
-OFFICIAL = "https://github.com/csheargm/hagency-rooms"
+OFFICIAL = "https://github.com/csheargm/hagency-rooms"   # never from the environment (customize.UPSTREAM may be)
 BRANCH = "master"
 DEFAULT_APP = Path.home() / ".hagency" / "app"          # where connect.sh / connect.ps1 install it
 GIT_TIMEOUT_S = 120
