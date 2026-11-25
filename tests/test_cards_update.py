@@ -60,7 +60,7 @@ class UpdateButton(unittest.TestCase):
         return json.loads(done.stdout)
 
     def test_update_my_agent_asks_pm_for_that_agents_connect_page_once(self):
-        got = self.click({"result": "ok", "sent": True, "says": "Product Manager is sending you its Connect page."})
+        got = self.click({"result": "ok", "says": "Product Manager is sending you its Connect page."})
         self.assertEqual(got["shown"], "")                               # shown with the old-code notice
         self.assertEqual(got["posted"], [{"room": "!r", "action": "update", "value": "", "agent": "anna-agent"}])   # one code
         self.assertEqual(got["early"], "none")                           # sent: gone at once, no second code

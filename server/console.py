@@ -190,7 +190,7 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         return await fresh_code(loop, user, agent or None)
     if action == "update":                # Your cards' "Update my agent": a connected agent's Connect page again
         said = await fresh_code(loop, user, agent or None, update=True)
-        return {"result": "ok", "sent": True, "says": said} if said == UPDATE else said
+        return {"result": "ok", "says": said} if said == UPDATE else said
     if action == "github":                # pm_github.py: Connect / Disconnect GitHub, for themselves only
         return await loop.github_action(user, value)
     if action in console_repo.ACTIONS:    # the room's repo: choose, remove, check readiness

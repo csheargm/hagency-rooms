@@ -97,7 +97,6 @@
     says = "…"; document.getElementById("cardsays").textContent = says;
     const r = await post("/console/action", {room, action, value, agent: agent || ""});
     says = r.result === "ok" ? (r.says || (action === "card_remove" ? "Removed." : "")) : (r.result || r.error);
-    if (r.sent) updateSent = true;
     refresh();
     return r.result === "ok";
   }
@@ -108,7 +107,9 @@
     if (b.dataset.card === "update") {
       if (!updateAgent || updating || updateSent) return;   // sent: a second code would make the first one dead
       updating = b.disabled = true;
-      try { await cardAct("update", "", updateAgent); } finally { updating = b.disabled = false; }
+      const mine = updateNotice;               // sent counts for this failure only, not one shown meanwhile (GPT review)
+      try { if (await cardAct("update", "", updateAgent) && updateNotice === mine) updateSent = true; }
+      finally { updating = b.disabled = false; }
       if (updateSent) document.getElementById("cardupdate").style.display = "none";   // before the next redraw too
     } else if (b.dataset.card === "make") {
       const input = document.getElementById("cardask"), text = input.value.trim();
