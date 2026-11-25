@@ -43,7 +43,13 @@ _pending: dict[str, tuple[str, str, float]] = {}   # nonce → (agent localpart,
 _asked: dict[str, list[float]] = {}           # agent, "client:<address>" or "*" → recent asks
 
 
+MAX_KEYS = 10_000
+
+
 def _allowed(key: str, per_hour: int, now: float) -> bool:
+    if len(_asked) > MAX_KEYS:                # review: one entry per address forever; the quiet ones go
+        for stale in [k for k, ts in _asked.items() if not ts or now - ts[-1] >= 3600]:
+            del _asked[stale]
     recent = _asked[key] = [t for t in _asked.get(key, []) if now - t < 3600]
     if len(recent) >= per_hour:
         return False

@@ -52,9 +52,14 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
     try:
         folder.mkdir(parents=True, exist_ok=True)
         os.chmod(folder, 0o700)               # its GitHub token lives here
+        if "--insecure-storage" not in run(["gh", "auth", "login", "--help"], env=env, capture_output=True, text=True,
+                                           check=False).stdout:   # older gh (review): say so, never a cryptic failure
+            print("note: your GitHub CLI is too old for this; update it (https://cli.github.com), then:\n"
+                  + LATER.format(app=app, agent=agent))
+            return False
         done = run(LOGIN, env=env, check=False).returncode == 0
-    except OSError as e:                      # said, with the command for later: GitHub is optional
-        print(f"note: couldn't sign it in here ({e})")
+    except (OSError, KeyboardInterrupt) as e:  # said, with the command for later: GitHub is optional
+        print(f"\nnote: couldn't sign it in here ({type(e).__name__})")
         done = False
     if done and github.identity_dir(agent) is not None:
         return link(creds, server, prove)
@@ -73,5 +78,6 @@ def link(creds: dict | None, server: str | None, prove) -> bool:
 def _yes(question: str, ask) -> bool:
     try:
         return ask_line(question, ask).lower() in ("", "y", "yes")
-    except (EOFError, OSError):               # Ctrl-D, a lost terminal: a no (never keeps the agent from starting)
+    except (EOFError, OSError, KeyboardInterrupt):   # Ctrl-D/Ctrl-C, a lost terminal: a no (the agent still starts)
+        print()
         return False

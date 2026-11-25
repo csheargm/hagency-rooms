@@ -23,7 +23,9 @@ class Offer(unittest.TestCase):
         self.runs = []
 
     def gh(self, signs_in=True, code=0):
-        def run(cmd, env, check):
+        def run(cmd, env, check, **kw):
+            if cmd[-1] == "--help":                      # the flag check (review: older gh lacks it)
+                return SimpleNamespace(returncode=0, stdout="  --insecure-storage  Save ... in plain text")
             self.runs.append((cmd, env))
             if signs_in:
                 (Path(env["GH_CONFIG_DIR"]) / "hosts.yml").write_text("github.com: {}\n")
@@ -71,6 +73,20 @@ class Offer(unittest.TestCase):
             self.assertFalse(github_signin.offer(AGENT, "/app", ask=self.fail, run=self.fail, which=lambda n: "gh",
                                                  interactive=False))
         self.assertIn("gh auth login", str(said.call_args_list))
+
+    def test_an_old_gh_is_told_to_update_not_failed_cryptically(self):
+        def old_gh(cmd, env, check, **kw):
+            assert cmd[-1] == "--help", cmd                   # never the real sign-in
+            return SimpleNamespace(returncode=0, stdout="  --web  Open a browser")
+        with mock.patch("builtins.print") as said:
+            self.assertFalse(github_signin.offer(AGENT, "/app", ask=lambda p: "", run=old_gh, which=lambda n: "gh",
+                                                 interactive=True))
+        self.assertIn("too old", str(said.call_args_list))
+
+    def test_ctrl_c_at_the_question_is_a_no(self):
+        with mock.patch("builtins.print"):
+            self.assertFalse(github_signin.offer(AGENT, "/app", ask=mock.Mock(side_effect=KeyboardInterrupt),
+                                                 run=self.fail, which=lambda n: "gh", interactive=True))
 
     def test_a_failed_or_abandoned_sign_in_is_not_fatal(self):
         self.assertFalse(self.offer("y", run=self.gh(signs_in=False, code=1)))

@@ -101,7 +101,7 @@ class CopyCode(unittest.TestCase):
           const field = {focus: () => did.push("focus"), select: () => did.push("select")};
           await copyCode(b, field, {writeText: async () => { throw new Error("NotAllowedError"); }});
           process.stdout.write(did.join(",") + "|" + b.textContent); })()""")
-        self.assertEqual(out, "focus,select|Selected: press Ctrl+C")
+        self.assertRegex(out, r"^focus,select\|Selected: press (⌘C|Ctrl\+C)$")   # the Mac's own key there (review)
 
 
 if __name__ == "__main__":
