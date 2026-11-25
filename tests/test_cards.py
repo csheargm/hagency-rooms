@@ -284,7 +284,19 @@ class PmFlow(unittest.TestCase):
         self.act(ANNA, "card_make", "first")
         self.loop.card_jobs()[pm_cards.key_of("!r", ANNA)]["at"] -= pm_cards.WAIT_S + 1
         self.answer(title="Late", html=CARD)
-        self.assertEqual(self.view()["items"], [])
+        self.assertEqual((self.view()["items"], self.view()["error"]), ([], pm_cards.NO_ANSWER))   # still told
+
+    def test_nothing_is_kept_for_someone_who_left_or_is_over_their_cap(self):
+        """GPT re-check: a result re-created cards for a person who left; two rooms' makes passed the cap."""
+        self.act(ANNA, "card_make", "first")
+        del self.loop.room.users[ANNA]
+        self.answer(title="One", html=CARD)
+        self.assertEqual(dict(self.loop.card_store()), {})
+        self.loop.room.users[ANNA] = 0
+        self.act(ANNA, "card_make", "again")
+        with mock.patch.object(pm_cards, "MAX_PERSON_ALL", 0):
+            self.answer(title="One", html=CARD)
+        self.assertEqual((self.view()["items"], self.view()["error"]), ([], pm_cards.PERSON_FULL))
 
     def test_a_send_matrix_refused_leaves_nothing_waiting(self):
         """GPT review: a failed dispatch left the job busy for 15 minutes and used up an attempt."""

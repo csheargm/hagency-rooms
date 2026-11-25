@@ -105,7 +105,10 @@ window.hagency = (function () {
     last = e.data.hagency;
     fns.forEach(function (f) { try { f(last); } catch (x) { /* the card's own bug: the rest still draw */ } });
   });
-  function size() { parent.postMessage({cardHeight: document.documentElement.getBoundingClientRect().height}, "*"); }   // shrinks too
+  function size() {                // shrinks with the content, and grows for content that overflows
+    var b = document.body;
+    parent.postMessage({cardHeight: Math.max(document.documentElement.getBoundingClientRect().height, b ? b.scrollHeight + 16 : 0)}, "*");
+  }
   addEventListener("load", function () { size(); if (window.ResizeObserver) new ResizeObserver(size).observe(document.documentElement); });
   return {onData: function (f) { fns.push(f); if (last) f(last); }};
 })();

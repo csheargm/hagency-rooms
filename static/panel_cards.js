@@ -19,8 +19,8 @@
       : c.items.length ? "" : "Describe a view of this project. Your agent builds it; only you see it here.");
     $("cardbusy").textContent = c.making ? (c.changing ? "⏳ Your agent is changing your card. This takes a minute or two."
       : `⏳ Your agent is making “${c.making}”. This takes a minute or two.`) : "";
-    $("cardsays").textContent = c.error ? "⚠️ " + c.error : says;
-    $("cardsays").style.color = c.error ? "var(--warn)" : "";
+    $("cardsays").textContent = says || (c.error ? "⚠️ " + c.error : "");   // the latest click's answer first
+    $("cardsays").style.color = !says && c.error ? "var(--warn)" : "";
     document.querySelector('[data-card="make"]').disabled = !!c.making;
   }
   const NO_AGENT = "Your agent makes your cards. Bring it into this room first (My agents).";

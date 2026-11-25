@@ -111,7 +111,8 @@ class Cards:
         made = [t for t in self.__dict__.setdefault("_card_makes", {}).get(user, []) if time.time() - t < HOUR_S]
         if len(made) >= MAKES_PER_HOUR:
             return TOO_MANY
-        self._card_makes[user] = [*made, time.time()]
+        stamp = time.time()
+        self._card_makes[user] = [*made, stamp]
         task_id = uuid.uuid4().hex
         self.card_jobs()[key] = {"task_id": task_id, "agent": agent, "card": card_id, "request": request, "at": time.time()}
         what = "change a Hagency panel card" if old else "make a Hagency panel card"
@@ -122,7 +123,8 @@ class Cards:
         except RuntimeError:                          # loop.SendError: Matrix refused it; nothing is waiting
             if self.card_jobs().get(key, {}).get("task_id") == task_id:
                 self.card_jobs().pop(key)
-            self._card_makes[user] = made             # not counted against them
+            if stamp in self._card_makes.get(user, []):   # not counted against them (only this one: GPT re-check)
+                self._card_makes[user].remove(stamp)
             return NOT_SENT
         return "ok"
 
@@ -133,7 +135,11 @@ class Cards:
         if key is None:
             return                                    # stale, or not the agent we asked
         job = jobs.pop(key)
-        if time.time() - job["at"] > WAIT_S:          # given up on already (view): a late answer doesn't count
+        if time.time() - job["at"] > WAIT_S:          # given up on: a late answer doesn't count, the panel says so
+            jobs[key] = {"error": NO_ANSWER, "request": job["request"], "at": time.time()}
+            return
+        user = key.partition("\n")[2]
+        if user not in room.users:                    # left the room meanwhile: nothing kept for them
             return
         try:
             if result.get("error"):
@@ -151,8 +157,10 @@ class Cards:
             mine[at] = card
         elif job["card"]:
             return                                    # removed while it was being changed: stays removed
-        elif sum(len(v) for v in self.card_store().values()) >= MAX_ALL:   # others filled it meanwhile
-            jobs[key] = {"error": SERVER_FULL, "request": job["request"], "at": time.time()}
+        elif full := (SERVER_FULL if sum(len(v) for v in self.card_store().values()) >= MAX_ALL else   # filled meanwhile
+                      PERSON_FULL if sum(len(v) for k, v in self.card_store().items() if k.endswith("\n" + user)) >= MAX_PERSON_ALL
+                      else None):
+            jobs[key] = {"error": full, "request": job["request"], "at": time.time()}
             return
         else:
             mine.append(card)
@@ -202,7 +210,7 @@ def view(loop, room, user: str) -> dict:
         job = {"error": NO_ANSWER, "request": job["request"], "at": time.time()} if "task_id" in job else None
         if job:
             loop.card_jobs()[key] = job
-    items = [{"id": c["id"], "title": c["title"], "request": c["request"], "v": hashlib.sha256(c["html"].encode()).hexdigest()[:12]}
+    items = [{"id": c["id"], "title": c["title"], "request": c["request"], "v": hashlib.sha256(f"{c['made']}{c['html']}".encode()).hexdigest()[:12]}
              for c in loop.card_store().get(key, [])]
     return {"items": items, "making": job["request"] if job and "task_id" in job else None,
             "changing": job.get("card") if job and "task_id" in job else None,
