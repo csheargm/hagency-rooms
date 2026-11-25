@@ -65,7 +65,7 @@ def approve_steps(repo: str, pr: int) -> str:
     return f"**[Approve and merge it on GitHub](https://github.com/{repo}/pull/{pr})**. Once it's merged, it's done here."
 
 
-PAUSED_CHECK_S = 300
+PAUSED_CHECK_S, CLOSED_RECHECK_S = 300, 24 * 3600
 
 
 async def finish_merged(loop, room_id: str, repo: str) -> None:
@@ -74,15 +74,25 @@ async def finish_merged(loop, room_id: str, repo: str) -> None:
     now = time.time()
     for key, item in list(loop.state.items()):
         if (item["room"] != room_id or item.get("repo") != repo or item["stage"] != "stopped" or not item.get("pr")
-                or now - item.get("checked", 0) < PAUSED_CHECK_S):
+                or item.get("pr_closed") or now - item.get("checked", 0) < PAUSED_CHECK_S):
             continue
         item["checked"] = now
         try:
-            info = await github.run_json(["pr", "view", str(item["pr"]), "-R", repo, "--json", "state"])
+            info = await github.run_json(["pr", "view", str(item["pr"]), "-R", repo, "--json",
+                                          "state,headRefName,isCrossRepository"])
         except github.GitHubError as e:          # asked again at a later poll
             log.warning("couldn't check paused PR #%s on %s: %s", item["pr"], repo, str(e)[:200])
             continue
-        if isinstance(info, dict) and info.get("state") == "MERGED":
+        if not isinstance(info, dict):
+            continue
+        own = (info.get("headRefName") == f"agent/{_builder(item)}/issue-{num(key)}"   # never another issue's PR,
+               and info.get("isCrossRepository") is False)                         # nor a fork's (GPT re-check)
+        if not own:                                    # not its PR: never asked again (review workflow)
+            item["pr_closed"] = True
+            loop.save()
+        elif info.get("state") == "CLOSED":            # closed unmerged: asked daily, in case it's reopened
+            item["checked"] = now + CLOSED_RECHECK_S - PAUSED_CHECK_S
+        elif info.get("state") == "MERGED":
             item.update(stage="done", ended=time.time())   # done now, not when it paused (the board's last 24 h)
             loop.save()
             await loop.say(room_id, f"PR #{item['pr']} merged by a person; #{num(key)} done")

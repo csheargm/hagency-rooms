@@ -64,9 +64,10 @@ class AloneInARoom(unittest.TestCase):
     def test_a_paused_pr_a_person_merged_is_done(self):
         """GPT review: paused items weren't checked, so "once it's merged, #N is done" wasn't true."""
         lp = SimpleNamespace(save=mock.Mock(), say=mock.AsyncMock(), state={
-            "o/r#166": {"room": "!r", "repo": "o/r", "stage": "stopped", "pr": 167},
+            "o/r#166": {"room": "!r", "repo": "o/r", "stage": "stopped", "pr": 167, "builder": "@g-agent:x"},
             "o/r#5": {"room": "!r", "repo": "o/r", "stage": "stopped"}})                  # no PR: never asked
-        with mock.patch.object(pm_paused.github, "run_json", mock.AsyncMock(return_value={"state": "MERGED"})) as asked:
+        merged = {"state": "MERGED", "headRefName": "agent/g-agent/issue-166", "isCrossRepository": False}
+        with mock.patch.object(pm_paused.github, "run_json", mock.AsyncMock(return_value=merged)) as asked:
             asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))
             asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))                         # done: not asked again
         self.assertEqual(asked.await_count, 1)
@@ -74,6 +75,30 @@ class AloneInARoom(unittest.TestCase):
         self.assertGreater(lp.state["o/r#166"]["ended"], time.time() - 5)                 # done now, for the board
         self.assertEqual(lp.state["o/r#5"]["stage"], "stopped")
         self.assertIn("#166 done", lp.say.call_args.args[1])
+
+    def test_another_issues_pr_or_a_closed_one_never_marks_it_done(self):
+        """Review workflow: a PR the loop rejected as not this issue's (or closed unmerged) was trusted, or asked forever."""
+        for answer in ({"state": "MERGED", "headRefName": "agent/g-agent/issue-9", "isCrossRepository": False},
+                       {"state": "MERGED", "headRefName": "agent/g-agent/issue-166", "isCrossRepository": True},   # a fork
+                       {"state": "CLOSED", "headRefName": "x", "isCrossRepository": False}):
+            lp = SimpleNamespace(save=mock.Mock(), say=mock.AsyncMock(), state={
+                "o/r#166": {"room": "!r", "repo": "o/r", "stage": "stopped", "pr": 167, "builder": "@g-agent:x"}})
+            with mock.patch.object(pm_paused.github, "run_json", mock.AsyncMock(return_value=answer)) as asked:
+                asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))
+                lp.state["o/r#166"]["checked"] = 0                                        # a later poll
+                asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))
+            self.assertEqual((lp.state["o/r#166"]["stage"], asked.await_count), ("stopped", 1), answer)
+            lp.say.assert_not_called()
+
+    def test_its_own_pr_closed_unmerged_is_asked_about_daily_in_case_it_is_reopened(self):
+        lp = SimpleNamespace(save=mock.Mock(), say=mock.AsyncMock(), state={
+            "o/r#166": {"room": "!r", "repo": "o/r", "stage": "stopped", "pr": 167, "builder": "@g-agent:x"}})
+        closed = {"state": "CLOSED", "headRefName": "agent/g-agent/issue-166", "isCrossRepository": False}
+        with mock.patch.object(pm_paused.github, "run_json", mock.AsyncMock(return_value=closed)):
+            asyncio.run(pm_paused.finish_merged(lp, "!r", "o/r"))
+        item = lp.state["o/r#166"]
+        self.assertNotIn("pr_closed", item)                                             # still watched...
+        self.assertGreater(item["checked"], time.time() + pm_paused.CLOSED_RECHECK_S - pm_paused.PAUSED_CHECK_S - 5)
 
     def test_a_paused_pr_still_open_is_asked_about_again_only_later(self):
         lp = SimpleNamespace(save=mock.Mock(), say=mock.AsyncMock(),

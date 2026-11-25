@@ -50,10 +50,17 @@ def read() -> dict | None:
         return None
 
 
-def retire(token: str) -> None:
-    r = api("POST", "/_matrix/client/v3/logout", {}, token=token)
-    if r.get("_status") not in (None, 401):   # 401: already gone. Else it may stay valid: say so, never hide it
+def retire(token: str) -> bool:
+    """Sign the session out; True when it's gone (401: already gone). Else it may stay valid: said, never hidden."""
+    try:
+        r = api("POST", "/_matrix/client/v3/logout", {}, token=token)
+    except (OSError, ValueError) as e:        # no answer, or not JSON: still kept, tried again later
+        log.warning("couldn't sign out admin-bot's old session: %s", type(e).__name__)
+        return False
+    if r.get("_status") not in (None, 401):
         log.warning("couldn't sign out admin-bot's old session: HTTP %s %s", r.get("_status"), r.get("errcode", ""))
+        return False
+    return True
 
 
 def write(token: str) -> None:
@@ -107,6 +114,15 @@ def current(user: str, password: str, failed: str | None = None) -> str:
         log.warning("Synapse limits %s's sign-ins: waiting %.0fs", user, pause)
         time.sleep(pause)
         waited += pause
+
+
+def expire() -> None:
+    """An hour-old kept session is signed out even if no admin call comes (final review 2026-11-24: an idle
+    session lived on); @pm runs this from its minute check (pm_presence.check_agents)."""
+    with locked():
+        kept = read()
+        if kept and not 0 <= time.time() - kept["at"] < MAX_AGE_S and retire(kept["token"]):
+            FILE.unlink(missing_ok=True)      # only once it is really signed out (GPT re-check): else retried
 
 
 def caller(user: str, password: str):

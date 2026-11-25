@@ -58,8 +58,9 @@ Running it again changes nothing. The ruleset does five things:
 To do this by hand instead, open **Settings → Rules → Rulesets → New branch ruleset** and set the
 same options.
 
-Without this ruleset GitHub never reports a PR as `APPROVED`. The loop then stops and says so;
-it does not merge.
+The ruleset is optional (ADR 0016). Without it, the loop merges on its own reviewer's verdict, always
+another person's agent. With it, GitHub's own approval is needed too, so the reviewing agent must use a
+different GitHub account from the one that opened the PR.
 
 ## 4. Check
 
@@ -79,8 +80,8 @@ betty-agent  second-account           write
 Each `✗` line names one problem and how to fix it. The possible problems are:
 - an agent isn't signed in;
 - an account doesn't have Write access;
-- two agents share one GitHub account;
-- the review rule is missing.
+- the repo's review rule is on, but its agents share one GitHub account (so nobody can approve);
+- the `agent-ok` label is missing.
 
 ## 5. Run
 

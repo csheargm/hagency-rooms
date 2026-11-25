@@ -31,6 +31,7 @@ async def check_repo(loop, room, user: str) -> str:
         return "no agents in this room yet (each person's agent joins with them)"
     _, problems = await github_setup.readiness(repo, agents, detail=False)
     if not problems:
-        return f"✓ {repo} is ready: {', '.join(agents)} can write, merges need an approving review, agent-ok exists."
+        return f"✓ {repo} is ready: {', '.join(agents)} can write, and the agent-ok label exists."
     return "\n".join([f"{repo} isn't ready yet:", *(f"✗ {p}" for p in problems),
-                      f"The repo's owner fixes the rule and label with: python bin/github_setup.py ruleset --repo {repo}"])
+                      f"The repo's owner adds the agent-ok label on GitHub (or runs python bin/github_setup.py "
+                      f"ruleset --repo {repo}, which also adds GitHub's review rule)."])

@@ -14,12 +14,11 @@ class Evaluate(unittest.TestCase):
     def test_ready(self):
         self.assertEqual(evaluate(OK, GATED), [])
 
-    def test_missing_ruleset(self):
-        self.assertIn("approving review", evaluate(OK, [])[0])
-
-    def test_zero_approvals_is_not_a_gate(self):
+    def test_no_review_rule_is_fine(self):
+        """ADR 0016: the rule is optional; without it the loop's own reviewer decides (final review 2026-11-24)."""
+        self.assertEqual(evaluate(OK, []), [])
         rules = [{"type": "pull_request", "parameters": {"required_approving_review_count": 0}}]
-        self.assertEqual(len(evaluate(OK, rules)), 1)
+        self.assertEqual(evaluate(OK, rules), [])
 
     def test_not_signed_in(self):
         p = evaluate({**OK, "betty-agent": {"error": "no identity"}}, GATED)
@@ -30,8 +29,11 @@ class Evaluate(unittest.TestCase):
         self.assertIn("collaborator", p[0])
 
     def test_shared_account(self):
-        p = evaluate({"anna-agent": {"login": "a", "push": True}, "betty-agent": {"login": "a", "push": True}}, GATED)
+        shared = {"anna-agent": {"login": "a", "push": True}, "betty-agent": {"login": "a", "push": True}}
+        p = evaluate(shared, GATED)                       # with the rule: it can't be met, said with both ways out
         self.assertIn("share a GitHub account", p[0])
+        self.assertIn("remove the rule", p[0])
+        self.assertEqual(evaluate(shared, []), [])        # without it: one account works (ADR 0016)
 
 
 class Readiness(unittest.TestCase):

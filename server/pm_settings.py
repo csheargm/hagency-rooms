@@ -34,7 +34,7 @@ PRIVATE_HISTORY = {"type": "m.room.history_visibility", "state_key": "", "conten
 PM_ONLY = 100
 CHAT_NAMES = (DISPLAY_NAMES["pm"], "Hagency (private)")   # my private chats' names, now and before
 NO_REPO = ("This room has no GitHub repo yet. Say \"@pm this room works on owner/name\" (owner or maintainer), "
-           "or set it in the Hagency console.")
+           "or pick it in the Hagency panel above.")
 INSTALL_RECHECK_S = 30        # after an install link: look again this often...
 INSTALL_RECHECKS = 20         # ...this many times (10 minutes), then the person asks again
 BUSY = "Work is still running on the current repo; say \"stop\" and let it finish first."

@@ -35,11 +35,11 @@ def evaluate(identities: dict[str, dict], main_rules: list[dict], repo: str = RE
         elif not ident.get("push"):
             problems.append(f"{agent} ({ident['login']}): no Write access to {repo} — add it as a collaborator")
     logins = [i["login"] for i in identities.values() if "login" in i]
-    if len(set(logins)) != len(logins):
-        problems.append(f"agents share a GitHub account ({logins}); each needs its own, or nobody can approve")
     pr_rules = [r for r in main_rules if r.get("type") == "pull_request"]
-    if not any(r.get("parameters", {}).get("required_approving_review_count", 0) >= 1 for r in pr_rules):
-        problems.append(f"{branch} on {repo} doesn't require an approving review — run `bin/github_setup.py ruleset --repo {repo}`")
+    review_rule = any(r.get("parameters", {}).get("required_approving_review_count", 0) >= 1 for r in pr_rules)
+    if review_rule and len(set(logins)) != len(logins):   # ADR 0016: a rule is optional; with one, it must be meetable
+        problems.append(f"agents share a GitHub account ({logins}), so {branch}'s review rule can't be met: give an agent "
+                        "its own account, or remove the rule (then the loop's own reviewer decides)")
     return problems
 
 

@@ -78,6 +78,14 @@ class Flow(unittest.TestCase):
         self.github.assert_called_once_with(self.saved()["user_id"].lstrip("@").partition(":")[0], connect.APP,
                                             creds=mock.ANY, server="https://c.example")   # ADR 0017: one sign-in
 
+    def test_a_rerun_without_a_code_proves_github_with_the_console_it_paired_with(self):
+        """Final review 2026-11-24: resuming after a stop lost the one sign-in for person and agent."""
+        self.installed = {"codex"}
+        self.run_connect("ABCDE-FGHJK")                                   # paired: the console is kept with the sign-in
+        self.assertEqual(self.saved()["console"], "https://c.example")
+        self.run_connect("--server", "http://localhost:8650")            # rerun, no code, another default
+        self.assertEqual(self.github.call_args.kwargs["server"], "https://c.example")
+
     def test_ollama_with_the_model_pm_named(self):
         install, said, secret, failed = self.run_connect("ABCDE-FGHJK", answer={**SIGN_IN, "agent_kind": "ollama",
                                                                                  "model": "qwen3:8b"})

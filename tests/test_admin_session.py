@@ -134,6 +134,17 @@ class Kept(unittest.TestCase):
             admin_session.current("admin-bot", "pw")
         self.assertIn(("/_matrix/client/v3/logout", "t1"), self.calls)
 
+    def test_an_idle_old_session_is_signed_out_by_the_minute_check(self):
+        """Final review 2026-11-24: an hour-old session lived on while no admin call came."""
+        self.file.parent.mkdir(parents=True)
+        admin_session.write("idle")
+        admin_session.expire()
+        self.assertTrue(self.file.exists())                                     # young: kept
+        self.file.write_text(json.dumps({"token": "idle", "at": time.time() - admin_session.MAX_AGE_S - 1}))
+        admin_session.expire()
+        self.assertFalse(self.file.exists())
+        self.assertIn(("/_matrix/client/v3/logout", "idle"), self.calls)
+
     def test_other_errors_are_returned_not_retried(self):
         call = admin_session.caller("admin-bot", "pw")
         self.assertEqual(call("GET", "/forbidden", None)["errcode"], "M_FORBIDDEN")
