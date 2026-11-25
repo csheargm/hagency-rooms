@@ -196,7 +196,8 @@ def connect_here(args, home: Path, path: Path, saved: dict) -> tuple[dict, Path]
         bad_offer = fresh.pop("offer_error", None)
         path = signin_place.place(home, agent_dir(home, fresh), fresh)   # never over another agent's
         before = read_saved(path)
-        saved = {**fresh, **{k: before[k] for k in ("agent", *connect_kinds.KIND_SETTINGS) if k in before}}
+        saved = {**fresh, **{k: before[k] for k in ("agent", *connect_kinds.KIND_SETTINGS) if k in before},
+                 "console": args.server}                          # the console paired with: a rerun proves GitHub there
         save(path, saved)                                         # the code is used up: keep the sign-in
         if bad_offer and not args.agent:
             raise SystemExit(f"✗ {bad_offer}.\n  Your sign-in is saved: run {sys.executable} {CONNECT} "
@@ -252,8 +253,8 @@ def main() -> None:
         print(f"✗ {signin_place.REPLACED.format(agent)}", file=sys.stderr)
     print(f"✓ connected as {creds['user_id']} ({creds['agent']}); only {creds['owner']} can direct it")
     if not args.pair_only:                    # Windows (pair-only): connect.ps1 shows its own steps
-        github_signin.offer(agent_name(creds), APP, creds=creds,   # the server: only the one just paired with
-                            server=args.server if args.code and safe_url(args.server) else None)
+        paired = args.server if args.code else creds.get("console")   # the console the code came from, kept
+        github_signin.offer(agent_name(creds), APP, creds=creds, server=paired if paired and safe_url(paired) else None)
     if args.pair_only:
         if signin_place.kept_aside(home, path) and os.name == "nt":   # connect.ps1 registers only the first agent's task
             raise SystemExit(f"✓ saved. On Windows this agent runs in a window for now: "

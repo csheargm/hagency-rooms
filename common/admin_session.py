@@ -109,6 +109,16 @@ def current(user: str, password: str, failed: str | None = None) -> str:
         waited += pause
 
 
+def expire() -> None:
+    """An hour-old kept session is signed out even if no admin call comes (final review 2026-11-24: an idle
+    session lived on); @pm runs this from its minute check (pm_presence.check_agents)."""
+    with locked():
+        kept = read()
+        if kept and not 0 <= time.time() - kept["at"] < MAX_AGE_S:
+            retire(kept["token"])
+            FILE.unlink(missing_ok=True)
+
+
 def caller(user: str, password: str):
     """call(method, path, body) -> dict on the kept session, signing in only when there is none."""
     token = current(user, password)
