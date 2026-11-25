@@ -5,11 +5,14 @@ At each sign-in the agent tells @pm the AI it runs (kind_report.py) and the code
 message, UPDATE_TYPE {"commit": the server's commit}. Only @pm's account is obeyed (Synapse sets the
 sender); self_update.py then checks the install and moves it forward along the official master only.
 The outcome goes back to @pm (RESULT_TYPE, one word of code_report.RESULTS). After "updated" the agent
-finishes what it started, hands off its sync position and exits EXIT_UPDATED, so its service starts it
-again on the new code (launchd, systemd and the Windows keeper restart a failed exit).
+finishes what it started, hands off its sync position and starts again on the new code: in place
+(exec) on macOS and Linux, so a terminal run restarts too (GPT review); on Windows it exits
+EXIT_UPDATED, which the Windows keeper restarts.
 """
 import asyncio
 import logging
+import os
+import sys
 import uuid
 
 from aiohttp import ClientError
@@ -44,7 +47,8 @@ class BridgeUpdate:
     async def report_and_listen(self) -> None:
         """After the first sync: both reports to @pm, then @pm's update requests."""
         await kind_report.send(self.client, PM_ID, CREDENTIALS)                  # My agents: the AI I run
-        await code_report.send(self.client, PM_ID, code_report.build(version.of(paths.ROOT), runs_own(self.owner)))
+        self.started_code = version.of(paths.ROOT)   # what this process loaded (the install may move on: another agent's update)
+        await code_report.send(self.client, PM_ID, code_report.build(self.started_code, runs_own(self.owner)))
         self.client.add_to_device_callback(self.on_update_request, UnknownToDeviceEvent)
 
     async def on_update_request(self, event: UnknownToDeviceEvent) -> None:
@@ -53,26 +57,34 @@ class BridgeUpdate:
         if self.__dict__.get("_updating"):
             return                            # one update at a time; a second click waits for its answer
         self._updating = True
-        target = (event.source.get("content") or {}).get("commit")
-        job = asyncio.create_task(self.update_to(target))   # git and pip take a while: never in the sync loop
+        content = event.source.get("content") or {}
+        ask = content.get("id") if isinstance(content.get("id"), str) else ""   # echoed: @pm matches the answer to its click
+        job = asyncio.create_task(self.update_to(content.get("commit"), ask[:64]))   # git and pip take a while: never in the sync loop
         self.tasks.add(job)
         job.add_done_callback(self.tasks.discard)
 
-    async def update_to(self, target: object) -> None:
+    async def update_to(self, target: object, ask: str = "") -> None:
         try:
             result = ("not_official" if self.buttons_only     # Hermes: its gateways wouldn't restart (ADR 0020)
                       else await asyncio.to_thread(self_update.apply, target, runs_own(self.owner)))
+            if result == "current" and self.stale():
+                result = "updated"            # another agent of this computer updated the install: restart onto it
             log.info("update to %s: %s", str(target)[:12], result)
-            await self.tell_pm(result)
+            await self.tell_pm(result, ask)
             if result == "updated":
                 self.updated = True
                 self.sync_point.stop.set()    # serve() hands off and drains, then serve_until_updated exits
         finally:
             self._updating = self.updated
 
-    async def tell_pm(self, result: str) -> None:
+    def stale(self) -> bool:
+        """The install on disk is not the code this process loaded."""
+        now, then = version.of(paths.ROOT), getattr(self, "started_code", None)
+        return bool(now and then and now["commit"] != then["commit"])
+
+    async def tell_pm(self, result: str, ask: str = "") -> None:
         try:
-            await asyncio.wait_for(self.client.to_device(ToDeviceMessage(RESULT_TYPE, PM_ID, "*", {"result": result}),
+            await asyncio.wait_for(self.client.to_device(ToDeviceMessage(RESULT_TYPE, PM_ID, "*", {"result": result, "id": ask}),
                                                          uuid.uuid4().hex), SEND_TIMEOUT_S)
         except (OSError, asyncio.TimeoutError, ClientError) as e:
             # Not fatal on purpose: an updated agent restarts and its new code report says it all.
@@ -80,5 +92,9 @@ class BridgeUpdate:
 
     async def serve_until_updated(self) -> None:
         await lifecycle.serve(self.client, f"{self.owner}-agent", self.sync_point, self.tasks)
-        if self.updated:
-            raise SystemExit(EXIT_UPDATED)    # the service starts the new code
+        if not self.updated:
+            return
+        if os.name == "nt":
+            raise SystemExit(EXIT_UPDATED)    # the Windows keeper starts the new code
+        log.info("restarting on the new code")
+        os.execv(sys.executable, sys.orig_argv)   # in place: a service, supervise.py or a terminal (--foreground) alike

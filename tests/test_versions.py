@@ -15,6 +15,7 @@ from unittest import mock
 from nio import ToDeviceEvent, ToDeviceResponse, UnknownToDeviceEvent
 
 from common import code_report
+from common import registry
 from common import version
 from deploy import release
 from server import console
@@ -43,7 +44,7 @@ class Version(unittest.TestCase):
         self.assertEqual(here["commit"], head)
 
     def test_only_whole_seconds_and_full_commits(self):
-        for when in ("+5", "1_000", " 5", "0", "-1", "", True, 1.5):
+        for when in ("+5", "1_000", " 5", "0", "-1", "", True, 1.5, "999999999999"):   # the last: year 33658 (GPT review)
             self.assertIsNone(version.parse("a" * 40, when), when)
         self.assertIsNone(version.parse("abc", "5"))
         self.assertIsNone(version.parse("A" * 40, "5"))
@@ -133,7 +134,7 @@ class Reports(flows.Base):
         self.assertEqual(self.click(), "ok")
         message = self.lp.client.to_device.await_args.args[0]
         self.assertEqual((message.type, message.recipient, message.content),
-                         (code_report.UPDATE_TYPE, CXA, {"commit": NEW["commit"]}))   # the server's own commit, nothing else
+                         (code_report.UPDATE_TYPE, CXA, {"commit": NEW["commit"], "id": self.lp._updates["cx-agent"]["id"]}))   # the server's commit
         self.assertTrue(self.row()["code_updating"])
         self.assertEqual(self.click(), console_update.UPDATING)                        # a second click sends nothing
         self.assertEqual(self.lp.client.to_device.await_count, 1)
@@ -142,8 +143,9 @@ class Reports(flows.Base):
         row = self.row()
         self.assertEqual((row["code"], row["code_says"], row["code_updating"]), ("current", "", False))
 
-    def answer(self, sender, result):
-        event = ToDeviceEvent.parse_event({"sender": sender, "type": code_report.RESULT_TYPE, "content": {"result": result}})
+    def answer(self, sender, result, ask=True):
+        ask = self.lp.__dict__.get("_updates", {}).get(sender[1:].split(":")[0], {}).get("id") if ask is True else ask
+        event = ToDeviceEvent.parse_event({"sender": sender, "type": code_report.RESULT_TYPE, "content": {"result": result, "id": ask}})
         asyncio.run(self.lp.on_kind_report(event))
 
     def test_a_refusal_is_said_in_plain_words_and_only_for_a_click_waiting(self):
@@ -153,10 +155,32 @@ class Reports(flows.Base):
         self.click()
         self.answer(BA, "edited")                     # another agent can't answer for it
         self.answer(CXA, "rm -rf")                    # not a word we show
+        self.answer(CXA, "edited", ask="an older click")   # another click's answer
         self.assertTrue(self.row()["code_updating"])
         self.answer(CXA, "edited")
         row = self.row()
         self.assertEqual((row["code_says"], row["code_fallback"]), (console_update.SAYS["edited"], True))
+
+    def test_no_answer_is_said_after_a_while_and_update_comes_back(self):
+        self.start(OLD)
+        self.click()
+        self.lp._updates["cx-agent"]["at"] -= console_update.WAIT_S + 1
+        row = self.row()
+        self.assertEqual((row["code_says"], row["code_updating"]), (console_update.NO_ANSWER, False))
+        self.assertEqual(self.click(), "ok")          # past the gap: asked again
+        self.assertEqual(self.lp.client.to_device.await_count, 2)
+
+    def test_a_failed_send_frees_the_click(self):
+        self.start(OLD)
+        self.lp.client.to_device.side_effect = OSError("down")
+        self.assertIn("couldn't reach", self.click())
+        self.assertNotIn("cx-agent", self.lp._updates)
+
+    def test_hermes_gets_the_connect_page_words(self):
+        registry.update(CX, None, agent_kind="hermes")
+        self.start(OLD)
+        row = self.row()
+        self.assertEqual((row["code"], row["code_fallback"], row["code_says"]), ("unknown", True, console_update.HERMES))
 
     def test_offline_agents_are_not_asked(self):
         self.start(OLD)
@@ -182,7 +206,7 @@ class Panel(unittest.TestCase):
         self.assertIn('data-a="selfupdate"', behind)
         self.assertIn("Update available", behind)
         self.assertIn("Version aaaaaaa · 2025-11-22", behind)
-        old = self.row(code="unknown", code_fallback=True)
+        old = self.row(code="unknown", code_fallback=True, code_says=console_update.OLD_CODE)
         self.assertIn('data-a="update" data-v="agents"', old)
         self.assertIn("once", old)
         self.assertNotIn("selfupdate", self.row(code="behind", code_updating=True, code_says=console_update.UPDATING))

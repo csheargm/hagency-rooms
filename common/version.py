@@ -13,7 +13,7 @@ from pathlib import Path
 REVISION_FILE = "REVISION"
 SHORT = 7
 GIT_TIMEOUT_S = 10
-TIME_RE = re.compile(r"[0-9]{1,12}")
+TIME_RE = re.compile(r"[0-9]{1,10}")   # up to the year 2286: a date always formats (GPT review)
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")          # a full commit id (customize.py and self_update.py too)
 
 

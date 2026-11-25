@@ -45,29 +45,36 @@ their access, triggered from a web page.
    - `console.act("selfupdate")` checks that the agent is theirs, on their own computer, online,
      reported a version, and isn't their own version.
    - It allows one click per agent per minute.
-2. @pm sends the agent a to-device message, `xyz.hagencylabs.agent.update`, with one field: the
-   server's commit.
+2. @pm sends the agent a to-device message, `xyz.hagencylabs.agent.update`: the server's commit and
+   a click id. The agent echoes the id, so a late answer never counts for a newer click.
 3. The agent (`adapters/agents/agent_update.py`) acts only on that message type, and only when the
    sender is @pm. Then `adapters/agents/self_update.py` checks, in order:
    - **Not the owner's own version:** the running code is the official install, not a `live-*` copy,
      and the owner has no `custom-use.json` choice.
    - **The install is the official one:** the folder is `~/.hagency/app`, with its own `.git`, origin
      `https://github.com/csheargm/hagency-rooms`, on branch `master`.
-   - **Nothing edited:** `git status` shows no changed tracked files.
+   - **Nothing edited:** `git status` shows no changed tracked files, and no file is marked
+     assume-unchanged or skip-worktree (status hides those). It checks again after pip, just before the code moves.
+   - **One update at a time:** a lock in `.git`, because a person's agents on one computer share the install.
    - **Only official code, only forward:** it fetches master from that URL (the URL itself, never a
      remote name). The requested commit must be on that master and a descendant of what runs now.
      Otherwise it does nothing, and "already newer" counts as success.
    - **Dependencies first:** it installs the new commit's `requirements.txt` with this agent's own
      Python before moving the code. If pip fails, nothing has changed.
-   - Then `git merge --ff-only` to that commit, with git hooks off.
+   - Then `git merge --ff-only` to that commit. Git runs with hooks and fsmonitor off, with no
+     system or global config (a `url.insteadOf` there could redirect the fetch), and without replace objects.
 4. The agent says how it went to @pm in one to-device message, `xyz.hagencylabs.agent.update.result`.
    - The result is one word from a fixed list (`code_report.RESULTS`); the panel maps each to plain words.
    - Nothing else from that computer is ever shown.
 5. After a successful update, the agent finishes the turns it has started, hands off its sync position
-   (lifecycle.py, as on SIGTERM), and exits with code 75.
-   - launchd (KeepAlive on a failed exit), systemd (`Restart=on-failure`) and the Windows keeper
-     start it again on the new code.
-   - Its new report then shows **Up to date**.
+   (lifecycle.py, as on SIGTERM), and starts again on the new code.
+   - On macOS and Linux it re-executes itself in place (`os.execv` with `sys.orig_argv`), so a service,
+     `bin/supervise.py` and a terminal run (`--foreground`) all continue.
+   - On Windows it exits with code 75, and the Windows keeper starts it again.
+   - An agent whose install another agent already updated answers "current" but still runs old code,
+     so it restarts too.
+   - Its new report then shows **Up to date**. With no answer within 5 minutes (for example, a click
+     during its start), the panel says so and offers Update again.
 
 ### Why this shape
 - **The server can't name the code, only a point on the official master.** A compromised @pm, or anyone
@@ -84,8 +91,14 @@ their access, triggered from a web page.
     offers them the Connect page (PR #58's path).
   - **Installs at a folder the person chose** (`HAGENCY_APP=…`), which the panel reports as not
     updatable here.
-  - **An agent run by `bin/supervise.py`.** It picks up the code change itself.
+  - **A Windows agent run in a window (`--foreground`).** It ends after updating; its next start runs the new code.
 - **No automatic update when idle yet.** That is a follow-up; it would reuse the same checks.
-- **A 75 exit on macOS** waits for launchd's throttle (about 10 s); systemd waits `RestartSec` (30 s).
-  The panel says "about a minute".
-- **pip runs the new requirements' installers**, as the connect line already does.
+- **The restart waits for running turns** (up to 20 minutes, lifecycle.py). The panel says "once it finishes
+  what it's doing".
+- **An agent can claim any commit.** It only changes what its own owner sees.
+- **A shallow clone** can't prove that an older target is behind it, and answers "not_newer". @pm only asks
+  agents that are behind.
+- **pip runs the new requirements' installers**, as the connect line already does. If pip fails partway,
+  the code stays old but some packages may be newer.
+- **The clone's own `.git/config` is trusted.** It is the person's own file, and anyone who can write it
+  can already run code as them.

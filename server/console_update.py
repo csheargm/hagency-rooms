@@ -27,7 +27,11 @@ CLICK_GAP_S = 60                              # one Update click per agent per m
 WAIT_S = 300                                  # "Updating…" until its new report, or this long
 SHOW_S = 600                                  # how long a refusal stays under the agent
 SEND_TIMEOUT_S = 15
-UPDATING = "Updating: it restarts on the new version in about a minute."
+UPDATING = "Updating: it restarts on the new version once it finishes what it's doing, usually within a minute or two."
+NO_ANSWER = "It didn't answer the update. Click Update again; if it still doesn't, click Update my agent."
+OLD_CODE = ("Its code is from before one-click updates. Click Update my agent and run the command it sends on its "
+            "computer, once. After that, Update takes one click.")
+HERMES = "A Hermes agent is updated with Update my agent: run the command it sends on its computer."
 SAYS = {
     "current": "It already runs this version or a newer one.",
     "own": "It runs your own version, which is never replaced. Click Go back to official first, then Update.",
@@ -43,7 +47,7 @@ log = logging.getLogger("loop")
 
 
 def _clicks(loop) -> dict:
-    return loop.__dict__.setdefault("_updates", {})   # agent localpart → {"at", "from", "result"}
+    return loop.__dict__.setdefault("_updates", {})   # agent localpart → {"at", "from", "id", "result"}
 
 
 def status(loop, a: dict) -> dict:
@@ -62,10 +66,13 @@ def status(loop, a: dict) -> dict:
         _clicks(loop).pop(a["localpart"], None)   # it restarted on new code: done
     elif click and click["result"] in (None, "updated") and time.time() - click["at"] < WAIT_S:
         says = UPDATING
-    elif click and click["result"] in SAYS and time.time() - click["at"] < SHOW_S:
-        says = SAYS[click["result"]]
+    elif click and time.time() - click["at"] < SHOW_S:
+        says = SAYS.get(click["result"]) or NO_ANSWER   # no answer by WAIT_S: a click lost while it started, say
+    fallback = word == "unknown" or bool(says and click["result"] in FALLBACK)
+    if not says and word == "unknown":
+        says = HERMES if hermes else OLD_CODE if code is None else ""
     return {"code": word, "code_version": version.label(code), "code_says": says, "code_updating": says == UPDATING,
-            "code_fallback": word == "unknown" or bool(click and click["result"] in FALLBACK)}
+            "code_fallback": fallback}
 
 
 async def request(loop, user: str, agent: str | None) -> str:
@@ -82,14 +89,16 @@ async def request(loop, user: str, agent: str | None) -> str:
     last = _clicks(loop).get(found["localpart"])
     if last and time.time() - last["at"] < CLICK_GAP_S:
         return UPDATING if last["result"] in (None, "updated") else "Wait a minute, then try again."
-    if not await send(loop, f"@{found['localpart']}:{SERVER_NAME}"):
+    click = {"at": time.time(), "from": found[registry.CODE]["commit"], "id": uuid.uuid4().hex, "result": None}
+    _clicks(loop)[found["localpart"]] = click   # before sending: a second click meanwhile waits (GPT review)
+    if not await send(loop, f"@{found['localpart']}:{SERVER_NAME}", click["id"]):
+        _clicks(loop).pop(found["localpart"], None)
         return "I couldn't reach your agent just now; please try again."
-    _clicks(loop)[found["localpart"]] = {"at": time.time(), "from": found[registry.CODE]["commit"], "result": None}
     return "ok"
 
 
-async def send(loop, agent_id: str) -> bool:
-    message = ToDeviceMessage(code_report.UPDATE_TYPE, agent_id, "*", {"commit": SERVER["commit"]})
+async def send(loop, agent_id: str, ask: str) -> bool:
+    message = ToDeviceMessage(code_report.UPDATE_TYPE, agent_id, "*", {"commit": SERVER["commit"], "id": ask})
     try:
         resp = await asyncio.wait_for(loop.client.to_device(message, uuid.uuid4().hex), SEND_TIMEOUT_S)
     except (OSError, asyncio.TimeoutError, ClientError) as e:
@@ -106,8 +115,8 @@ def answered(loop, agent: str | None, content: object) -> bool:
     click of its owner's still waiting."""
     result = content.get("result") if isinstance(content, dict) else None
     click = _clicks(loop).get(agent) if agent else None
-    if click is None or click["result"] is not None or result not in code_report.RESULTS:
-        return False                          # nobody asked, already answered, or not a word we show
+    if click is None or click["result"] is not None or result not in code_report.RESULTS or content.get("id") != click["id"]:
+        return False                          # nobody asked, already answered, an older click's answer, or not our word
     click["result"] = result
     log.info("%s: update %s", agent, result)
     return True

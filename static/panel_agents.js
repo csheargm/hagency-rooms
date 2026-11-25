@@ -33,8 +33,7 @@ function codeChip(a) {
 }
 function codeHint(a) {
   if (!a.remote || !(a.online === true || a.connected)) return "";
-  const says = a.code_says || (a.code_fallback && a.online === true ? "This agent's code is from before one-click updates. " +
-    "Click Update my agent and run the command it sends on its computer, once. After that, Update takes one click." : "");
+  const says = a.code_says;               // console_update.status: the words, one place
   const ver = a.code_version ? `Version ${esc(a.code_version)}` : "";
   return says || ver ? `<div class="hint">${[esc(says), ver].filter(Boolean).join(" · ")}</div>` : "";
 }

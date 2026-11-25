@@ -84,6 +84,29 @@ class Install(unittest.TestCase):
         self.assertEqual(self.apply(self.new), "edited")
         self.assertEqual((self.app / "requirements.txt").read_text(), "something of mine\n")
 
+    def test_edits_status_hides_count_as_edits(self):
+        git(self.app, "update-index", "--skip-worktree", "requirements.txt")
+        (self.app / "requirements.txt").write_text("hidden edit\n")
+        self.assertEqual(self.apply(self.new), "edited")
+        self.assertEqual((self.app / "requirements.txt").read_text(), "hidden edit\n")
+
+    def test_an_edit_made_while_pip_ran_is_not_overwritten(self):
+        real = self.run_
+
+        def edit_during_pip(args, **kw):
+            done = real(args, **kw)
+            if args[1:3] == ["-m", "pip"]:
+                (self.app / "requirements.txt").write_text("edited meanwhile\n")
+            return done
+        self.run_ = edit_during_pip
+        self.assertEqual(self.apply(self.new), "edited")
+        self.assertEqual(self.head(), self.old)
+
+    def test_one_update_of_the_install_at_a_time(self):
+        with self_update._Lock(self.app):          # another agent of this computer is updating it
+            self.assertEqual(self.apply(self.new), "failed")
+        self.assertEqual(self.apply(self.new), "updated")
+
     def test_only_a_clone_of_the_official_repo_on_master(self):
         git(self.app, "remote", "set-url", "origin", "https://github.com/someone/hagency-rooms")
         self.assertEqual(self.apply(self.new), "not_official")
@@ -141,7 +164,7 @@ class FakeBridge(agent_update.BridgeUpdate):
 
 
 def request(sender, commit="a" * 40):
-    event = ToDeviceEvent.parse_event({"sender": sender, "type": code_report.UPDATE_TYPE, "content": {"commit": commit}})
+    event = ToDeviceEvent.parse_event({"sender": sender, "type": code_report.UPDATE_TYPE, "content": {"commit": commit, "id": "k1"}})
     assert isinstance(event, UnknownToDeviceEvent)      # what report_and_listen's callback is given
     return event
 
@@ -161,32 +184,49 @@ class AgentSide(unittest.TestCase):
         self.assertFalse(self.click(b, "@mallory-agent:bridge.localhost").called)
         apply = self.click(b, agent_update.PM_ID)
         apply.assert_called_once_with("a" * 40, mock.ANY)
-        self.assertEqual(b.sent, [(code_report.RESULT_TYPE, agent_update.PM_ID, {"result": "updated"})])
-        self.assertTrue(b.updated and b.sync_point.stop.is_set())            # hands off, drains, then exits
+        self.assertEqual(b.sent, [(code_report.RESULT_TYPE, agent_update.PM_ID, {"result": "updated", "id": "k1"})])
+        self.assertTrue(b.updated and b.sync_point.stop.is_set())            # hands off, drains, then restarts
 
-        async def served():
-            with mock.patch.object(agent_update.lifecycle, "serve", mock.AsyncMock()):
+        async def served(os_name):
+            with mock.patch.object(agent_update.lifecycle, "serve", mock.AsyncMock()), \
+                    mock.patch.object(agent_update.os, "name", os_name), \
+                    mock.patch.object(agent_update.os, "execv") as execv:
                 await b.serve_until_updated()
+            return execv
+        execv = asyncio.run(served("posix"))      # in place: a service and a terminal (--foreground) alike (GPT review)
+        execv.assert_called_once_with(agent_update.sys.executable, agent_update.sys.orig_argv)
         with self.assertRaises(SystemExit) as stop:
-            asyncio.run(served())
+            asyncio.run(served("nt"))             # the Windows keeper restarts a failed exit
         self.assertEqual(stop.exception.code, agent_update.EXIT_UPDATED)
-        self.assertNotEqual(agent_update.EXIT_UPDATED, 0)                   # 0 = stay stopped, for every service
+        self.assertNotEqual(agent_update.EXIT_UPDATED, 0)                   # 0 = stay stopped
 
     def test_a_refusal_is_said_and_it_keeps_running(self):
         b = FakeBridge()
         self.click(b, agent_update.PM_ID, result="edited")
-        self.assertEqual(b.sent, [(code_report.RESULT_TYPE, agent_update.PM_ID, {"result": "edited"})])
+        self.assertEqual(b.sent, [(code_report.RESULT_TYPE, agent_update.PM_ID, {"result": "edited", "id": "k1"})])
         self.assertFalse(b.updated or b.sync_point.stop.is_set())
         self.assertTrue(self.click(b, agent_update.PM_ID, result="edited").called)   # not stuck: a later click works
 
     def test_a_hermes_helper_never_updates(self):
         b = FakeBridge(buttons_only=True)
         self.assertFalse(self.click(b, agent_update.PM_ID).called)
-        self.assertEqual(b.sent, [(code_report.RESULT_TYPE, agent_update.PM_ID, {"result": "not_official"})])
+        self.assertEqual(b.sent, [(code_report.RESULT_TYPE, agent_update.PM_ID, {"result": "not_official", "id": "k1"})])
+
+    def test_another_agent_updated_the_shared_install_so_this_one_restarts_too(self):
+        """GPT review follow-up: several agents of one computer share ~/.hagency/app."""
+        b = FakeBridge()
+        b.started_code = {"commit": "a" * 40, "time": 1}
+        with mock.patch.object(agent_update.version, "of", return_value={"commit": "b" * 40, "time": 2}):
+            self.click(b, agent_update.PM_ID, result="current")
+        self.assertTrue(b.updated)
+        self.assertEqual(b.sent[0][2]["result"], "updated")
 
     def test_the_real_settings_turn_hooks_and_local_repos_off(self):
         self.assertIn("core.hooksPath=/dev/null", self_update.GIT)
         self.assertIn("protocol.file.allow=never", self_update.GIT)
+        self.assertIn("core.fsmonitor=false", self_update.GIT)
+        self.assertEqual((self_update.GIT_ENV["GIT_CONFIG_NOSYSTEM"], self_update.GIT_ENV["GIT_NO_REPLACE_OBJECTS"]), ("1", "1"))
+        self.assertEqual(self_update.GIT_ENV["GIT_CONFIG_GLOBAL"], self_update.os.devnull)   # no insteadOf from there
         self.assertEqual(self_update.GIT_ENV["GIT_TERMINAL_PROMPT"], "0")
         self.assertTrue(self_update.same_repo("https://github.com/csheargm/hagency-rooms.git"))
         self.assertTrue(self_update.same_repo("https://github.com/csheargm/hagency-rooms/\n"))

@@ -23,8 +23,12 @@ BRANCH = "master"
 DEFAULT_APP = Path.home() / ".hagency" / "app"          # where connect.sh / connect.ps1 install it
 GIT_TIMEOUT_S = 120
 PIP_TIMEOUT_S = 600
-GIT = ["git", "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never"]
-GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": ""}
+GIT = ["git", "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never", "-c", "core.fsmonitor=false"]
+# No system or global git config (a url.insteadOf there could send the fetch elsewhere), no replace
+# objects (they could swap a verified commit's files), never a password prompt (GPT review).
+GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": "", "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_CONFIG_GLOBAL": os.devnull, "GIT_NO_REPLACE_OBJECTS": "1"}
+LOCK_NAME = "hagency-update.lock"             # in .git: several agents of one computer share the install
 
 
 class Refused(Exception):
@@ -50,7 +54,9 @@ def check_install(app: Path, code: Path, own: bool, run=subprocess.run) -> None:
     if origin.returncode or not same_repo(origin.stdout) or branch.returncode or branch.stdout.strip() != BRANCH:
         raise Refused("not_official")
     status = _git(app, "status", "--porcelain", "--untracked-files=no", run=run)
-    if status.returncode or status.stdout.strip():
+    hidden = _git(app, "ls-files", "-v", run=run)    # assume-unchanged (lower case) or skip-worktree (S): status hides those
+    if status.returncode or status.stdout.strip() or hidden.returncode or any(
+            line[:1].islower() or line[:1] == "S" for line in hidden.stdout.splitlines()):
         raise Refused("edited")
 
 
@@ -91,15 +97,40 @@ def install_requirements(app: Path, target: str, run=subprocess.run) -> None:
         raise Refused("failed")
 
 
+class _Lock:
+    """One update of this install at a time, across processes (each agent of this computer has its own)."""
+    def __init__(self, app: Path) -> None:
+        self.path = app / ".git" / LOCK_NAME
+
+    def __enter__(self):
+        self.file = open(self.path, "a+")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(self.file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.file.close()
+            raise Refused("failed") from None   # another agent of this computer is updating it right now
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.file.close()                     # closing releases the lock
+
+
 def apply(target: str, own: bool, app: Path = DEFAULT_APP, code: Path = paths.ROOT, run=subprocess.run) -> str:
     """Update to `target`; one of code_report.RESULTS. "updated" only once the code moved: then restart."""
     try:
         check_install(app, code, own, run)
-        if check_target(app, target, run) == "current":
-            return "current"
-        install_requirements(app, target, run)
-        if _git(app, "merge", "-q", "--ff-only", target, run=run).returncode:
-            raise Refused("failed")
+        with _Lock(app):
+            if check_target(app, target, run) == "current":
+                return "current"
+            install_requirements(app, target, run)
+            check_install(app, code, own, run)   # again: pip took a while, and an edit meanwhile is never overwritten
+            if _git(app, "merge", "-q", "--ff-only", target, run=run).returncode:
+                raise Refused("failed")
     except Refused as e:
         return str(e)
     except (OSError, subprocess.SubprocessError):
