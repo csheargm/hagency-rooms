@@ -13,6 +13,7 @@ from unittest import mock
 
 from adapters.agents import bridge, card_task, tasks
 from common import cards
+from common import registry
 from server import pm_cards
 from tests import ROOT
 
@@ -231,10 +232,13 @@ class PmFlow(unittest.TestCase):
         self.act(ANNA, "card_make", "first")
         self.answer(error="unknown task kind 'card'")                # an agent adapter from before cards
         self.assertEqual(self.view()["error"], pm_cards.OLD_CODE)
+        with mock.patch.object(registry, "find", lambda person, lp: {"agent": registry.REMOTE}):
+            self.assertEqual(self.view()["update"], ANNA_AGENT.split(":")[0][1:])   # Update my agent: that one
         self.act(ANNA, "card_make", "again")
         self.assertIsNone(self.view()["error"])                       # a new ask clears the old failure
         self.answer(error="codex timed out after 600s")
         self.assertEqual(self.view()["error"], "Your agent couldn't make it: codex timed out after 600s")
+        self.assertIsNone(self.view()["update"])                      # updating wouldn't help this one
 
     def test_an_agent_that_never_answers_is_given_up_on(self):
         self.act(ANNA, "card_make", "first")

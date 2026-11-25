@@ -35,7 +35,7 @@ from server import project_rooms
 from common import registry
 from common import room_state
 from common.bridge_config import ELEMENT_ORIGIN
-from server.console_agents import add_agent, can_add, first_pick, fresh_code, my_agents   # My agents: kept apart (file size)
+from server.console_agents import UPDATE, add_agent, can_add, first_pick, fresh_code, my_agents   # My agents: kept apart (file size)
 from common.setup_accounts import HS, SERVER_NAME
 from server import pm_paused
 
@@ -188,6 +188,9 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         return await add_agent(loop, user, value)
     if action == "code":                  # a never-connected agent's fresh Connect page (console_agents)
         return await fresh_code(loop, user, agent or None)
+    if action == "update":                # Your cards' "Update my agent": a connected agent's Connect page again
+        said = await fresh_code(loop, user, agent or None, update=True)
+        return {"result": "ok", "says": said} if said == UPDATE else said
     if action == "github":                # pm_github.py: Connect / Disconnect GitHub, for themselves only
         return await loop.github_action(user, value)
     if action in console_repo.ACTIONS:    # the room's repo: choose, remove, check readiness
