@@ -15,6 +15,7 @@ from pathlib import Path
 
 REVISION_FILE = "REVISION"
 NUMBER_FILE = "VERSION"
+NUMBER_KEY = "number"                           # its key in of()'s result and in code reports
 NUMBER_RE = re.compile(r"[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}")   # "1.0.0": major.minor.patch
 SHORT = 7
 GIT_TIMEOUT_S = 10
@@ -51,7 +52,7 @@ def _from_git(root: Path) -> dict | None:
 def _numbered(found: dict | None, text: str | None) -> dict | None:
     """`found` with "number" when `text` (a VERSION file's) is major.minor.patch."""
     num = (text or "").strip()
-    return {**found, "number": num} if found and NUMBER_RE.fullmatch(num) else found
+    return {**found, NUMBER_KEY: num} if found and NUMBER_RE.fullmatch(num) else found
 
 
 def _read(path: Path) -> str | None:
@@ -59,12 +60,6 @@ def _read(path: Path) -> str | None:
         return path.read_text()
     except (OSError, ValueError):             # ValueError: not text (UnicodeDecodeError, GPT review): as if absent
         return None
-
-
-def number(root: Path) -> str | None:
-    """The release number in `root`'s VERSION file, or None (no file, or not major.minor.patch)."""
-    text = (_read(root / NUMBER_FILE) or "").strip()
-    return text if NUMBER_RE.fullmatch(text) else None
 
 
 def of(root: Path) -> dict | None:
@@ -83,7 +78,7 @@ def label(v: dict | None) -> str:
     if not v:
         return ""
     day = datetime.datetime.fromtimestamp(v["time"], datetime.timezone.utc).date().isoformat()
-    return " · ".join([*([f"v{v['number']}"] if v.get("number") else []), v["commit"][:SHORT], day])
+    return " · ".join([*([f"v{v[NUMBER_KEY]}"] if v.get(NUMBER_KEY) else []), v["commit"][:SHORT], day])
 
 
 def current(agent: dict | None, server: dict | None) -> bool:

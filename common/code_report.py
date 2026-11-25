@@ -21,7 +21,8 @@ EVENT_TYPE = "xyz.hagencylabs.agent.code"
 UPDATE_TYPE = "xyz.hagencylabs.agent.update"          # @pm → agent: {"commit"} (an owner's Update click)
 RESULT_TYPE = "xyz.hagencylabs.agent.update.result"   # agent → @pm: {"result": one of RESULTS}
 RESULTS = ("updated", "current", "own", "not_official", "edited", "not_newer", "failed")   # self_update.py
-KEYS = {"commit", "time", "own", "number"}
+KEYS = {"commit", "time", "own", version.NUMBER_KEY}
+NONE = object()                               # "number" left out (older agents), unlike a present null (GPT review)
 log = logging.getLogger("bridge")
 
 
@@ -30,7 +31,7 @@ def build(running: dict | None, own: bool) -> dict | None:
     if running is None:
         return None
     return {"commit": running["commit"], "time": str(running["time"]), **({"own": "yes"} if own else {}),
-            **({"number": running["number"]} if running.get("number") else {})}
+            **({version.NUMBER_KEY: running[version.NUMBER_KEY]} if running.get(version.NUMBER_KEY) else {})}
 
 
 def valid(content: object) -> dict | None:
@@ -39,24 +40,21 @@ def valid(content: object) -> dict | None:
     if not isinstance(content, dict) or not set(content) <= KEYS or content.get("own", "yes") != "yes":
         return None
     return _checked(content.get("commit"), content.get("time") if isinstance(content.get("time"), str) else None,
-                    "own" in content, content.get("number", NONE))
-
-
-NONE = object()                               # "number" left out (older agents), unlike a present null (GPT review)
+                    "own" in content, content.get(version.NUMBER_KEY, NONE))
 
 
 def _checked(commit: object, when: object, own: bool, number: object) -> dict | None:
     parsed = version.parse(commit, when) if when is not None else None
     if parsed is None or not (number is NONE or isinstance(number, str) and version.NUMBER_RE.fullmatch(number)):
         return None
-    return {**parsed, "own": own, **({} if number is NONE else {"number": number})}
+    return {**parsed, "own": own, **({} if number is NONE else {version.NUMBER_KEY: number})}
 
 
 def stored(entry: object) -> dict | None:
     """A report as agents.json keeps it (valid()'s shape), re-checked: a damaged record is none."""
     if not isinstance(entry, dict) or not {"commit", "time", "own"} <= set(entry) <= KEYS or not isinstance(entry["own"], bool):
         return None
-    return _checked(entry["commit"], entry["time"] if type(entry["time"]) is int else None, entry["own"], entry.get("number", NONE))
+    return _checked(entry["commit"], entry["time"] if type(entry["time"]) is int else None, entry["own"], entry.get(version.NUMBER_KEY, NONE))
 
 
 async def send(client: AsyncClient, pm_id: str, report: dict | None) -> bool:

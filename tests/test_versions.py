@@ -55,7 +55,7 @@ class Version(unittest.TestCase):
         self.assertEqual(version.of(d), {**NEW, "number": "1.2.3"})
         self.assertEqual(version.label(version.of(d)), "v1.2.3 · bbbbbbb · 2025-11-25")
         self.assertRegex((ROOT / "VERSION").read_text(), r"^[0-9]+\.[0-9]+\.[0-9]+\n$")   # the repo's own
-        committed = subprocess.run(["git", "-C", str(ROOT), "show", "HEAD:VERSION"], capture_output=True, text=True).stdout.strip()
+        committed = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:{version.NUMBER_FILE}"], capture_output=True, text=True).stdout.strip()
         self.assertEqual(version.of(ROOT)["number"], committed)         # HEAD's, even with VERSION edited here
         self.assertTrue(version.current(NEW, {**NEW, "number": "9.9.9"}))              # commits decide, never numbers
 
@@ -238,7 +238,9 @@ class Panel(unittest.TestCase):
         return subprocess.run([NODE, "-e", prog, json.dumps(agent)], capture_output=True, text=True, timeout=30, check=True).stdout
 
     def test_each_state_shows_its_words_and_button(self):
-        self.assertIn("v1.0.0 · bbbbbbb", self.row(code="current", code_version="v1.0.0 · bbbbbbb · 2025-11-25"))
+        current = self.row(code="current", code_version="v1.0.0 · bbbbbbb · 2025-11-25")
+        self.assertIn("Up to date", current)
+        self.assertIn("v1.0.0 · bbbbbbb", current)
         behind = self.row(code="behind", code_version="aaaaaaa · 2025-11-22")
         self.assertIn('data-a="selfupdate"', behind)
         self.assertIn("Update available", behind)
