@@ -74,8 +74,8 @@ async def add_agent(loop, user: str, value: str) -> str:
 FRESH = "A fresh Connect page and code are on their way to our private chat (the code works once, within 30 minutes)."
 BUSY = "I'm already setting up an agent for you; one moment, then try again."
 TOO_MANY = "That's several codes this hour; the newest one still works. Try again later."
-UPDATE = ("Its Connect page is on its way to our private chat. Copy the line there and run it on your agent's "
-          "computer: that updates it.")
+UPDATE = ("Product Manager is sending you its Connect page in your private chat with it. Run the command it "
+          "shows on the computer where your agent runs, then make your card again.")   # GPT review: "our chat" was vague
 
 
 async def fresh_code(loop, user: str, agent: str | None, update: bool = False) -> str:

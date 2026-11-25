@@ -147,7 +147,7 @@ class Cards:
             title, html = cards.clean_title(result.get("title", "")), cards.clean_html(result.get("html"))
         except cards.CardError as e:                  # shown in the panel, where they asked
             jobs[key] = {"error": str(e) if str(e).startswith("Your agent") else f"Your agent couldn't make it: {e}",
-                         "request": job["request"], "at": time.time()}
+                         "request": job["request"], "at": time.time(), "from": sender}   # Update my agent: that one
             return
         mine = list(self.card_store().get(key, []))
         card = {"id": job["card"] or secrets.token_hex(4), "title": title, "request": job["request"],
@@ -201,6 +201,15 @@ def card_data(loop, room, user: str) -> dict:
                        for a in loop.agents_in(room)]}
 
 
+def update_for(user: str, agent: str | None, job: dict | None) -> str | None:
+    """The agent "Update my agent" is for: the one that answered with old code, still theirs here, on their
+    own computer (GPT review: not whichever agent the panel picks later, nor one the server runs)."""
+    if not job or job.get("error") != OLD_CODE or not agent or job.get("from") != agent:
+        return None
+    found = registry.find(user, local(agent))
+    return local(agent) if found and found["agent"] == registry.REMOTE else None
+
+
 def view(loop, room, user: str) -> dict:
     """The panel's "Your cards": this person's cards here (no HTML: card_html fetches it), and what's going on."""
     key = key_of(room.room_id, user)
@@ -217,7 +226,7 @@ def view(loop, room, user: str) -> dict:
             "changing": job.get("card") if job and "task_id" in job else None,
             "error": job["error"] if job and "error" in job else None,
             "agent_here": agent is not None, "max": MAX_PER_PERSON, "unable": cannot(user, agent),
-            "update": local(agent) if job and job.get("error") == OLD_CODE else None,   # Update my agent
+            "update": update_for(user, agent, job),
             "data": card_data(loop, room, user)}
 
 

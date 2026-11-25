@@ -23,10 +23,13 @@
     $("cardsays").textContent = says || (c.error ? "⚠️ " + c.error : "");   // the latest click's answer first
     $("cardsays").style.color = !says && c.error ? "var(--warn)" : "";
     document.querySelector('[data-card="make"]').disabled = !!c.making;
-    updateAgent = c.update || "";            // old agent code (pm_cards.OLD_CODE): @pm sends its Connect page
-    $("cardupdate").style.display = updateAgent && !says ? "" : "none";
+    if (c.update !== updateAgent) { updateAgent = c.update || ""; updateSent = false; }   // a new notice: a new button
+    $("cardupdate").style.display = updateAgent && !updateSent ? "" : "none";   // other answers leave it (GPT review)
+    $("cardupdate").querySelector("button").disabled = updating;
   }
-  let updateAgent = "";
+  // Old agent code (pm_cards.OLD_CODE): @pm sends that agent's Connect page. One request at a time: a second
+  // click would issue a second code and make the first one dead (GPT review); a failure keeps the button.
+  let updateAgent = "", updating = false, updateSent = false;
   const NO_AGENT = "Your agent makes your cards. Bring it into this room first (My agents).";
   function box(card) {
     const el = document.createElement("section");
@@ -92,7 +95,8 @@
   async function cardAct(action, value, agent) {
     says = "…"; document.getElementById("cardsays").textContent = says;
     const r = await post("/console/action", {room, action, value, agent: agent || ""});
-    says = r.result === "ok" ? (action === "card_remove" ? "Removed." : "") : (r.result || r.error);
+    says = r.result === "ok" ? (r.says || (action === "card_remove" ? "Removed." : "")) : (r.result || r.error);
+    if (r.sent) updateSent = true;
     refresh();
     return r.result === "ok";
   }
@@ -101,7 +105,9 @@
     if (!b) return;
     const cardBox = b.closest("[data-card-id]"), id = cardBox && cardBox.dataset.cardId;
     if (b.dataset.card === "update") {
-      if (updateAgent) cardAct("update", "", updateAgent);
+      if (!updateAgent || updating) return;
+      updating = b.disabled = true;
+      try { await cardAct("update", "", updateAgent); } finally { updating = b.disabled = false; }
     } else if (b.dataset.card === "make") {
       const input = document.getElementById("cardask"), text = input.value.trim();
       if (!text) return void input.focus();
