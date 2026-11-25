@@ -5,8 +5,9 @@ how a card is wrapped before the panel shows it. The agent adapter makes the car
 checks it again and keeps it (pm_cards.py), because what an agent sends back is never trusted.
 
 A card runs in a sandboxed frame (allow-scripts only: no access to the panel, its session, cookies or
-storage, no forms, popups or navigating the page) under its own Content-Security-Policy that blocks every
-network request, so all a card can do is draw the room data the panel hands it.
+storage, no forms, popups or navigating the page) under its own Content-Security-Policy that blocks
+fetches, images, sockets and frames. WebRTC is blocked only where browsers support `webrtc 'block'`
+(ADR 0019: an accepted risk, as the card is the person's own agent's and gets only what they see).
 """
 import json
 import re
@@ -57,7 +58,8 @@ def card_prompt(request: str, now_html: str = "") -> str:
             "- Read data only through hagency.onData. No forms, alerts, popups or storage.\n"
             "- About 700 px wide or narrower, as tall as it needs. Transparent background; readable in light and "
             "dark mode (prefers-color-scheme). Plain, friendly words; say so when there is no data yet.\n"
-            f"- Under {MAX_HTML:,} characters.\n\n"
+            f"- Under {MAX_HTML:,} characters, where each non-English character counts as 6: keep the code short and its "
+            "words few.\n\n"
             f"Answer with exactly: a first line `TITLE: <a short name, at most {MAX_TITLE} characters>`, then the "
             "HTML in one ```html block. Nothing else.")
 
@@ -77,7 +79,7 @@ def clean_html(html: object) -> str:
         raise CardError("the card came back empty")
     size = len(json.dumps(html))      # as it travels in the Matrix event (task and result)
     if size > MAX_HTML:
-        raise CardError(f"the card is too big ({size:,} characters; at most {MAX_HTML:,})")
+        raise CardError(f"the card is too big ({size:,} characters as sent; at most {MAX_HTML:,})")
     return html
 
 
@@ -103,7 +105,7 @@ window.hagency = (function () {
     last = e.data.hagency;
     fns.forEach(function (f) { try { f(last); } catch (x) { /* the card's own bug: the rest still draw */ } });
   });
-  function size() { parent.postMessage({cardHeight: document.documentElement.scrollHeight}, "*"); }
+  function size() { parent.postMessage({cardHeight: document.documentElement.getBoundingClientRect().height}, "*"); }   // shrinks too
   addEventListener("load", function () { size(); if (window.ResizeObserver) new ResizeObserver(size).observe(document.documentElement); });
   return {onData: function (f) { fns.push(f); if (last) f(last); }};
 })();

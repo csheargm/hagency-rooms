@@ -118,6 +118,7 @@ class Fake(pm_cards.Cards):
     def __init__(self):
         self.room = SimpleNamespace(room_id="!r", display_name="Hello", users={ANNA: 0, BETTY: 0, ANNA_AGENT: 0}, invited_users={})
         self.said, self.online = [], True
+        self.client = SimpleNamespace(rooms={"!r": self.room})
         self.room_repos, self.boards = {"!r": "you/hello"}, {"!r": {"text": "**Now**\n- #7 building"}}
         self.state = {"you/hello#7": {"room": "!r", "stage": "building", "builder": ANNA_AGENT, "title": "Add a test"}}
         self.open_issues, self.last_plans = {"!r": [{"number": 9, "title": "Docs"}]}, {}
@@ -260,6 +261,23 @@ class PmFlow(unittest.TestCase):
         self.loop._card_makes = {ANNA: [time.time()] * pm_cards.MAKES_PER_HOUR}
         self.loop.card_jobs().clear()
         self.assertEqual(self.act(ANNA, "card_change", "0\nbigger"), pm_cards.TOO_MANY)
+
+    def test_cards_of_people_who_left_go_and_each_person_has_a_cap(self):
+        """Review: one person could fill the server's cap; cards of rooms people left counted forever."""
+        store = self.loop.card_store()
+        store[pm_cards.key_of("!gone", ANNA)] = [{"id": "g", "title": "t", "request": "r", "html": "h", "made": 0}]
+        store[pm_cards.key_of("!r", "@left:" + S)] = [{"id": "l", "title": "t", "request": "r", "html": "h", "made": 0}]
+        self.assertEqual(self.act(ANNA, "card_make", "first"), "ok")
+        self.assertEqual(list(store), [])
+        self.loop.card_jobs().clear()
+        with mock.patch.object(pm_cards, "MAX_PERSON_ALL", 0):
+            self.assertEqual(self.act(ANNA, "card_make", "x"), pm_cards.PERSON_FULL)
+
+    def test_a_stopped_agent_is_named_before_anything_is_sent(self):
+        with mock.patch.object(pm_cards.registry, "agents_of", lambda u: [{"localpart": "anna-agent", "stopped": True}]):
+            self.assertEqual(self.act(ANNA, "card_make", "chart"), pm_cards.STOPPED)
+            self.assertEqual(self.view()["unable"], pm_cards.STOPPED)          # the panel says so instead of the box
+        self.assertEqual(self.loop.said, [])
 
     def test_a_late_answer_after_giving_up_does_not_count(self):
         """GPT review: only view() expired a job, so a late answer counted or not depending on a poll."""

@@ -14,13 +14,13 @@ like describing a small app and getting it. Changing Hagency's own code per pers
   **Make card**. @pm sends the person's own agent a `card` task (card_task.py): a read-only, fresh turn
   that answers with one HTML document (common/cards.py: the prompt, the data contract, the checks).
 - @pm checks what comes back again (size, title, only the agent it asked, only the task it sent) and keeps
-  it for that person in that room only (data/panel-cards.json; 6 per person per room, 1000 on the server,
-  10 makes an hour, 30 while HAGENCY_TEST_LIMITS=1). Each card has **Change** (the agent gets the card as it
+  it for that person in that room only (data/panel-cards.json; 6 per person per room, 30 per person, 1000 on
+  the server, 10 makes an hour, 30 while HAGENCY_TEST_LIMITS=1; cards of people who left a room are pruned). Each card has **Change** (the agent gets the card as it
   is plus the request) and **Remove** (two clicks).
 - The panel shows a card in an `<iframe sandbox="allow-scripts" srcdoc>`: an opaque origin, so no access to
   the panel, its session, cookies or storage; no forms, popups or navigating the page. The document starts
-  with its own `Content-Security-Policy: default-src 'none'` (no network at all), and the panel's own policy
-  applies too. A card gets the room's data by `postMessage` (hagency.onData): the board, issues in work and
+  with its own `Content-Security-Policy: default-src 'none'; webrtc 'block'`, and the panel's own policy
+  applies too. A frame that loads a second document (it navigated) gets no more data and is blanked. A card gets the room's data by `postMessage` (hagency.onData): the board, issues in work and
   queued, the plan, the agents, the mode. All of it is what the panel already shows a member.
 - Frames sit outside what the panel redraws every 3 s, and are reloaded only when their card changed.
 
@@ -35,3 +35,8 @@ like describing a small app and getting it. Changing Hagency's own code per pers
 - The task and its result pass through the room's chat like a plan does, so members see one line each
   ("…please make a Hagency panel card for anna", "panel card ready: …"); the card's HTML is in those
   events' content, so a member reading the raw event could see it (it holds no data, only the drawing).
+- Accepted risks (reviews, 2026-11-25): browsers without `webrtc 'block'` (Firefox) let a card reach a
+  STUN server, and DNS prefetch isn't covered everywhere. A card is the person's own agent's work, made
+  for them, and gets only what they already see, so a leak needs their own agent to turn against them.
+  A card can postMessage to Element's window; Element answers the panel's frame, never the card.
+- Cards are views: they are made in any mode, Off included.

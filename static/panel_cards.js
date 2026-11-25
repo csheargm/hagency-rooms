@@ -1,24 +1,29 @@
 // "Your cards" (server/pm_cards.py, ADR 0019): views of this room that your own agent makes for you.
-// Each card runs in a sandboxed frame (scripts only: no panel session, storage, forms, popups or network)
+// Each card runs in a sandboxed frame (scripts only: no panel session, storage, forms or popups; network blocked
+// by its policy, WebRTC only where browsers support blocking it: ADR 0019)
 // and gets the room's data by message. Frames are kept across the panel's refreshes: one is redrawn only
 // when its card changed, so a card never flickers.
 (function () {
   const H_MIN = 60, H_MAX = 900, H_START = 140, ARM_MS = 4000;
   const frames = {};                         // card id → {v, box, frame}
-  let ctlSig = "";
-  const esc = t => String(t).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
   const root = () => document.getElementById("cards");
+  // The controls are drawn once and updated in place: what someone is typing is never wiped (review).
+  const SKELETON = `<section class="card"><h2>Your cards</h2><div class="field" id="cardrow"><input id="cardask"
+    maxlength="300" placeholder="e.g. who built what this week, as a chart"><button class="primary" data-card="make">Make card</button></div>
+    <div class="hint" id="cardhint"></div><div class="hint" id="cardbusy"></div><div class="hint" id="cardsays"></div></section>`;
+  let says = "";                             // the last answer to a click here, shown in this card (not at the top)
   function controls(c) {
-    const busy = c.making ? `<div class="hint">⏳ Your agent is ${c.changing ? "changing a card" : "making"}: “${esc(c.making)}”…</div>` : "";
-    const err = c.error ? `<div class="hint" style="color:var(--warn)">⚠️ ${esc(c.error)}</div>` : "";
-    const full = c.items.length >= c.max;
-    const ask = !c.agent_here ? `<div class="hint">Your agent makes your cards. Bring it into this room first (My agents).</div>`
-      : full ? `<div class="hint">You have ${c.max} cards here. Remove one to make another.</div>`
-      : `<div class="field"><input id="cardask" maxlength="300" placeholder="e.g. who built what this week, as a chart">
-         <button class="primary" data-card="make" ${c.making ? "disabled" : ""}>Make card</button></div>
-         ${c.items.length ? "" : `<div class="hint">Describe a view of this project. Your agent builds it; only you see it here.</div>`}`;
-    return `<section class="card"><h2>Your cards</h2>${ask}${busy}${err}</section>`;
+    const $ = id => document.getElementById(id), full = c.items.length >= c.max, blocked = c.unable || (!c.agent_here && NO_AGENT);
+    $("cardrow").style.display = blocked || full ? "none" : "";
+    $("cardhint").textContent = blocked || (full ? `You have ${c.max} cards here. Remove one to make another.`
+      : c.items.length ? "" : "Describe a view of this project. Your agent builds it; only you see it here.");
+    $("cardbusy").textContent = c.making ? (c.changing ? "⏳ Your agent is changing your card. This takes a minute or two."
+      : `⏳ Your agent is making “${c.making}”. This takes a minute or two.`) : "";
+    $("cardsays").textContent = c.error ? "⚠️ " + c.error : says;
+    $("cardsays").style.color = c.error ? "var(--warn)" : "";
+    document.querySelector('[data-card="make"]').disabled = !!c.making;
   }
+  const NO_AGENT = "Your agent makes your cards. Bring it into this room first (My agents).";
   function box(card) {
     const el = document.createElement("section");
     el.className = "card"; el.dataset.cardId = card.id;
@@ -51,12 +56,10 @@
   window.showCards = function (s) {
     const el = root(), c = s && s.cards;
     if (!el) return;
-    if (!c) { el.innerHTML = ""; for (const k in frames) delete frames[k]; ctlSig = ""; return; }
+    if (!c) { el.innerHTML = ""; for (const k in frames) delete frames[k]; says = ""; return; }
     data = Object.assign({}, c.data, {mode: s.mode});
-    if (!el.querySelector("#cardsctl")) el.innerHTML = '<div id="cardsctl"></div><div id="cardlist" class="stack"></div>';
-    const typing = el.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
-    const sig = JSON.stringify([c.making, c.changing, c.error, c.agent_here, c.items.length, c.max]);
-    if (sig !== ctlSig && !typing) { el.querySelector("#cardsctl").innerHTML = controls(c); ctlSig = sig; }
+    if (!el.querySelector("#cardsctl")) el.innerHTML = `<div id="cardsctl">${SKELETON}</div><div id="cardlist" class="stack"></div>`;
+    controls(c);
     const list = el.querySelector("#cardlist"), seen = new Set();
     for (const card of c.items) {
       seen.add(card.id);
@@ -70,7 +73,7 @@
       entry.box.querySelector("h2").textContent = card.title;
       entry.box.querySelector("h2").title = "You asked: " + card.request;
       entry.frame.title = card.title;
-      entry.box.querySelector('[data-card="change"]').disabled = !!c.making;
+      for (const b of entry.box.querySelectorAll('[data-card="change"], [data-card="change-send"]')) b.disabled = !!c.making;
       entry.want = card.v;
       if (entry.loaded !== card.v && entry.loading !== card.v) load(card.id, entry, card.v);
       else send(entry);
@@ -83,11 +86,9 @@
     if (h) entry.frame.style.height = Math.max(H_MIN, Math.min(H_MAX, Math.ceil(h))) + "px";
   });
   async function cardAct(action, value) {
-    const msg = document.getElementById("msg");
-    msg.textContent = "…";
+    says = "…"; document.getElementById("cardsays").textContent = says;
     const r = await post("/console/action", {room, action, value, agent: ""});
-    msg.textContent = r.result === "ok" ? (action === "card_remove" ? "Removed." : "Asked your agent. It takes a minute or two.") : (r.result || r.error);
-    ctlSig = "";
+    says = r.result === "ok" ? (action === "card_remove" ? "Removed." : "") : (r.result || r.error);
     refresh();
     return r.result === "ok";
   }
@@ -109,7 +110,7 @@
       if (await cardAct("card_change", id + "\n" + text)) { input.value = ""; cardBox.querySelector("[data-change]").style.display = "none"; }
     } else if (b.dataset.card === "remove") {
       if (b.dataset.armed !== "1") {         // two clicks: a card is gone for good
-        b.dataset.armed = "1"; b.textContent = "Sure? Remove";
+        b.dataset.armed = "1"; b.textContent = "Click again to remove";
         setTimeout(() => { b.dataset.armed = ""; b.textContent = "Remove"; }, ARM_MS);
         return;
       }
@@ -117,7 +118,7 @@
     }
   });
   document.addEventListener("keydown", e => {   // Enter in a card's box clicks its button
-    if (e.key !== "Enter" || !e.target.closest || !e.target.closest("#cards") || e.target.tagName !== "INPUT") return;
+    if (e.key !== "Enter" || e.isComposing || e.keyCode === 229 || !e.target.closest || !e.target.closest("#cards") || e.target.tagName !== "INPUT") return;
     const btn = e.target.closest(".field").querySelector("button");
     if (btn && !btn.disabled) btn.click();
   });

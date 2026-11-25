@@ -22,7 +22,8 @@ from server.pm_paused import num
 ACTIONS = ("card_make", "card_change", "card_remove", "card_html")
 CARDS_FILE = ROOT / "data" / "panel-cards.json"
 MAX_PER_PERSON = 6                # in one room
-MAX_ALL = 1000                    # on this server (at most ~40 MB)
+MAX_PERSON_ALL = 30               # in all their rooms
+MAX_ALL = 1000                    # on this server (at most ~40 MB) TODO(R4): one file per person if cards grow
 MAKES_PER_HOUR = test_limits.pick(10, 30)
 WAIT_S = 15 * 60                  # an agent's turn times out after 10 minutes (agents.TURN_TIMEOUT_S)
 ERROR_S = 10 * 60                 # how long a failure stays shown
@@ -39,6 +40,16 @@ OLD_CODE = "Your agent runs older code. Run its connect line on its computer onc
 NO_ANSWER = "Your agent didn't answer. Try again."
 NOT_SENT = "Couldn't reach your agent just now. Try again."
 HERMES = "Hermes agents can't make cards yet."
+STOPPED = "Your agent is stopped. Start it in My agents, then try again."
+PERSON_FULL = f"You have {MAX_PERSON_ALL} cards across your rooms. Remove one first."
+
+
+def cannot(user: str, agent: str | None) -> str | None:
+    """Why this agent of theirs can't take a card task now (Hermes has none; a stopped one waits), or None."""
+    mine = next((a for a in registry.agents_of(user) if a["localpart"] == local(agent)), None) if agent else None
+    if mine and mine.get("agent_kind") == "hermes":
+        return HERMES                                 # its hagency tools have no card task (mcp_core.py)
+    return STOPPED if mine and mine.get("stopped") else None
 
 
 def key_of(room_id: str, user: str) -> str:
@@ -81,16 +92,20 @@ class Cards:
             return GONE
         if not card_id and len(mine) >= MAX_PER_PERSON:
             return FULL
-        if not card_id and sum(len(v) for v in self.card_store().values()) >= MAX_ALL:
-            return SERVER_FULL
+        if not card_id:
+            self.prune_cards()
+            if sum(len(v) for k, v in self.card_store().items() if k.endswith("\n" + user)) >= MAX_PERSON_ALL:
+                return PERSON_FULL
+            if sum(len(v) for v in self.card_store().values()) >= MAX_ALL:
+                return SERVER_FULL
         job = self.card_jobs().get(key)
         if job and "task_id" in job and time.time() - job["at"] < WAIT_S:
             return BUSY
         agent = self.own_agent(room, user)
         if agent is None:
             return NO_AGENT
-        if any(a["localpart"] == local(agent) and a.get("agent_kind") == "hermes" for a in registry.agents_of(user)):
-            return HERMES                             # its hagency tools have no card task (mcp_core.py)
+        if unable := cannot(user, agent):
+            return unable
         if self.agent_online(local(agent)) is False:
             return OFFLINE
         made = [t for t in self.__dict__.setdefault("_card_makes", {}).get(user, []) if time.time() - t < HOUR_S]
@@ -143,6 +158,14 @@ class Cards:
             mine.append(card)
         self.card_store()[key] = mine[-MAX_PER_PERSON:]
 
+    def prune_cards(self) -> None:
+        """Cards of people no longer in a room (or of rooms I left) go: they count against the caps."""
+        rooms = self.client.rooms
+        for key in list(self.card_store()):
+            room_id, _, user = key.partition("\n")
+            if room_id not in rooms or user not in rooms[room_id].users:
+                self.card_store().pop(key, None)
+
     def remove_card(self, room_id: str, user: str, card_id: str) -> str:
         key = key_of(room_id, user)
         mine = self.card_store().get(key, [])
@@ -185,6 +208,7 @@ def view(loop, room, user: str) -> dict:
             "changing": job.get("card") if job and "task_id" in job else None,
             "error": job["error"] if job and "error" in job else None,
             "agent_here": loop.own_agent(room, user) is not None, "max": MAX_PER_PERSON,
+            "unable": cannot(user, loop.own_agent(room, user)),
             "data": card_data(loop, room, user)}
 
 
