@@ -22,7 +22,7 @@ class FreshCode(unittest.TestCase):
     def setUp(self):
         self.loop = SimpleNamespace(ever_connected=lambda lp: lp in self.connected,
                                     private_room=mock.AsyncMock(return_value="!dm"),
-                                    choose=mock.AsyncMock(), add_agent=mock.AsyncMock())
+                                    choose=mock.AsyncMock(), add_agent=mock.AsyncMock(), send_code=mock.AsyncMock())
         self.connected = set()
         self.agents = {"newbie1-agent": FIRST, "newbie1-pi-agent": PI}
         patches = [mock.patch.object(registry, "find", lambda person, agent: self.agents.get(agent) if agent else FIRST),
@@ -31,8 +31,8 @@ class FreshCode(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def press(self, agent, user=ME):
-        return asyncio.run(console_agents.fresh_code(self.loop, user, agent))
+    def press(self, agent, user=ME, update=False):
+        return asyncio.run(console_agents.fresh_code(self.loop, user, agent, update=update))
 
     def test_the_first_agent_gets_the_same_connect_page_as_the_plug_button(self):
         self.assertEqual(self.press("newbie1-agent"), console_agents.FRESH)
@@ -57,6 +57,35 @@ class FreshCode(unittest.TestCase):
         self.connected.add("newbie1-pi-agent")
         self.assertIn("connected before", self.press("newbie1-pi-agent"))
         self.loop.add_agent.assert_not_awaited()
+
+    def test_update_my_agent_sends_a_connected_agents_connect_page(self):
+        """Your cards' "Update my agent" (owner: the old-code notice had no button): as 🔁 does."""
+        self.connected |= {"newbie1-agent", "newbie1-pi-agent"}
+        self.assertEqual(self.press("newbie1-pi-agent", update=True), console_agents.UPDATE)
+        self.loop.send_code.assert_awaited_once_with(ME, "newbie1-pi-agent")
+        self.assertEqual(self.press("newbie1-agent", update=True), console_agents.UPDATE)
+        self.loop.send_code.assert_awaited_with(ME, None)               # the first one: by no name, as 🔁
+        self.loop.add_agent.assert_not_awaited()
+        self.loop.choose.assert_not_awaited()
+
+    def test_update_keeps_the_codes_an_hour_and_owner_checks(self):
+        self.connected.add("newbie1-pi-agent")
+        self.assertIn("isn't one of your agents", self.press("newbie1-pi-agent", user="@other:matrix.example.org", update=True))
+        for _ in range(5):
+            self.press("newbie1-pi-agent", update=True)
+        self.assertEqual(self.press("newbie1-pi-agent", update=True), console_agents.TOO_MANY)
+        self.assertEqual(self.loop.send_code.await_count, 5)
+
+    def test_update_says_so_when_pm_cant_reach_them(self):
+        self.connected.add("newbie1-pi-agent")
+        self.loop.send_code.side_effect = RuntimeError("no private chat")
+        self.assertIn("couldn't open a private chat", self.press("newbie1-pi-agent", update=True))
+
+    def test_the_panel_dispatches_update(self):
+        from pathlib import Path
+        src = (Path(__file__).parent.parent / "server" / "console.py").read_text()
+        self.assertIn('if action == "update":', src)
+        self.assertIn("fresh_code(loop, user, agent or None, update=True)", src)
 
     def test_someone_elses_agent_is_refused(self):
         self.assertIn("isn't one of your agents", self.press("newbie1-pi-agent", user="@other:matrix.example.org"))

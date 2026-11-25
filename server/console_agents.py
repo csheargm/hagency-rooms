@@ -74,16 +74,19 @@ async def add_agent(loop, user: str, value: str) -> str:
 FRESH = "A fresh Connect page and code are on their way to our private chat (the code works once, within 30 minutes)."
 BUSY = "I'm already setting up an agent for you; one moment, then try again."
 TOO_MANY = "That's several codes this hour; the newest one still works. Try again later."
+UPDATE = ("Its Connect page is on its way to our private chat. Copy the line there and run it on your agent's "
+          "computer: that updates it.")
 
 
-async def fresh_code(loop, user: str, agent: str | None) -> str:
+async def fresh_code(loop, user: str, agent: str | None, update: bool = False) -> str:
     """The panel's "Get a fresh code": a new Connect page and one-time code for one of their agents that
-    has never connected, as 🔁 does (pm_presence.py). Screen test: the panel told people to type
+    has never connected, as 🔁 does (pm_presence.py); with `update`, also for one that has (its code is old). Screen test: the panel told people to type
     "resend me the code", or "add another agent called pi" (which reads like adding a new one)."""
     found = registry.find(user, agent)
     if found is None or not registry.owns(user, found["localpart"]) or found["agent"] != registry.REMOTE:
         return "that isn't one of your agents on your own computer"
-    if loop.ever_connected(found["localpart"]):
+    connected = loop.ever_connected(found["localpart"])
+    if connected and not update:
         return "it has connected before: run its connect line again on its computer"
     if user in loop.__dict__.get("_provisioning", ()):   # GPT review: a second click mid-setup sent nothing
         return BUSY
@@ -95,6 +98,12 @@ async def fresh_code(loop, user: str, agent: str | None) -> str:
     dm = await loop.private_room(user)
     if dm is None:
         return "I couldn't open a private chat with you; please try again"
+    if connected:   # "Update my agent" (Your cards, old code): its Connect page again, as 🔁 does (pm_presence.py)
+        try:
+            await loop.send_code(user, None if found["first"] else found["localpart"])
+        except RuntimeError:
+            return "I couldn't open a private chat with just you; please try again"   # said here: the click is theirs
+        return UPDATE
     if found["first"]:
         await loop.choose(dm, user, BRING)    # pm_first.bring_own: (re)uses their first agent, then its code
     else:   # add_agent finishes one whose setup failed halfway (GPT review: a bare code for it never redeemed),

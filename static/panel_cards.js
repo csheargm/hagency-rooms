@@ -10,7 +10,8 @@
   // The controls are drawn once and updated in place: what someone is typing is never wiped (review).
   const SKELETON = `<section class="card"><h2>Your cards</h2><div class="field" id="cardrow"><input id="cardask"
     maxlength="300" placeholder="e.g. who built what this week, as a chart"><button class="primary" data-card="make">Make card</button></div>
-    <div class="hint" id="cardhint"></div><div class="hint" id="cardbusy"></div><div class="hint" id="cardsays"></div></section>`;
+    <div class="hint" id="cardhint"></div><div class="hint" id="cardbusy"></div><div class="hint" id="cardsays"></div>
+    <div id="cardupdate" style="display:none;margin-top:8px"><button class="primary" data-card="update">Update my agent</button></div></section>`;
   let says = "";                             // the last answer to a click here, shown in this card (not at the top)
   function controls(c) {
     const $ = id => document.getElementById(id), full = c.items.length >= c.max, blocked = c.unable || (!c.agent_here && NO_AGENT);
@@ -22,7 +23,10 @@
     $("cardsays").textContent = says || (c.error ? "⚠️ " + c.error : "");   // the latest click's answer first
     $("cardsays").style.color = !says && c.error ? "var(--warn)" : "";
     document.querySelector('[data-card="make"]').disabled = !!c.making;
+    updateAgent = c.update || "";            // old agent code (pm_cards.OLD_CODE): @pm sends its Connect page
+    $("cardupdate").style.display = updateAgent && !says ? "" : "none";
   }
+  let updateAgent = "";
   const NO_AGENT = "Your agent makes your cards. Bring it into this room first (My agents).";
   function box(card) {
     const el = document.createElement("section");
@@ -85,9 +89,9 @@
     const h = entry && ev.data && Number(ev.data.cardHeight);
     if (h) entry.frame.style.height = Math.max(H_MIN, Math.min(H_MAX, Math.ceil(h))) + "px";
   });
-  async function cardAct(action, value) {
+  async function cardAct(action, value, agent) {
     says = "…"; document.getElementById("cardsays").textContent = says;
-    const r = await post("/console/action", {room, action, value, agent: ""});
+    const r = await post("/console/action", {room, action, value, agent: agent || ""});
     says = r.result === "ok" ? (action === "card_remove" ? "Removed." : "") : (r.result || r.error);
     refresh();
     return r.result === "ok";
@@ -96,7 +100,9 @@
     const b = e.target.closest && e.target.closest("button[data-card]");
     if (!b) return;
     const cardBox = b.closest("[data-card-id]"), id = cardBox && cardBox.dataset.cardId;
-    if (b.dataset.card === "make") {
+    if (b.dataset.card === "update") {
+      if (updateAgent) cardAct("update", "", updateAgent);
+    } else if (b.dataset.card === "make") {
       const input = document.getElementById("cardask"), text = input.value.trim();
       if (!text) return void input.focus();
       if (await cardAct("card_make", text)) input.value = "";

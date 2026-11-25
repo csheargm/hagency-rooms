@@ -188,6 +188,8 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         return await add_agent(loop, user, value)
     if action == "code":                  # a never-connected agent's fresh Connect page (console_agents)
         return await fresh_code(loop, user, agent or None)
+    if action == "update":                # Your cards' "Update my agent": a connected agent's Connect page again
+        return await fresh_code(loop, user, agent or None, update=True)
     if action == "github":                # pm_github.py: Connect / Disconnect GitHub, for themselves only
         return await loop.github_action(user, value)
     if action in console_repo.ACTIONS:    # the room's repo: choose, remove, check readiness

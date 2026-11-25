@@ -36,7 +36,7 @@ SERVER_FULL = "This server holds as many cards as it can just now. Remove one of
 TOO_MANY = "That's a lot of cards for one hour. Try again later."
 BAD_REQUEST = f"Describe the card in a sentence (at most {cards.MAX_REQUEST} characters)."
 GONE = "That card isn't there any more."
-OLD_CODE = "Your agent runs older code. Run its connect line on its computer once more, then try again."
+OLD_CODE = "Your agent runs older code and needs an update first."   # the panel adds Update my agent
 NO_ANSWER = "Your agent didn't answer. Try again."
 NOT_SENT = "Couldn't reach your agent just now. Try again."
 HERMES = "Hermes agents can't make cards yet."
@@ -212,11 +212,12 @@ def view(loop, room, user: str) -> dict:
             loop.card_jobs()[key] = job
     items = [{"id": c["id"], "title": c["title"], "request": c["request"], "v": hashlib.sha256(f"{c['made']}{c['html']}".encode()).hexdigest()[:12]}
              for c in loop.card_store().get(key, [])]
+    agent = loop.own_agent(room, user)
     return {"items": items, "making": job["request"] if job and "task_id" in job else None,
             "changing": job.get("card") if job and "task_id" in job else None,
             "error": job["error"] if job and "error" in job else None,
-            "agent_here": loop.own_agent(room, user) is not None, "max": MAX_PER_PERSON,
-            "unable": cannot(user, loop.own_agent(room, user)),
+            "agent_here": agent is not None, "max": MAX_PER_PERSON, "unable": cannot(user, agent),
+            "update": local(agent) if job and job.get("error") == OLD_CODE else None,   # Update my agent
             "data": card_data(loop, room, user)}
 
 
