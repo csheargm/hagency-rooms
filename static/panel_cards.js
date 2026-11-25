@@ -16,7 +16,7 @@
       : full ? `<div class="hint">You have ${c.max} cards here. Remove one to make another.</div>`
       : `<div class="field"><input id="cardask" maxlength="300" placeholder="e.g. who built what this week, as a chart">
          <button class="primary" data-card="make" ${c.making ? "disabled" : ""}>Make card</button></div>
-         ${c.items.length ? "" : `<div class="hint">Describe a view of this project. Your agent builds it here, just for you.</div>`}`;
+         ${c.items.length ? "" : `<div class="hint">Describe a view of this project. Your agent builds it; only you see it here.</div>`}`;
     return `<section class="card"><h2>Your cards</h2>${ask}${busy}${err}</section>`;
   }
   function box(card) {
@@ -24,17 +24,30 @@
     el.className = "card"; el.dataset.cardId = card.id;
     el.innerHTML = `<div class="set" style="padding-top:0"><h2 style="margin:0"></h2><span>
       <button data-card="change">Change</button> <button data-card="remove">Remove</button></span></div>
-      <div class="field" data-change hidden><input maxlength="300" placeholder="What should change?">
+      <div class="field" data-change style="display:none"><input maxlength="300" placeholder="What should change?">
       <button class="primary" data-card="change-send">Change it</button></div>
+      <div class="hint" data-stopped style="display:none">This card tried to open another page, so it was stopped. Change or remove it.</div>
       <iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="" style="width:100%;border:0;height:${H_START}px;display:block"></iframe>`;
     return el;
   }
-  async function load(id, entry) {           // the card's document (pm_cards.act card_html), then its data
+  async function load(id, entry, v) {        // the card's document (pm_cards.act card_html); a failure retries next refresh
+    entry.loading = v;
     const r = await post("/console/action", {room, action: "card_html", value: id, agent: ""});
-    if (r.doc && frames[id] === entry) entry.frame.srcdoc = r.doc;
+    if (entry.loading === v) entry.loading = "";
+    if (!r.doc || frames[id] !== entry || entry.want !== v) return;
+    entry.loads = 0; entry.loaded = v; entry.frame.srcdoc = r.doc;
+    entry.frame.style.display = "block"; entry.box.querySelector("[data-stopped]").style.display = "none";
   }
   let data = null;
-  function send(entry) { if (data && entry.frame.contentWindow) entry.frame.contentWindow.postMessage({hagency: data}, "*"); }
+  function send(entry) {                     // only to the card's own document (a frame that navigated gets nothing)
+    if (data && entry.loads === 1 && entry.frame.contentWindow) entry.frame.contentWindow.postMessage({hagency: data}, "*");
+  }
+  function loaded(entry) {                   // one load per srcdoc: a second means the card left its document
+    if (++entry.loads === 1) return send(entry);
+    if (entry.frame.style.display === "none") return;
+    entry.frame.style.display = "none"; entry.frame.srcdoc = "";   // blank, until the card is changed
+    entry.box.querySelector("[data-stopped]").style.display = "";
+  }
   window.showCards = function (s) {
     const el = root(), c = s && s.cards;
     if (!el) return;
@@ -50,15 +63,16 @@
       let entry = frames[card.id];
       if (!entry) {
         const b = box(card);
-        entry = frames[card.id] = {v: "", box: b, frame: b.querySelector("iframe")};
-        entry.frame.addEventListener("load", () => send(entry));
+        entry = frames[card.id] = {want: "", loaded: "", loading: "", loads: 0, box: b, frame: b.querySelector("iframe")};
+        entry.frame.addEventListener("load", () => loaded(entry));
       }
       if (entry.box.parentNode !== list) list.appendChild(entry.box);   // once: moving a frame would reload it
       entry.box.querySelector("h2").textContent = card.title;
       entry.box.querySelector("h2").title = "You asked: " + card.request;
       entry.frame.title = card.title;
       entry.box.querySelector('[data-card="change"]').disabled = !!c.making;
-      if (entry.v !== card.v) { entry.v = card.v; load(card.id, entry); }
+      entry.want = card.v;
+      if (entry.loaded !== card.v && entry.loading !== card.v) load(card.id, entry, card.v);
       else send(entry);
     }
     for (const id of Object.keys(frames)) if (!seen.has(id)) { frames[id].box.remove(); delete frames[id]; }
@@ -86,13 +100,13 @@
       if (!text) return void input.focus();
       if (await cardAct("card_make", text)) input.value = "";
     } else if (b.dataset.card === "change") {
-      const f = cardBox.querySelector("[data-change]");
-      f.hidden = !f.hidden;
-      if (!f.hidden) f.querySelector("input").focus();
+      const f = cardBox.querySelector("[data-change]"), open = f.style.display === "none";
+      f.style.display = open ? "" : "none";
+      if (open) f.querySelector("input").focus();
     } else if (b.dataset.card === "change-send") {
       const input = cardBox.querySelector("[data-change] input"), text = input.value.trim();
       if (!text) return void input.focus();
-      if (await cardAct("card_change", id + "\n" + text)) { input.value = ""; cardBox.querySelector("[data-change]").hidden = true; }
+      if (await cardAct("card_change", id + "\n" + text)) { input.value = ""; cardBox.querySelector("[data-change]").style.display = "none"; }
     } else if (b.dataset.card === "remove") {
       if (b.dataset.armed !== "1") {         // two clicks: a card is gone for good
         b.dataset.armed = "1"; b.textContent = "Sure? Remove";

@@ -8,10 +8,11 @@ A card runs in a sandboxed frame (allow-scripts only: no access to the panel, it
 storage, no forms, popups or navigating the page) under its own Content-Security-Policy that blocks every
 network request, so all a card can do is draw the room data the panel hands it.
 """
+import json
 import re
 import unicodedata
 
-MAX_HTML = 40_000                 # characters; Matrix events top out at 64 KB
+MAX_HTML = 40_000                 # characters once JSON-escaped (\uXXXX for non-ASCII): Matrix events top out at 64 KB
 MAX_TITLE = 40
 MAX_REQUEST = 300
 TITLE_RE = re.compile(r"^\s*TITLE:\s*(.+?)\s*$", re.M)
@@ -27,7 +28,7 @@ DATA_DOC = """hagency.onData(function (d) { ... }) calls your function now and a
             (stage: building, reviewing, fixing, merging, done, stopped, ...; builder, reviewer: agent
             names; pr: a number or null; ended: Unix seconds when it finished, or null)
   d.queued  [{issue, title}]: issues waiting their turn
-  d.plan    [title, ...]: the plan waiting for approval
+  d.plan    [title, ...]: the plan drafted last, until its issues are opened
   d.agents  [{name, owner, online}]: the agents in the room (online: true, false or null = unknown)"""
 
 
@@ -74,8 +75,9 @@ def clean_html(html: object) -> str:
     html = DOCTYPE_RE.sub("", html, count=1).strip()
     if not html:
         raise CardError("the card came back empty")
-    if len(html) > MAX_HTML:
-        raise CardError(f"the card is too big ({len(html):,} characters; at most {MAX_HTML:,})")
+    size = len(json.dumps(html))      # as it travels in the Matrix event (task and result)
+    if size > MAX_HTML:
+        raise CardError(f"the card is too big ({size:,} characters; at most {MAX_HTML:,})")
     return html
 
 
@@ -92,7 +94,7 @@ def parse_reply(text: str) -> tuple[str, str]:
 # Put before every card: its own policy (no network at all), then hagency.onData and the frame's height
 # for the panel. The panel's own policy applies too (a srcdoc frame inherits it).
 FRAME_HEAD = """<!doctype html><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; webrtc 'block'">
 <script>
 window.hagency = (function () {
   var fns = [], last = null;

@@ -275,7 +275,8 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
 
 def step_key(task: dict) -> tuple:
     """A loop step's identity across resends (each resend has a new task_id)."""
-    return (str(task.get("repo")), task.get("kind"), str(task.get("issue")), str(task.get("pr")))
+    return (str(task.get("repo")), task.get("kind"), str(task.get("issue")), str(task.get("pr")),
+            task.get("task_id") if task.get("kind") == "card" else None)   # each card ask is its own (pm_cards.py)
 
 
 def main() -> None:

@@ -12,6 +12,7 @@ import time
 import uuid
 
 from common import cards
+from common import registry
 from common import test_limits
 from common.bridge_config import ROOT
 from common.saved_dict import SavedDict
@@ -36,6 +37,8 @@ BAD_REQUEST = f"Describe the card in a sentence (at most {cards.MAX_REQUEST} cha
 GONE = "That card isn't there any more."
 OLD_CODE = "Your agent runs older code. Run its connect line on its computer once more, then try again."
 NO_ANSWER = "Your agent didn't answer. Try again."
+NOT_SENT = "Couldn't reach your agent just now. Try again."
+HERMES = "Hermes agents can't make cards yet."
 
 
 def key_of(room_id: str, user: str) -> str:
@@ -86,6 +89,8 @@ class Cards:
         agent = self.own_agent(room, user)
         if agent is None:
             return NO_AGENT
+        if any(a["localpart"] == local(agent) and a.get("agent_kind") == "hermes" for a in registry.agents_of(user)):
+            return HERMES                             # its hagency tools have no card task (mcp_core.py)
         if self.agent_online(local(agent)) is False:
             return OFFLINE
         made = [t for t in self.__dict__.setdefault("_card_makes", {}).get(user, []) if time.time() - t < HOUR_S]
@@ -95,9 +100,15 @@ class Cards:
         task_id = uuid.uuid4().hex
         self.card_jobs()[key] = {"task_id": task_id, "agent": agent, "card": card_id, "request": request, "at": time.time()}
         what = "change a Hagency panel card" if old else "make a Hagency panel card"
-        await self.say(rid, f"{agent}, please {what} for {local(user)}", agent,
-                       {"kind": "card", "task_id": task_id, "repo": self.room_repos.get(rid) or "",
-                        "request": request, "html": old["html"] if old else "", "card": card_id})
+        try:
+            await self.say(rid, f"{agent}, please {what} for {local(user)}", agent,
+                           {"kind": "card", "task_id": task_id, "repo": self.room_repos.get(rid) or "",
+                            "request": request, "html": old["html"] if old else "", "card": card_id})
+        except RuntimeError:                          # loop.SendError: Matrix refused it; nothing is waiting
+            if self.card_jobs().get(key, {}).get("task_id") == task_id:
+                self.card_jobs().pop(key)
+            self._card_makes[user] = made             # not counted against them
+            return NOT_SENT
         return "ok"
 
     async def on_card_result(self, room, sender: str, result: dict) -> None:
@@ -107,6 +118,8 @@ class Cards:
         if key is None:
             return                                    # stale, or not the agent we asked
         job = jobs.pop(key)
+        if time.time() - job["at"] > WAIT_S:          # given up on already (view): a late answer doesn't count
+            return
         try:
             if result.get("error"):
                 raise cards.CardError(why(result["error"]))
@@ -123,6 +136,9 @@ class Cards:
             mine[at] = card
         elif job["card"]:
             return                                    # removed while it was being changed: stays removed
+        elif sum(len(v) for v in self.card_store().values()) >= MAX_ALL:   # others filled it meanwhile
+            jobs[key] = {"error": SERVER_FULL, "request": job["request"], "at": time.time()}
+            return
         else:
             mine.append(card)
         self.card_store()[key] = mine[-MAX_PER_PERSON:]

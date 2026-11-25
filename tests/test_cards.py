@@ -36,6 +36,11 @@ class Contract(unittest.TestCase):
             with self.assertRaises(cards.CardError):
                 cards.parse_reply(text)
 
+    def test_size_counts_as_sent_so_any_language_fits_a_matrix_event(self):
+        with self.assertRaises(cards.CardError):
+            cards.clean_html("<p>" + "构建" * (cards.MAX_HTML // 10) + "</p>")   # 8k characters, 48k escaped
+        self.assertTrue(cards.clean_html("<p>" + "构建" * 100 + "</p>"))
+
     def test_titles_are_short_plain_text(self):
         self.assertEqual(cards.clean_title("  **A‮ very  long title that goes on and on and on and on**"),
                          "A very long title that goes on and on an")
@@ -256,6 +261,41 @@ class PmFlow(unittest.TestCase):
         self.loop.card_jobs().clear()
         self.assertEqual(self.act(ANNA, "card_change", "0\nbigger"), pm_cards.TOO_MANY)
 
+    def test_a_late_answer_after_giving_up_does_not_count(self):
+        """GPT review: only view() expired a job, so a late answer counted or not depending on a poll."""
+        self.act(ANNA, "card_make", "first")
+        self.loop.card_jobs()[pm_cards.key_of("!r", ANNA)]["at"] -= pm_cards.WAIT_S + 1
+        self.answer(title="Late", html=CARD)
+        self.assertEqual(self.view()["items"], [])
+
+    def test_a_send_matrix_refused_leaves_nothing_waiting(self):
+        """GPT review: a failed dispatch left the job busy for 15 minutes and used up an attempt."""
+        async def refused(*a, **k):
+            raise RuntimeError("could not post")
+        self.loop.say = refused
+        self.assertEqual(self.act(ANNA, "card_make", "first"), pm_cards.NOT_SENT)
+        self.assertIsNone(self.view()["making"])
+        self.assertEqual(self.loop._card_makes[ANNA], [])
+
+    def test_hermes_agents_are_told_plainly(self):
+        """GPT review: Hermes' tools have no card task; it would answer 'unsupported' and could hide older tasks."""
+        with mock.patch.object(pm_cards.registry, "agents_of", lambda u: [{"localpart": "anna-agent", "agent_kind": "hermes"}]):
+            self.assertEqual(self.act(ANNA, "card_make", "chart"), pm_cards.HERMES)
+        self.assertEqual(self.loop.said, [])
+
+    def test_the_server_cap_is_checked_again_when_a_card_arrives(self):
+        self.act(ANNA, "card_make", "first")
+        with mock.patch.object(pm_cards, "MAX_ALL", 0):
+            self.answer(title="One", html=CARD)
+        self.assertEqual((self.view()["items"], self.view()["error"]), ([], pm_cards.SERVER_FULL))
+
+    def test_each_card_ask_is_its_own_step_for_the_agent(self):
+        """GPT review: a retry with a new task_id was taken for a resend of the one still running."""
+        one, two = ({"kind": "card", "repo": "", "task_id": t} for t in ("a", "b"))
+        self.assertNotEqual(bridge.step_key(one), bridge.step_key(two))
+        self.assertEqual(bridge.step_key({"kind": "build", "issue": 7, "task_id": "a"}),
+                         bridge.step_key({"kind": "build", "issue": 7, "task_id": "b"}))
+
 
 class PanelScript(unittest.TestCase):
     JS = (ROOT / "static" / "panel_cards.js").read_text()
@@ -264,6 +304,10 @@ class PanelScript(unittest.TestCase):
         self.assertEqual(re.findall(r'sandbox="([^"]*)"', self.JS), ["allow-scripts"])
         self.assertNotIn("allow-same-origin", self.JS)
         self.assertIn("f.frame.contentWindow === ev.source", self.JS)   # heights only from our own frames
+
+    def test_a_card_that_leaves_its_document_gets_no_more_data(self):
+        self.assertIn("entry.loads === 1", self.JS)                    # data only to the srcdoc document
+        self.assertNotIn(" hidden", self.JS)                           # .field{display:flex} beats [hidden] (GPT review)
 
     def test_the_panel_keeps_card_frames_outside_what_it_redraws(self):
         page = (ROOT / "static" / "panel.html").read_text()
