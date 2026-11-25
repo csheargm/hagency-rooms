@@ -6,7 +6,7 @@ checks it again and keeps it (pm_cards.py), because what an agent sends back is 
 
 A card runs in a sandboxed frame (allow-scripts only: no access to the panel, its session, cookies or
 storage, no forms, popups or navigating the page) under its own Content-Security-Policy that blocks
-fetches, images, sockets and frames. WebRTC is blocked only where browsers support `webrtc 'block'`
+fetches, images, sockets and frames. WebRTC isn't blocked (`webrtc 'block'` has no effect in Chromium)
 (ADR 0019: an accepted risk, as the card is the person's own agent's and gets only what they see).
 """
 import json
@@ -57,7 +57,8 @@ def card_prompt(request: str, now_html: str = "") -> str:
             "links or network requests (all are blocked). Draw charts with inline SVG or CSS.\n"
             "- Read data only through hagency.onData. No forms, alerts, popups or storage.\n"
             "- About 700 px wide or narrower, as tall as it needs. Transparent background; readable in light and "
-            "dark mode (prefers-color-scheme). Plain, friendly words; say so when there is no data yet.\n"
+            "dark mode (prefers-color-scheme). Plain, friendly words; say so when there is no data yet. The panel shows "
+            "your TITLE above the card: don't repeat it inside.\n"
             f"- Under {MAX_HTML:,} characters, where each non-English character counts as 6: keep the code short and its "
             "words few.\n\n"
             f"Answer with exactly: a first line `TITLE: <a short name, at most {MAX_TITLE} characters>`, then the "

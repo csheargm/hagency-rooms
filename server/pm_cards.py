@@ -40,7 +40,7 @@ OLD_CODE = "Your agent runs older code. Run its connect line on its computer onc
 NO_ANSWER = "Your agent didn't answer. Try again."
 NOT_SENT = "Couldn't reach your agent just now. Try again."
 HERMES = "Hermes agents can't make cards yet."
-STOPPED = "Your agent is stopped. Start it in My agents, then try again."
+STOPPED = "Your agent is stopped. Start it in My agents to make cards."
 PERSON_FULL = f"You have {MAX_PERSON_ALL} cards across your rooms. Remove one first."
 
 
