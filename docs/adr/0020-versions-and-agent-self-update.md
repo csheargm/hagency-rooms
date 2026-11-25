@@ -22,7 +22,14 @@ their access, triggered from a web page.
   - `deploy/release.py` clears it with every other untracked file, so each deploy writes it afresh.
   - `@pm`'s folder has no `.git`.
 - `common/version.py` reads `REVISION`. Without one (a git checkout), it asks git.
-- The panel's footer shows `Hagency Rooms abc1234 · 2026-11-25`.
+- The panel's footer shows `Hagency Rooms v1.0.0 · abc1234 · 2026-11-25`.
+  - The release number is the repo's `VERSION` file, kept nowhere else, bumped by the pull request
+    that makes a release (CONTRIBUTING.md) and tagged `v<number>` on GitHub (added after the owner
+    asked for a number as well as the commit and date, as SuperElf shows).
+  - An agent's report carries its number too (`"number"`, optional: code from before `VERSION` sends
+    none and is shown without one). A server is always deployed before agents update, so the stricter
+    field check of an older @pm never sees it.
+  - "Up to date" still compares commits, never numbers: two commits can share a number between releases.
 
 ### An agent's version
 - Each time an agent's adapter signs in, it reports its code to @pm: the commit of `~/.hagency/app`,

@@ -4,6 +4,9 @@
 there (line 1 the commit, line 2 its commit time in Unix seconds). A git checkout (an agent's
 ~/.hagency/app, a developer's copy) has no such file, so git is asked. The panel's footer shows the
 server's; My agents compares each agent's with it.
+
+The release number ("1.0.0") is the repo's VERSION file, the one place it is kept: bumped in the pull
+request that makes a release (CONTRIBUTING.md), and copied to the server with the other files.
 """
 import datetime
 import re
@@ -11,6 +14,8 @@ import subprocess
 from pathlib import Path
 
 REVISION_FILE = "REVISION"
+NUMBER_FILE = "VERSION"
+NUMBER_RE = re.compile(r"[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}")   # "1.0.0": major.minor.patch
 SHORT = 7
 GIT_TIMEOUT_S = 10
 TIME_RE = re.compile(r"[0-9]{1,10}")   # up to the year 2286: a date always formats (GPT review)
@@ -36,21 +41,34 @@ def _from_git(root: Path) -> dict | None:
     return parse(*out) if len(out) == 2 else None
 
 
+def number(root: Path) -> str | None:
+    """The release number in `root`'s VERSION file, or None (no file, or not major.minor.patch)."""
+    try:
+        text = (root / NUMBER_FILE).read_text().strip()
+    except OSError:
+        return None                           # code from before release numbers: shown without one
+    return text if NUMBER_RE.fullmatch(text) else None
+
+
 def of(root: Path) -> dict | None:
-    """The code at `root`: its REVISION file if it has one, else its git HEAD; None if neither says."""
+    """The code at `root`: its REVISION file if it has one, else its git HEAD; None if neither says.
+    With its release number as "number" when its VERSION file gives one."""
     try:
         lines = (root / REVISION_FILE).read_text().split()
+        found = parse(*lines[:2]) if len(lines) >= 2 else None
     except OSError:
-        return _from_git(root)                # no file: a checkout
-    return parse(*lines[:2]) if len(lines) >= 2 else None
+        found = _from_git(root)               # no file: a checkout
+    num = number(root) if found else None
+    return {**found, "number": num} if num else found
 
 
 def label(v: dict | None) -> str:
-    """"abc1234 · 2026-11-25" (the commit's date in UTC), or "" when unknown."""
+    """"v1.0.0 · abc1234 · 2026-11-25" (the commit's date in UTC; no number for code from before
+    VERSION), or "" when unknown."""
     if not v:
         return ""
     day = datetime.datetime.fromtimestamp(v["time"], datetime.timezone.utc).date().isoformat()
-    return f"{v['commit'][:SHORT]} · {day}"
+    return " · ".join([*([f"v{v['number']}"] if v.get("number") else []), v["commit"][:SHORT], day])
 
 
 def current(agent: dict | None, server: dict | None) -> bool:
