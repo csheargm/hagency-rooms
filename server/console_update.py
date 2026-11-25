@@ -17,6 +17,7 @@ from aiohttp import ClientError
 from nio import ToDeviceMessage, ToDeviceResponse
 
 from common import code_report
+from common import kind_report
 from common import lifecycle
 from common import paths
 from common import registry
@@ -28,7 +29,6 @@ CLICK_GAP_S = 60                              # one Update click per agent per m
 WAIT_S = 300                                  # "Updating…" until its answer, or this long
 DRAIN_S = lifecycle.DRAIN_TIMEOUT_S + 300     # it said "updated": it may finish turns this long before restarting
 SHOW_S = 600                                  # how long a refusal stays under the agent
-SEND_TIMEOUT_S = 15
 UPDATING = "Updating: it restarts on the new version once it finishes what it's doing, usually within a minute or two."
 NO_ANSWER = "It didn't answer the update. Click Update my agent and run the command it sends on its computer."
 OLD_CODE = ("Its code is from before one-click updates. Click Update my agent and run the command it sends on its "
@@ -102,7 +102,7 @@ async def request(loop, user: str, agent: str | None) -> str:
 async def send(loop, agent_id: str, ask: str) -> bool:
     message = ToDeviceMessage(code_report.UPDATE_TYPE, agent_id, "*", {"commit": SERVER["commit"], "id": ask})
     try:
-        resp = await asyncio.wait_for(loop.client.to_device(message, uuid.uuid4().hex), SEND_TIMEOUT_S)
+        resp = await asyncio.wait_for(loop.client.to_device(message, uuid.uuid4().hex), kind_report.SEND_TIMEOUT_S)
     except (OSError, asyncio.TimeoutError, ClientError) as e:
         resp = e
     if not isinstance(resp, ToDeviceResponse):

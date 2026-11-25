@@ -31,7 +31,6 @@ from common.bridge_config import CREDENTIALS, SERVER_NAME
 UPDATE_TYPE, RESULT_TYPE = code_report.UPDATE_TYPE, code_report.RESULT_TYPE
 EXIT_UPDATED = 75                             # EX_TEMPFAIL: not 0, which the services read as "stay stopped"
 PM_ID = f"@{github.PM_BOT}:{SERVER_NAME}"
-SEND_TIMEOUT_S = 15
 log = logging.getLogger("bridge")
 STARTED = version.of(paths.ROOT)              # the code this process loaded, read as it starts (GPT re-check:
                                               # after sign-in, another agent may have updated the install already)
@@ -86,7 +85,7 @@ class BridgeUpdate:
     async def tell_pm(self, result: str, ask: str = "") -> None:
         try:
             await asyncio.wait_for(self.client.to_device(ToDeviceMessage(RESULT_TYPE, PM_ID, "*", {"result": result, "id": ask}),
-                                                         uuid.uuid4().hex), SEND_TIMEOUT_S)
+                                                         uuid.uuid4().hex), kind_report.SEND_TIMEOUT_S)
         except (OSError, asyncio.TimeoutError, ClientError) as e:
             # Not fatal on purpose: an updated agent restarts and its new code report says it all.
             log.warning("couldn't tell @pm how the update went: %s", e)

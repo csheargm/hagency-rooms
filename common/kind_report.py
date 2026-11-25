@@ -22,7 +22,7 @@ from common import agent_kinds
 from common import pm_kinds
 
 EVENT_TYPE = "xyz.hagencylabs.agent.kind"
-SEND_TIMEOUT_S = 15
+SEND_TIMEOUT_S = 15                 # every to-device send of an agent or @pm (code_report, agent_update, console_update)
 log = logging.getLogger("bridge")
 
 

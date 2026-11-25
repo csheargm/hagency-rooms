@@ -14,6 +14,7 @@ import uuid
 from aiohttp import ClientError
 from nio import AsyncClient, LocalProtocolError, ToDeviceMessage, ToDeviceResponse
 
+from common import kind_report
 from common import version
 
 EVENT_TYPE = "xyz.hagencylabs.agent.code"
@@ -21,7 +22,6 @@ UPDATE_TYPE = "xyz.hagencylabs.agent.update"          # @pm → agent: {"commit"
 RESULT_TYPE = "xyz.hagencylabs.agent.update.result"   # agent → @pm: {"result": one of RESULTS}
 RESULTS = ("updated", "current", "own", "not_official", "edited", "not_newer", "failed")   # self_update.py
 KEYS = {"commit", "time", "own"}
-SEND_TIMEOUT_S = 15
 log = logging.getLogger("bridge")
 
 
@@ -55,7 +55,7 @@ async def send(client: AsyncClient, pm_id: str, report: dict | None) -> bool:
         return False
     try:
         resp = await asyncio.wait_for(client.to_device(ToDeviceMessage(EVENT_TYPE, pm_id, "*", report), uuid.uuid4().hex),
-                                      SEND_TIMEOUT_S)
+                                      kind_report.SEND_TIMEOUT_S)
     except (OSError, asyncio.TimeoutError, ClientError, LocalProtocolError) as e:   # LocalProtocolError: not signed in
         resp = e
     if isinstance(resp, ToDeviceResponse):
