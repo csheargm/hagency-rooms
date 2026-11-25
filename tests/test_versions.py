@@ -139,6 +139,8 @@ class Reports(flows.Base):
         self.assertEqual(self.click(), console_update.UPDATING)                        # a second click sends nothing
         self.assertEqual(self.lp.client.to_device.await_count, 1)
         self.answer(CXA, "updated")
+        self.lp._updates["cx-agent"]["at"] -= console_update.WAIT_S + 1                # still finishing its turns:
+        self.assertEqual(self.row()["code_says"], console_update.UPDATING)            # never "didn't answer" (GPT re-check)
         self.start(NEW)                                                                # restarted on the new code
         row = self.row()
         self.assertEqual((row["code"], row["code_says"], row["code_updating"]), ("current", "", False))
@@ -166,7 +168,7 @@ class Reports(flows.Base):
         self.click()
         self.lp._updates["cx-agent"]["at"] -= console_update.WAIT_S + 1
         row = self.row()
-        self.assertEqual((row["code_says"], row["code_updating"]), (console_update.NO_ANSWER, False))
+        self.assertEqual((row["code_says"], row["code_updating"], row["code_fallback"]), (console_update.NO_ANSWER, False, True))
         self.assertEqual(self.click(), "ok")          # past the gap: asked again
         self.assertEqual(self.lp.client.to_device.await_count, 2)
 

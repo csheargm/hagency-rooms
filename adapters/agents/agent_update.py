@@ -33,6 +33,8 @@ EXIT_UPDATED = 75                             # EX_TEMPFAIL: not 0, which the se
 PM_ID = f"@{github.PM_BOT}:{SERVER_NAME}"
 SEND_TIMEOUT_S = 15
 log = logging.getLogger("bridge")
+STARTED = version.of(paths.ROOT)              # the code this process loaded, read as it starts (GPT re-check:
+                                              # after sign-in, another agent may have updated the install already)
 
 
 def runs_own(owner: str) -> bool:
@@ -47,8 +49,7 @@ class BridgeUpdate:
     async def report_and_listen(self) -> None:
         """After the first sync: both reports to @pm, then @pm's update requests."""
         await kind_report.send(self.client, PM_ID, CREDENTIALS)                  # My agents: the AI I run
-        self.started_code = version.of(paths.ROOT)   # what this process loaded (the install may move on: another agent's update)
-        await code_report.send(self.client, PM_ID, code_report.build(self.started_code, runs_own(self.owner)))
+        await code_report.send(self.client, PM_ID, code_report.build(STARTED, runs_own(self.owner)))
         self.client.add_to_device_callback(self.on_update_request, UnknownToDeviceEvent)
 
     async def on_update_request(self, event: UnknownToDeviceEvent) -> None:
@@ -79,7 +80,7 @@ class BridgeUpdate:
 
     def stale(self) -> bool:
         """The install on disk is not the code this process loaded."""
-        now, then = version.of(paths.ROOT), getattr(self, "started_code", None)
+        now, then = version.of(paths.ROOT), STARTED
         return bool(now and then and now["commit"] != then["commit"])
 
     async def tell_pm(self, result: str, ask: str = "") -> None:

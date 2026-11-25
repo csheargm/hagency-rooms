@@ -17,6 +17,7 @@ from aiohttp import ClientError
 from nio import ToDeviceMessage, ToDeviceResponse
 
 from common import code_report
+from common import lifecycle
 from common import paths
 from common import registry
 from common import version
@@ -24,11 +25,12 @@ from common.bridge_config import SERVER_NAME
 
 SERVER = version.of(paths.ROOT)               # this server's code: the panel's footer and the comparison
 CLICK_GAP_S = 60                              # one Update click per agent per minute
-WAIT_S = 300                                  # "Updating…" until its new report, or this long
+WAIT_S = 300                                  # "Updating…" until its answer, or this long
+DRAIN_S = lifecycle.DRAIN_TIMEOUT_S + 300     # it said "updated": it may finish turns this long before restarting
 SHOW_S = 600                                  # how long a refusal stays under the agent
 SEND_TIMEOUT_S = 15
 UPDATING = "Updating: it restarts on the new version once it finishes what it's doing, usually within a minute or two."
-NO_ANSWER = "It didn't answer the update. Click Update again; if it still doesn't, click Update my agent."
+NO_ANSWER = "It didn't answer the update. Click Update my agent and run the command it sends on its computer."
 OLD_CODE = ("Its code is from before one-click updates. Click Update my agent and run the command it sends on its "
             "computer, once. After that, Update takes one click.")
 HERMES = "A Hermes agent is updated with Update my agent: run the command it sends on its computer."
@@ -64,11 +66,11 @@ def status(loop, a: dict) -> dict:
     says = ""
     if click and code and code["commit"] != click["from"]:
         _clicks(loop).pop(a["localpart"], None)   # it restarted on new code: done
-    elif click and click["result"] in (None, "updated") and time.time() - click["at"] < WAIT_S:
+    elif click and time.time() - click["at"] < {None: WAIT_S, "updated": DRAIN_S}.get(click["result"], 0):
         says = UPDATING
-    elif click and time.time() - click["at"] < SHOW_S:
-        says = SAYS.get(click["result"]) or NO_ANSWER   # no answer by WAIT_S: a click lost while it started, say
-    fallback = word == "unknown" or bool(says and click["result"] in FALLBACK)
+    elif click and time.time() - click["at"] < SHOW_S + DRAIN_S:
+        says = SAYS.get(click["result"]) or NO_ANSWER   # no answer: a click lost while it started, say
+    fallback = word == "unknown" or bool(says and (click["result"] in FALLBACK or says == NO_ANSWER))
     if not says and word == "unknown":
         says = HERMES if hermes else OLD_CODE if code is None else ""
     return {"code": word, "code_version": version.label(code), "code_says": says, "code_updating": says == UPDATING,

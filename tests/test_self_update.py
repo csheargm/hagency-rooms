@@ -215,8 +215,8 @@ class AgentSide(unittest.TestCase):
     def test_another_agent_updated_the_shared_install_so_this_one_restarts_too(self):
         """GPT review follow-up: several agents of one computer share ~/.hagency/app."""
         b = FakeBridge()
-        b.started_code = {"commit": "a" * 40, "time": 1}
-        with mock.patch.object(agent_update.version, "of", return_value={"commit": "b" * 40, "time": 2}):
+        with mock.patch.object(agent_update, "STARTED", {"commit": "a" * 40, "time": 1}), \
+                mock.patch.object(agent_update.version, "of", return_value={"commit": "b" * 40, "time": 2}):
             self.click(b, agent_update.PM_ID, result="current")
         self.assertTrue(b.updated)
         self.assertEqual(b.sent[0][2]["result"], "updated")
