@@ -135,6 +135,9 @@ class Actions(unittest.TestCase):
         v = mock.patch("server.project_rooms.visibility", lambda c, rid: asyncio.sleep(0, "private"))   # pm_projects.py
         v.start()
         self.addCleanup(v.stop)
+        c = mock.patch("server.pm_cards.view", lambda loop, room, user: None)   # Your cards: test_cards.py
+        c.start()
+        self.addCleanup(c.stop)
 
     def act(self, user, action, value):
         return asyncio.run(console.act(self.loop, "!r", user, action, value))

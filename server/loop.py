@@ -22,8 +22,8 @@ from nio import (AsyncClient, RoomMessageAudio, LoginResponse, MatrixRoom, React
 
 from common import github
 from common import lifecycle
-from server import ownership
-from server import panel
+from server import ownership, panel
+from server.pm_cards import Cards   # panel cards (ADR 0019)
 from common.redact import room_safe
 from common import room_state
 from server.loop_progress import GITHUB_STAGES, Progress, migrate, num
@@ -58,7 +58,7 @@ class SendError(RuntimeError):
     """Matrix refused a message; the item keeps its stage and the watchdog retries later."""
 
 
-class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voice, Welcome, Presence, MoreAgents):
+class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voice, Welcome, Presence, MoreAgents, Cards):
     def __init__(self) -> None:
         self.user_id = f"@{github.PM_BOT}:{SERVER_NAME}"
         self.client = AsyncClient(HOMESERVER, self.user_id, device_id="PM_BOT")
@@ -183,8 +183,8 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
 
     async def on_result(self, room: MatrixRoom, sender: str, result: dict) -> None:
         kind = result.get("kind")
-        if kind in ("plan", "file_issues"):
-            await self.on_plan_result(room, sender, result)
+        if kind in ("plan", "file_issues", "card"):     # answered once, to whoever asked: pm_plan.py, pm_cards.py
+            await (self.on_card_result if kind == "card" else self.on_plan_result)(room, sender, result)
             return
         if room.room_id not in self.room_repos:     # before the first poll: read it (only @pm writes it)
             self.room_repos[room.room_id] = await room_state.repo_of(self.client, room.room_id)

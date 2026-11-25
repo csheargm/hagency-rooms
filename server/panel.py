@@ -33,7 +33,8 @@ STATIC = paths.ROOT.resolve() / "static"
 # tags and the routes come from it, and deploy/Caddyfile's @pm route must name every one (test_panel).
 SCRIPTS = {"panel-agents.js": STATIC / "panel_agents.js",      # "My agents"
            "panel-project.js": STATIC / "panel_project.js",    # "Project repo", "Who can join", "Run from another room"
-           "panel-github.js": STATIC / "panel_github.js"}      # "Connect GitHub" (pm_github.py)
+           "panel-github.js": STATIC / "panel_github.js",      # "Connect GitHub" (pm_github.py)
+           "panel-cards.js": STATIC / "panel_cards.js"}        # "Your cards" (pm_cards.py, ADR 0019)
 REFRESH_MS = 3000
 SIGNIN_MS = 20000                 # no answer from Element by then: the panel says so instead of "Signing in…"
 EMBEDDERS = panel_embedders()      # who may frame the panel (no X-Frame-Options: it can't name several)

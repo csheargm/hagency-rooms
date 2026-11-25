@@ -25,6 +25,7 @@ from aiohttp import web
 from common import agent_kinds
 from server import console_personal
 from server import console_repo
+from server import pm_cards
 from common import customize
 from server import fed_openid
 from common import github
@@ -145,6 +146,7 @@ async def view(loop, room_id: str, user: str) -> dict:
             "waiting": {"kind": waiting.get("kind") or "mode", "mine": waiting.get("by") == user,
                         "id": waiting.get("event_id"), "items": [i["title"] for i in waiting.get("items", [])]}
                        if waiting else None,
+            "cards": pm_cards.view(loop, room, user),   # Your cards (ADR 0019)
             "html": panel_html(loop, room_id) if panel_html else ""}
 
 
@@ -190,6 +192,8 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
         return await loop.github_action(user, value)
     if action in console_repo.ACTIONS:    # the room's repo: choose, remove, check readiness
         return await console_repo.act(loop, room, user, action, value)
+    if action in pm_cards.ACTIONS:        # Your cards (ADR 0019): made by their own agent, for them only
+        return await pm_cards.act(loop, room, user, action, value)
     if action == "invite_link":           # pm_invite.py: shown here to copy, and sent to our private chat too
         said, url = await loop.invite_link_and_url(room, user)
         return {"result": PANEL_LINK, "link": url} if url else said

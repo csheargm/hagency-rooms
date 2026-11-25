@@ -35,7 +35,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 8px}
 #password{display:grid;gap:6px;max-width:340px;margin-top:14px}#password h2{margin:0 0 2px}#password button{justify-self:start}
 </style>
 <div class="wrap"><header><div><h1 id="title">Hagency</h1><div class="sub" id="sub"></div></div><div class="sub"><a class="chip" href="__ELEMENT_HOME__" target="_blank" rel="noopener" data-home="1">🏠 Welcome steps</a><span id="who"></span></div></header>
-<div id="me" class="muted">Signing in…</div><div id="msg"></div><div id="controls" class="stack"></div><div id="p" class="stack"></div>
+<div id="me" class="muted">Signing in…</div><div id="msg"></div><div id="controls" class="stack"></div><div id="cards" class="stack"></div><div id="p" class="stack"></div>
 <footer>Change anything here or by telling @pm in the chat.</footer></div>
 __SCRIPTS__
 <script src="/auth/signin.js"></script>
@@ -243,7 +243,7 @@ async function show() {
       headers: {"Authorization": "Bearer " + sent}});
     if (r.status === 401) { if (sent !== session) return;
       session = null; try { sessionStorage.removeItem("hagency-session"); } catch (e) { /* blocked */ }
-      if (!embedded) { $("p").innerHTML = ""; $("controls").innerHTML = ""; $("title").textContent = "Hagency";
+      if (!embedded) { $("p").innerHTML = ""; $("controls").innerHTML = ""; $("title").textContent = "Hagency"; if (typeof showCards === "function") showCards(null);
         return start(); }                    // popped out: back to its sign-in, never Element's error (GPT review)
       return ++expired > 2 ? failed(NO_ANSWER) : start(); }
     s = await r.json(); } catch (e) { return failed(OFFLINE); }
@@ -268,11 +268,13 @@ async function show() {
   h += `<div class="grid">${card("repoCard", s)}${mode}</div>`;   // the repo first, then its mode (GPT review)
   h += card("projectCard", s) + card("githubCard", s) + card("agentCards", s);   // panel_project.js, panel_github.js, panel_agents.js
   $("controls").innerHTML = h; $("p").innerHTML = s.html;      // s.html: server-escaped board (panel.render)
+  if (typeof showCards === "function") showCards(s);           // Your cards (panel_cards.js): kept, not redrawn
 }
 function personal(s) {
   $("sub").innerHTML = '<span class="chip">Your agents and GitHub, the same in every room</span>';
   $("who").innerHTML = `<span class="chip">${esc(s.user)}</span>`;
   $("controls").innerHTML = card("agentCards", s) + card("githubCard", s);
+  if (typeof showCards === "function") showCards(null);
   $("p").innerHTML = "";
 }
 start(); setInterval(refresh, __REFRESH_MS__);
