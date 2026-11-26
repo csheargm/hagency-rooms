@@ -236,6 +236,12 @@ class Served(unittest.TestCase):
         self.assertIn('<a href="mailto:contact@hagencylabs.xyz">contact@hagencylabs.xyz</a>', page)
         self.assertNotIn("csheargm", page.lower())
 
+    def test_landing_page_says_anyone_can_join(self):
+        """Owner: hagencylabs.xyz said "By invitation." though anyone can sign up with Google or GitHub (ADR 0013)."""
+        note = (HERE.parent / "site" / "index.html").read_text()
+        self.assertNotIn("invitation", note.lower())
+        self.assertIn("sign in with Google or GitHub", note)
+
 
 class SignOutWording(unittest.TestCase):
     """Owner: Settings said "Remove this device", not the usual "Sign out"."""
