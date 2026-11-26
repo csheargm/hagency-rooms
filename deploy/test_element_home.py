@@ -236,11 +236,12 @@ class Served(unittest.TestCase):
         self.assertIn('<a href="mailto:contact@hagencylabs.xyz">contact@hagencylabs.xyz</a>', page)
         self.assertNotIn("csheargm", page.lower())
 
-    def test_landing_page_says_anyone_can_join(self):
+    def test_landing_note_describes_sso_signup(self):
         """Owner: hagencylabs.xyz said "By invitation." though anyone can sign up with Google or GitHub (ADR 0013)."""
-        note = (HERE.parent / "site" / "index.html").read_text()
+        page = (HERE.parent / "site" / "index.html").read_text()
+        note = page[page.index('<p class="note">'):page.index("</p>", page.index('<p class="note">'))]
+        self.assertIn("Anyone can join: create an account with Google or GitHub.", note)
         self.assertNotIn("invitation", note.lower())
-        self.assertIn("sign in with Google or GitHub", note)
 
 
 class SignOutWording(unittest.TestCase):
