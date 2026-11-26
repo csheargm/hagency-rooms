@@ -20,21 +20,39 @@ function agentStatus(a) {
 }
 // Versions (console_update.py, ADR 0020): its code against this server's. Update: it updates itself on its
 // computer; one whose code predates that gets "Update my agent" (its Connect page, run there once).
+// The commit's time, to the minute, in the viewer's own time zone: "2026-11-25 14:32 PST". The server
+// sends it in UTC (version.iso); "" when it isn't a time, and the server's UTC words stay.
+function localTime(iso) {
+  const d = new Date(iso);
+  if (!iso || isNaN(d)) return "";
+  let p = {};
+  try {
+    new Intl.DateTimeFormat("en-US", {year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+      hourCycle: "h23", timeZoneName: "short"}).formatToParts(d).forEach(x => { p[x.type] = x.value; });
+  } catch (e) { return ""; }   // a browser without Intl's formatToParts (GPT review): the server's UTC words stay
+  return p.year && p.timeZoneName ? `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.timeZoneName}` : "";
+}
+// The footer's commit time (panel.FOOTER, <time id="vertime">) in the viewer's zone; its UTC words stay otherwise.
+function localizeFooter(t) {
+  const local = t ? localTime(t.dateTime) : "";
+  if (local) t.textContent = local;
+}
+const codeVersion = a => a.code_name && localTime(a.code_time) ? `${a.code_name} · ${localTime(a.code_time)}` : a.code_version;
 function codeChip(a) {
   if (!a.remote || !(a.online === true || a.connected)) return "";
   const chip = (word, tip) => `<span class="chip"${tip ? ` title="${esc(tip)}"` : ""}>${word}</span>`;
-  if (a.code === "current") return chip("Up to date", a.code_version);
-  if (a.code === "own") return chip("Your own version", a.code_version);
+  if (a.code === "current") return chip("Up to date", codeVersion(a));
+  if (a.code === "own") return chip("Your own version", codeVersion(a));
   if (a.code !== "behind" && !a.code_fallback) return "";
   const button = a.online !== true || a.code_updating ? ""
     : a.code_fallback ? `<button data-a="update" data-v="agents" data-g="${esc(a.name)}">Update my agent</button>`
     : `<button data-a="selfupdate" data-v="" data-g="${esc(a.name)}">Update</button>`;
-  return chip("Update available", a.code_version) + " " + button;
+  return chip("Update available", codeVersion(a)) + " " + button;
 }
 function codeHint(a) {
   if (!a.remote || !(a.online === true || a.connected)) return "";
   const says = a.code_says;               // console_update.status: the words, one place
-  const ver = a.code_version ? `Version ${esc(a.code_version)}` : "";
+  const ver = codeVersion(a) ? `Version ${esc(codeVersion(a))}` : "";
   return says || ver ? `<div class="hint">${[esc(says), ver].filter(Boolean).join(" · ")}</div>` : "";
 }
 // Stop / Start (pm_stop.py): it stays signed in on its computer and ignores messages until Start. Only for

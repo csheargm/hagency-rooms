@@ -4,6 +4,7 @@ server/console_update.py, pm_kind_reports.record_code; docs/adr/0020-versions-an
 Run: .venv/bin/python -m unittest tests.test_versions"""
 import asyncio
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -35,7 +36,8 @@ class Version(unittest.TestCase):
         d = Path(tempfile.mkdtemp())
         (d / "REVISION").write_text(f"{NEW['commit']}\n{NEW['time']}\n")
         self.assertEqual(version.of(d), NEW)
-        self.assertEqual(version.label(NEW), "bbbbbbb · 2025-11-25")
+        self.assertEqual(version.label(NEW), "bbbbbbb · 2025-11-25 19:46 UTC")   # the commit's time, to the minute
+        self.assertEqual((version.name(NEW), version.iso(NEW)), ("bbbbbbb", "2025-11-25T19:46:40Z"))
         (d / "REVISION").write_text("nonsense\n")
         self.assertIsNone(version.of(d))
         self.assertIsNone(version.of(Path(tempfile.mkdtemp())))          # neither file nor checkout
@@ -53,7 +55,7 @@ class Version(unittest.TestCase):
         self.assertEqual(version.of(d), NEW)                             # not text: as if absent (GPT review)
         (d / "VERSION").write_text("1.2.3\n")
         self.assertEqual(version.of(d), {**NEW, "number": "1.2.3"})
-        self.assertEqual(version.label(version.of(d)), "v1.2.3 · bbbbbbb · 2025-11-25")
+        self.assertEqual(version.label(version.of(d)), "v1.2.3 · bbbbbbb · 2025-11-25 19:46 UTC")
         self.assertRegex((ROOT / "VERSION").read_text(), r"^[0-9]+\.[0-9]+\.[0-9]+\n$")   # the repo's own
         committed = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:{version.NUMBER_FILE}"], capture_output=True, text=True).stdout.strip()
         self.assertEqual(version.of(ROOT)["number"], committed)         # HEAD's, even with VERSION edited here
@@ -81,7 +83,8 @@ class Version(unittest.TestCase):
         self.assertFalse(version.current(None, NEW) or version.current(NEW, None))
 
     def test_the_footer_shows_the_servers_version(self):
-        self.assertIn(f"Hagency Rooms {version.label(console_update.SERVER)}", panel.PAGE)
+        v = console_update.SERVER
+        self.assertIn(f'Hagency Rooms {version.name(v)} · <time id="vertime" datetime="{version.iso(v)}">{version.utc(v)}</time>', panel.PAGE)
         self.assertIn("Change anything here or by telling @pm in the chat.", panel.PAGE)
         self.assertNotIn("__VERSION__", panel.PAGE)
 
@@ -135,6 +138,7 @@ class Reports(flows.Base):
     def test_report_then_up_to_date_or_update_available(self):
         self.start(NEW)
         self.assertEqual((self.row()["code"], self.row()["code_version"]), ("current", version.label(NEW)))
+        self.assertEqual((self.row()["code_name"], self.row()["code_time"]), (version.name(NEW), version.iso(NEW)))
         self.start(OLD)
         self.assertEqual(self.row()["code"], "behind")
         self.start(OLD, own=True)
@@ -144,9 +148,9 @@ class Reports(flows.Base):
 
     def test_an_agent_reports_its_number_and_the_row_shows_it(self):
         self.start({**OLD, "number": "1.0.0"})
-        self.assertEqual(self.row()["code_version"], "v1.0.0 · aaaaaaa · 2025-11-22")
+        self.assertEqual(self.row()["code_version"], "v1.0.0 · aaaaaaa · 2025-11-22 08:26 UTC")
         self.start(OLD)                                # code from before VERSION: no number
-        self.assertEqual(self.row()["code_version"], "aaaaaaa · 2025-11-22")
+        self.assertEqual(self.row()["code_version"], "aaaaaaa · 2025-11-22 08:26 UTC")
         for bad in ("1.0", "v1", 1, "", "1.0.0 ; rm", None):          # None: a present null (GPT review)
             self.assertIsNone(code_report.valid({"commit": "a" * 40, "time": "5", "number": bad}), bad)
         self.assertIsNone(code_report.stored({"commit": "a" * 40, "time": 5, "own": False, "number": "x"}))
@@ -229,13 +233,38 @@ class Reports(flows.Base):
 @unittest.skipIf(NODE is None, "node not installed")
 class Panel(unittest.TestCase):
     """panel_agents.js's row for each state, run in node."""
-    def row(self, **a):
+    def row(self, tz="America/Los_Angeles", intl=True, **a):
         agent = {"name": "cx-agent", "label": "main", "first": True, "follow": "always", "remote": True, "online": True,
                  "connected": True, "here": False, "invited": False, "code_says": "", "code_version": "", **a}
         src = (ROOT / "static" / "panel_agents.js").read_text()
-        prog = (src + "\nconst esc = t => String(t).replace(/[&<>\"']/g, c => '&#' + c.charCodeAt(0) + ';');"
+        prog = ("" if intl else "globalThis.Intl = undefined;") + (src + "\nconst esc = t => String(t).replace(/[&<>\"']/g, c => '&#' + c.charCodeAt(0) + ';');"
                 "const cap = t => t; process.stdout.write(agentRow(JSON.parse(process.argv[1]), null, false, false));")
-        return subprocess.run([NODE, "-e", prog, json.dumps(agent)], capture_output=True, text=True, timeout=30, check=True).stdout
+        return subprocess.run([NODE, "-e", prog, json.dumps(agent)], capture_output=True, text=True, timeout=30, check=True,
+                              env={**os.environ, "TZ": tz}).stdout
+
+    def footer(self, intl=True, when="2025-11-25T19:46:40Z"):
+        src = (ROOT / "static" / "panel_agents.js").read_text()
+        prog = (("" if intl else "globalThis.Intl = undefined;") + src +
+                "\nconst t = {dateTime: process.argv[1], textContent: '2025-11-25 19:46 UTC'};"
+                "localizeFooter(t); localizeFooter(null); process.stdout.write(t.textContent);")
+        return subprocess.run([NODE, "-e", prog, when], capture_output=True, text=True, timeout=30, check=True,
+                              env={**os.environ, "TZ": "America/Los_Angeles"}).stdout
+
+    def test_the_footer_shows_the_viewers_own_time(self):
+        self.assertEqual(self.footer(), "2025-11-25 11:46 PST")
+        self.assertEqual(self.footer(intl=False), "2025-11-25 19:46 UTC")          # no Intl: the server's words
+        self.assertEqual(self.footer(when="nonsense"), "2025-11-25 19:46 UTC")
+        html = (ROOT / "static" / "panel.html").read_text()
+        self.assertIn('localizeFooter($("vertime"))', html)                         # the page calls it
+
+    def test_the_version_shows_in_the_viewers_own_time(self):
+        a = {"code": "current", "code_version": "v1.0.0 · bbbbbbb · 2025-11-25 19:46 UTC", "code_name": "v1.0.0 · bbbbbbb",
+             "code_time": "2025-11-25T19:46:40Z"}
+        self.assertIn("v1.0.0 · bbbbbbb · 2025-11-25 11:46 PST", self.row(**a))
+        self.assertIn("2025-11-26 04:46 ", self.row(tz="Asia/Tokyo", **a))       # its zone's name varies by ICU (GPT review)
+        no_intl = self.row(**a, intl=False)
+        self.assertIn("v1.0.0 · bbbbbbb · 2025-11-25 19:46 UTC", no_intl)                 # no Intl: the server's words
+        self.assertIn("2025-11-25 19:46 UTC", self.row(code_time="not a time", **{k: v for k, v in a.items() if k != "code_time"}))
 
     def test_each_state_shows_its_words_and_button(self):
         current = self.row(code="current", code_version="v1.0.0 · bbbbbbb · 2025-11-25")

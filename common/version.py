@@ -72,13 +72,30 @@ def of(root: Path) -> dict | None:
     return _numbered(parse(*lines[:2]), _read(root / NUMBER_FILE)) if len(lines) >= 2 else None   # deploy.sh's copy
 
 
+def name(v: dict | None) -> str:
+    """"v1.0.0 · abc1234" (no number for code from before VERSION), or "" when unknown."""
+    return " · ".join([*([f"v{v[NUMBER_KEY]}"] if v.get(NUMBER_KEY) else []), v["commit"][:SHORT]]) if v else ""
+
+
+def iso(v: dict | None) -> str:
+    """The commit's time as "2026-11-25T22:32:00Z", for the browser to show in its own time zone
+    (panel_agents.js localTime), or "" when unknown."""
+    return _utc(v).strftime("%Y-%m-%dT%H:%M:%SZ") if v else ""
+
+
 def label(v: dict | None) -> str:
-    """"v1.0.0 · abc1234 · 2026-11-25" (the commit's date in UTC; no number for code from before
-    VERSION), or "" when unknown."""
-    if not v:
-        return ""
-    day = datetime.datetime.fromtimestamp(v["time"], datetime.timezone.utc).date().isoformat()
-    return " · ".join([*([f"v{v[NUMBER_KEY]}"] if v.get(NUMBER_KEY) else []), v["commit"][:SHORT], day])
+    """"v1.0.0 · abc1234 · 2026-11-25 22:32 UTC": the commit's time to the minute, in UTC (the
+    panel shows it in the viewer's own time zone), or "" when unknown."""
+    return f"{name(v)} · {utc(v)}" if v else ""
+
+
+def utc(v: dict | None) -> str:
+    """"2026-11-25 22:32 UTC": the commit's time to the minute (the words before the browser's own)."""
+    return f"{_utc(v).strftime('%Y-%m-%d %H:%M')} UTC" if v else ""
+
+
+def _utc(v: dict) -> datetime.datetime:
+    return datetime.datetime.fromtimestamp(v["time"], datetime.timezone.utc)
 
 
 def current(agent: dict | None, server: dict | None) -> bool:
