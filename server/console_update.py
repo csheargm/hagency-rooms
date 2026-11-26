@@ -54,10 +54,11 @@ def _clicks(loop) -> dict:
 
 def status(loop, a: dict) -> dict:
     """What My agents shows about one agent's code: "code" (current, behind, own, unknown or ""),
-    "code_version" (its label), "code_says" (the line under it), "code_updating" (no button
+    "code_version" (its label, in UTC), "code_name" and "code_time" (the label's parts, the time for the
+    browser to show in its own zone), "code_says" (the line under it), "code_updating" (no button
     meanwhile), "code_fallback" (offer the Connect page)."""
     if a.get("agent") != registry.REMOTE:
-        return {"code": "", "code_version": "", "code_says": "", "code_updating": False, "code_fallback": False}
+        return {"code": "", "code_version": "", "code_name": "", "code_time": "", "code_says": "", "code_updating": False, "code_fallback": False}
     code = a.get(registry.CODE)
     hermes = "hermes" in (a.get("agent_kind"), (a.get(registry.REPORTED) or {}).get("agent_kind"))
     word = ("unknown" if code is None or hermes or SERVER is None else "own" if code["own"]
@@ -73,7 +74,8 @@ def status(loop, a: dict) -> dict:
     fallback = word == "unknown" or bool(says and (click["result"] in FALLBACK or says == NO_ANSWER))
     if not says and word == "unknown":
         says = HERMES if hermes else OLD_CODE if code is None else ""
-    return {"code": word, "code_version": version.label(code), "code_says": says, "code_updating": says == UPDATING,
+    return {"code": word, "code_version": version.label(code), "code_name": version.name(code),
+            "code_time": version.iso(code), "code_says": says, "code_updating": says == UPDATING,
             "code_fallback": fallback}
 
 
