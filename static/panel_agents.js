@@ -32,6 +32,11 @@ function localTime(iso) {
   } catch (e) { return ""; }   // a browser without Intl's formatToParts (GPT review): the server's UTC words stay
   return p.year && p.timeZoneName ? `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.timeZoneName}` : "";
 }
+// The footer's commit time (panel.FOOTER, <time id="vertime">) in the viewer's zone; its UTC words stay otherwise.
+function localizeFooter(t) {
+  const local = t ? localTime(t.dateTime) : "";
+  if (local) t.textContent = local;
+}
 const codeVersion = a => a.code_name && localTime(a.code_time) ? `${a.code_name} · ${localTime(a.code_time)}` : a.code_version;
 function codeChip(a) {
   if (!a.remote || !(a.online === true || a.connected)) return "";

@@ -242,6 +242,21 @@ class Panel(unittest.TestCase):
         return subprocess.run([NODE, "-e", prog, json.dumps(agent)], capture_output=True, text=True, timeout=30, check=True,
                               env={**os.environ, "TZ": tz}).stdout
 
+    def footer(self, intl=True, when="2025-11-25T19:46:40Z"):
+        src = (ROOT / "static" / "panel_agents.js").read_text()
+        prog = (("" if intl else "globalThis.Intl = undefined;") + src +
+                "\nconst t = {dateTime: process.argv[1], textContent: '2025-11-25 19:46 UTC'};"
+                "localizeFooter(t); localizeFooter(null); process.stdout.write(t.textContent);")
+        return subprocess.run([NODE, "-e", prog, when], capture_output=True, text=True, timeout=30, check=True,
+                              env={**os.environ, "TZ": "America/Los_Angeles"}).stdout
+
+    def test_the_footer_shows_the_viewers_own_time(self):
+        self.assertEqual(self.footer(), "2025-11-25 11:46 PST")
+        self.assertEqual(self.footer(intl=False), "2025-11-25 19:46 UTC")          # no Intl: the server's words
+        self.assertEqual(self.footer(when="nonsense"), "2025-11-25 19:46 UTC")
+        html = (ROOT / "static" / "panel.html").read_text()
+        self.assertIn('localizeFooter($("vertime"))', html)                         # the page calls it
+
     def test_the_version_shows_in_the_viewers_own_time(self):
         a = {"code": "current", "code_version": "v1.0.0 · bbbbbbb · 2025-11-25 19:46 UTC", "code_name": "v1.0.0 · bbbbbbb",
              "code_time": "2025-11-25T19:46:40Z"}
