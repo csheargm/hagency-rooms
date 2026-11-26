@@ -233,8 +233,8 @@ class Served(unittest.TestCase):
     def test_privacy_contact_is_the_company_address(self):
         """Owner: the policy showed a personal Gmail address; it must name the company mailbox only."""
         page = element_home.files(VALUES)["privacy.html"]
-        self.assertIn('href="mailto:contact@hagencylabs.xyz"', page)
-        self.assertNotIn("gmail.com", page)
+        self.assertIn('<a href="mailto:contact@hagencylabs.xyz">contact@hagencylabs.xyz</a>', page)
+        self.assertNotIn("csheargm", page.lower())
 
 
 class SignOutWording(unittest.TestCase):
