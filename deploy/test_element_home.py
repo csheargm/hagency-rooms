@@ -230,6 +230,12 @@ class Served(unittest.TestCase):
         self.assertIn("no one has opened it for 90 days", page)   # Synapse purges media unused that long:
         self.assertIn("local_media_lifetime: 90d", (HERE / "configure_synapse.py").read_text())
 
+    def test_privacy_contact_is_the_company_address(self):
+        """Owner: the policy showed a personal Gmail address; it must name the company mailbox only."""
+        page = element_home.files(VALUES)["privacy.html"]
+        self.assertIn('href="mailto:contact@hagencylabs.xyz"', page)
+        self.assertNotIn("gmail.com", page)
+
 
 class SignOutWording(unittest.TestCase):
     """Owner: Settings said "Remove this device", not the usual "Sign out"."""
