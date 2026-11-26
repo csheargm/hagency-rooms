@@ -25,13 +25,14 @@ function agentStatus(a) {
 function localTime(iso) {
   const d = new Date(iso);
   if (!iso || isNaN(d)) return "";
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", {year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short"}).formatToParts(d).map(x => [x.type, x.value]));
-  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.timeZoneName}`;
+  let p = {};
+  try {
+    new Intl.DateTimeFormat("en-US", {year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+      hourCycle: "h23", timeZoneName: "short"}).formatToParts(d).forEach(x => { p[x.type] = x.value; });
+  } catch (e) { return ""; }   // a browser without Intl's formatToParts (GPT review): the server's UTC words stay
+  return p.year && p.timeZoneName ? `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.timeZoneName}` : "";
 }
 const codeVersion = a => a.code_name && localTime(a.code_time) ? `${a.code_name} · ${localTime(a.code_time)}` : a.code_version;
-if (typeof document !== "undefined")      // the footer's server version (panel.FOOTER)
-  document.querySelectorAll("footer time[datetime]").forEach(t => { t.textContent = localTime(t.dateTime) || t.textContent; });
 function codeChip(a) {
   if (!a.remote || !(a.online === true || a.connected)) return "";
   const chip = (word, tip) => `<span class="chip"${tip ? ` title="${esc(tip)}"` : ""}>${word}</span>`;

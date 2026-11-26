@@ -84,7 +84,7 @@ class Version(unittest.TestCase):
 
     def test_the_footer_shows_the_servers_version(self):
         v = console_update.SERVER
-        self.assertIn(f'Hagency Rooms {version.name(v)} · <time datetime="{version.iso(v)}">{version.utc(v)}</time>', panel.PAGE)
+        self.assertIn(f'Hagency Rooms {version.name(v)} · <time id="vertime" datetime="{version.iso(v)}">{version.utc(v)}</time>', panel.PAGE)
         self.assertIn("Change anything here or by telling @pm in the chat.", panel.PAGE)
         self.assertNotIn("__VERSION__", panel.PAGE)
 
@@ -233,11 +233,11 @@ class Reports(flows.Base):
 @unittest.skipIf(NODE is None, "node not installed")
 class Panel(unittest.TestCase):
     """panel_agents.js's row for each state, run in node."""
-    def row(self, tz="America/Los_Angeles", **a):
+    def row(self, tz="America/Los_Angeles", intl=True, **a):
         agent = {"name": "cx-agent", "label": "main", "first": True, "follow": "always", "remote": True, "online": True,
                  "connected": True, "here": False, "invited": False, "code_says": "", "code_version": "", **a}
         src = (ROOT / "static" / "panel_agents.js").read_text()
-        prog = (src + "\nconst esc = t => String(t).replace(/[&<>\"']/g, c => '&#' + c.charCodeAt(0) + ';');"
+        prog = ("" if intl else "globalThis.Intl = undefined;") + (src + "\nconst esc = t => String(t).replace(/[&<>\"']/g, c => '&#' + c.charCodeAt(0) + ';');"
                 "const cap = t => t; process.stdout.write(agentRow(JSON.parse(process.argv[1]), null, false, false));")
         return subprocess.run([NODE, "-e", prog, json.dumps(agent)], capture_output=True, text=True, timeout=30, check=True,
                               env={**os.environ, "TZ": tz}).stdout
@@ -246,7 +246,9 @@ class Panel(unittest.TestCase):
         a = {"code": "current", "code_version": "v1.0.0 · bbbbbbb · 2025-11-25 19:46 UTC", "code_name": "v1.0.0 · bbbbbbb",
              "code_time": "2025-11-25T19:46:40Z"}
         self.assertIn("v1.0.0 · bbbbbbb · 2025-11-25 11:46 PST", self.row(**a))
-        self.assertIn("2025-11-26 04:46 GMT+9", self.row(tz="Asia/Tokyo", **a))
+        self.assertIn("2025-11-26 04:46 ", self.row(tz="Asia/Tokyo", **a))       # its zone's name varies by ICU (GPT review)
+        no_intl = self.row(**a, intl=False)
+        self.assertIn("v1.0.0 · bbbbbbb · 2025-11-25 19:46 UTC", no_intl)                 # no Intl: the server's words
         self.assertIn("2025-11-25 19:46 UTC", self.row(code_time="not a time", **{k: v for k, v in a.items() if k != "code_time"}))
 
     def test_each_state_shows_its_words_and_button(self):

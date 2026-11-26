@@ -70,7 +70,7 @@ PAGE = PAGE.replace("__HAGENCY_HOMESERVER__", html.escape(remote_agent.PUBLIC_HO
 PAGE = PAGE.replace("__HAGENCY_ELEMENT__", html.escape(ELEMENT_ORIGIN, quote=True))
 PAGE = PAGE.replace("__ELEMENT_HOME__", html.escape(ELEMENT_HOME, quote=True))
 SERVER_VERSION = console_update.SERVER         # what deploy.sh deployed (REVISION), or this checkout's HEAD
-FOOTER = '<br>Hagency Rooms {name} · <time datetime="{iso}">{utc}</time>'   # panel_agents.js: the viewer's own time
+FOOTER = '<br>Hagency Rooms {name} · <time id="vertime" datetime="{iso}">{utc}</time>'   # panel.html: the viewer's own time
 PAGE = PAGE.replace("__VERSION__", FOOTER.format(
     name=html.escape(version.name(SERVER_VERSION)), iso=html.escape(version.iso(SERVER_VERSION), quote=True),
     utc=html.escape(version.utc(SERVER_VERSION))) if SERVER_VERSION else "")

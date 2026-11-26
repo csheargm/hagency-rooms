@@ -56,6 +56,9 @@ try { session = sessionStorage.getItem("hagency-session"); } catch (e) { /* stor
 let linkCode = new URLSearchParams(location.hash.slice(1)).get("login");
 if (location.hash) history.replaceState(null, "", location.pathname + location.search);
 const $ = id => document.getElementById(id);
+{ const t = $("vertime");   // the footer's commit time (panel.FOOTER) in the viewer's own zone (panel_agents.js)
+  const local = t && typeof localTime === "function" ? localTime(t.dateTime) : "";
+  if (local) t.textContent = local; }
 const esc = t => String(t).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 // Signing in never hangs silently (screen test: "Signing in…" forever): every way it can fail says so in one line.
 const LINK = ' Or say "@pm send me my console link" in the room.';
