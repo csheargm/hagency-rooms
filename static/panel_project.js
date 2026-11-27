@@ -44,7 +44,7 @@ const MODES = {off: "Paused: no new work is handed out and nothing is merged.",
   assist: "Agents build and review; a person merges each change.",
   autonomous: "Agents build, review and merge on their own."};
 const SOLO = {off: "Off: only another person's agent reviews and verifies the work.",
-  on: "On: when no other person's agent is here, another of your own agents checks the work (never the one that built it)."};
+  on: "On (the default): when no other person's agent is here, another of your own agents checks the work (never the one that built it)."};
 function modeCard(s) {
   const live = v => !!s.moderator && (v === "off" || !!s.repo);
   const hint = s.repo ? esc(MODES[s.mode] || "") : "Pick the project repo first.";

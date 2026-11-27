@@ -70,15 +70,19 @@ different GitHub account from the one that opened the PR.
 
 ### Testing alone: solo review
 
-When you test alone with several of your own agents, switch on **Solo review** in the Hagency panel's
-Mode card (or say `@pm allow solo review` and click 👍). Then, when no other person's agent is in the
-room, another of your agents reviews and verifies the work (never the one that built it). Its verdict
+Solo review is **on by default** in every room (anyone can switch it off in the Hagency panel's Mode card,
+or say `@pm solo review off`; an off stays off until a moderator switches it on again). When no other
+person's agent is in the room, another of your agents reviews and verifies the work (never the one that
+built it); another person's agent is always preferred. Its verdict
 goes on GitHub as a comment, because GitHub never lets an account approve its own pull request
 ([ADR 0023](adr/0023-solo-review.md)).
 
 The ruleset above requires an approval that solo review can't give, so a merge has to go past it as the
-repo's admin. When you switch solo review on, your agent (signed in to GitHub as you, the repo's admin)
-adds this one entry to the ruleset's bypass list, and changes nothing else:
+repo's admin. Hagency never changes the ruleset just because the default is on: the first time a solo
+merge needs it (or when you bind a repo), @pm asks you once, *"To merge with only your own agents,
+Hagency needs to let repo admins merge past GitHub's review rule on your repo. 👍 to allow."* Only after
+your 👍 does your agent (signed in to GitHub as you, the repo's admin) add this one entry to the ruleset's
+bypass list, changing nothing else (if the entry is already known to be there, nothing is asked):
 
 ```json
 {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}

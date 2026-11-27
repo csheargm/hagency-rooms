@@ -32,9 +32,10 @@ async def check_repo(loop, room, user: str) -> str:
     agents = [a.split(":")[0].lstrip("@") for a in loop.agents_in(room)]
     if not agents:
         return "no agents in this room yet (each person's agent joins with them)"
-    state = await solo_review.read(loop.client, room.room_id)   # ADR 0023: its consent names its repo, so it
-    solo = solo_review.live(state, repo)                         # counts only for the very repo checked here
-    _, problems, seen = await github_setup.readiness(repo, agents, detail=False, solo=solo, bypass=solo and state["ok"])
+    state = await solo_review.read(loop.client, room.room_id)   # ADR 0023: on by default; its bypass is known
+    solo = solo_review.live(state, repo)                         # only for the very repo checked here
+    _, problems, seen = await github_setup.readiness(repo, agents, detail=False, solo=solo,
+                                                     bypass=solo and solo_review.bypass_ok(state, repo))
     if not problems:
         return "\n".join([f"✓ {repo} is ready. Checked:", *(f"✓ {line}" for line in seen)])
     return "\n".join([f"{repo} isn't ready yet:", *(f"✗ {p}" for p in problems)])   # each says its own fix

@@ -1,6 +1,7 @@
 """Solo review (docs/adr/0023-solo-review.md, server/pm_solo.py): the room owner, testing alone with several of
-their OWN agents, lets another of them check the work. Off by default; on only by a moderator after a 👍; off
-at once by anyone; never the builder itself; a paused item goes on with "@pm retry #N".
+their OWN agents, lets another of them check the work. On by default (tests/test_solo_default.py); these start
+from an explicit off: on again only by a moderator after a 👍; off at once by anyone; never the builder itself;
+a paused item goes on with "@pm retry #N".
 Run: .venv/bin/python -m unittest tests.test_solo_review"""
 import asyncio
 import unittest
@@ -25,11 +26,14 @@ class FakeClient:
     """Room state as the server keeps it: what @pm writes, read back."""
     user_id = PM
 
-    def __init__(self):
+    def __init__(self, explicit_off=True):
         self.events: dict[str, dict] = {}
         self.room_send = mock.AsyncMock()
         self.unreadable = False
         self.bind(REPO)
+        if explicit_off:                      # someone switched it off (the default is on: test_solo_default)
+            self.events[solo_review.SOLO_EVENT] = {"type": solo_review.SOLO_EVENT, "state_key": "", "sender": PM,
+                                                   "content": solo_review.content(False)}
 
     def bind(self, repo):
         content = room_state.content("assist", repo) if repo else room_state.unbound()
@@ -46,9 +50,13 @@ class FakeClient:
 
 
 class Base(unittest.TestCase):
+    EXPLICIT_OFF = True
+
     def setUp(self):
         lp = self.lp = Loop.__new__(Loop)
-        lp.client, lp.generation, lp.pending, lp.state, lp.room_repos = FakeClient(), {}, {}, {}, {"!r": REPO}
+        lp.client, lp.generation, lp.pending, lp.state, lp.room_repos = FakeClient(self.EXPLICIT_OFF), {}, {}, {}, {"!r": REPO}
+        lp.review_rule = mock.AsyncMock(return_value=True)   # the repo's default branch requires a review
+        lp.discussions = lambda: {}
         lp.save, lp.lock, lp.agent_online = (lambda: None), asyncio.Lock(), (lambda a: True)
         lp.level = mock.AsyncMock(return_value="assist")
         lp.key_for_result = lambda rid, result: KEY
@@ -66,6 +74,7 @@ class Base(unittest.TestCase):
                               ("server.ownership.own_agent_id", {CX: CXA, BETTY: BA}.get),
                               ("common.room_state.is_moderator", mock.AsyncMock(side_effect=lambda c, r, u: u == CX)),
                               ("common.room_state.owners", mock.AsyncMock(return_value=[CX])),
+                              ("common.room_state.owners_now", mock.AsyncMock(return_value=([CX], {CX}))),
                               ("server.pm_solo_rules.cannot", lambda owner, agent: None),
                               ("common.code_report.runs_task", lambda code, kind: True)):   # older code: test_auto_update_flows
             # TODO(R4): this file is over 300 lines; split Merging (and Words) into test_solo_merging.py
@@ -98,11 +107,17 @@ class Base(unittest.TestCase):
     def recorded(self):
         return solo_review.state_in(list(self.lp.client.events.values()), PM)
 
-    def enable(self, who=CX):
-        self.run_(self.lp.act(self.room, who, intents.classify("@pm allow solo review")))
+    def thumb(self, who=CX):
         asked = self.lp.pending.get("!r")
         if asked:
             self.run_(self.lp.on_reaction(self.room, SimpleNamespace(sender=who, key="👍", reacts_to=asked["event_id"])))
+        return asked
+
+    def enable(self, who=CX):
+        """"@pm allow solo review", 👍; then 👍 to the bypass question that follows (its own consent)."""
+        self.run_(self.lp.act(self.room, who, intents.classify("@pm allow solo review")))
+        if self.thumb(who) and (self.lp.pending.get("!r") or {}).get("bypass"):
+            self.thumb(who)
 
 
 class Room(Base):
@@ -230,7 +245,7 @@ class Room(Base):
         self.answer(self.job(), on=False, changed=[42], already=[])
         self.assertEqual(self.recorded()["bypass_added"], [])
 
-    def test_switched_on_again_while_it_was_taken_out_it_is_put_back(self):
+    def test_switched_on_again_while_it_was_taken_out_it_is_put_back_after_a_thumb(self):
         self.enable()
         self.answer(self.job(), on=True, changed=[42], already=[])
         self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
@@ -238,6 +253,9 @@ class Room(Base):
         self.run_(self.lp.solo_from_panel(self.room, CX, "on"))
         asks = len(self.tasks(solo_review.TASK_KIND))
         self.answer(removal, on=False, changed=[42], already=[])
+        self.assertEqual(len(self.tasks(solo_review.TASK_KIND)), asks)   # owner decision: never without a 👍
+        self.assertTrue(self.lp.pending["!r"]["bypass"])
+        self.thumb()
         self.assertEqual(len(self.tasks(solo_review.TASK_KIND)), asks + 1)
         self.assertTrue(self.tasks(solo_review.TASK_KIND)[-1]["on"])
 
@@ -274,17 +292,20 @@ class Room(Base):
         self.assertIn("Pick this room's GitHub repo first", self.said[-1][0])
         self.assertFalse(self.recorded()["on"])
 
-    def test_a_new_repo_never_inherits_solo_review_and_the_old_bypass_is_named(self):
+    def test_a_new_repo_never_inherits_the_old_repos_bypass_and_the_old_one_is_named(self):
         self.enable()
         self.answer(self.job(), on=True, changed=[42], already=[])
+        asks = len(self.tasks(solo_review.TASK_KIND))
         self.run_(self.lp.follow_repo("!r", REPO))            # first sight
         self.lp.client.bind("o/other")
-        self.assertFalse(self.run_(self.lp.solo_on("!r")))     # off for the new repo at once
         self.run_(self.lp.follow_repo("!r", "o/other"))
         said = self.said[-1][0]
-        self.assertIn("solo review is off now", said)
+        self.assertIn(f"set up on GitHub for {REPO} doesn't carry over", said)
         self.assertIn(f"{REPO} → Settings → Rules", said)
-        self.assertEqual((self.recorded()["on"], self.recorded()["bypass_added"]), (False, []))
+        rec = self.recorded()
+        self.assertEqual((rec["on"], rec["bypass_added"], rec["ok"], rec["repo"]), (True, [], False, None))
+        self.assertFalse(solo_review.bypass_ok(rec, "o/other"))
+        self.assertEqual(len(self.tasks(solo_review.TASK_KIND)), asks)   # nothing sent to the new repo unasked
 
     def test_a_thumb_given_after_a_rebind_doesnt_switch_on_the_new_repo(self):
         self.run_(self.lp.act(self.room, CX, intents.SOLO_ON))
@@ -457,7 +478,8 @@ class Words(unittest.TestCase):
         forged = {**mine, "sender": CX}
         self.assertTrue(solo_review.state_in([mine], PM)["on"])
         self.assertFalse(solo_review.state_in([forged], PM)["on"])
-        self.assertFalse(solo_review.state_in([], PM)["on"])
+        self.assertTrue(solo_review.state_in([], PM)["on"])         # never set: on by default
+        self.assertTrue(solo_review.state_in([], PM)["default"])
 
     def test_checks(self):
         self.assertEqual(solo_review.checks_state([]), "passed")

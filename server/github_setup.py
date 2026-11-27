@@ -89,7 +89,8 @@ def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: s
         return (f"Solo review is on, but only a repo admin may merge past {branch}'s review rule, and "
                 f"{_names('@' + x for x in not_admin)} isn't an admin of {repo} (or that couldn't be checked)")
     if not bypass:
-        return ("Solo review is on, but GitHub's review rule doesn't let repo admins merge past it yet. "
+        return ("Solo review is on, but GitHub's review rule doesn't let repo admins merge past it yet (as far as "
+                "Hagency knows). Say \"@pm allow solo review\" and click 👍 on my question to have it added, or: "
                 + solo_review.BYPASS_STEPS.format(repo=repo).replace("**", ""))
     return None
 

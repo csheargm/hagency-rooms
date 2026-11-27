@@ -96,7 +96,7 @@ class Settings(Projects):
         if problem:
             return problem
         refused, note = await self.close_for_private(rid, repo)
-        return refused or (await self.bind(rid, repo, other, (sender, proof))) + note
+        return refused or self.solo_bound(rid, sender, repo, await self.bind(rid, repo, other, (sender, proof)) + note)
 
     async def requester_problem(self, rid: str, requester: tuple, repo: str) -> str | None:
         """At the state write (GPT review, batch 5+6): the requester is still joined and a moderator,
