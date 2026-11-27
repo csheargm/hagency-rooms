@@ -14,10 +14,12 @@ import logging
 from nio import InviteMemberEvent, UnknownToDeviceEvent
 
 from common import code_report
+from common import github_login
 from common import kind_report
 from common import pm_kinds
 from common import registry
 from common.bridge_config import SERVER_NAME
+from server import console_github
 from server import console_update
 
 log = logging.getLogger("loop")
@@ -73,6 +75,15 @@ def record_code(sender: str, content: object) -> bool:
     return True
 
 
+def record_github(sender: str, content: object) -> bool:
+    """The same for its GitHub sign-in (agent_github.py, ADR 0021): at its start, and after each sign-in click."""
+    said = github_login.state(content) if own_agent(sender) else None
+    if said is None:
+        log.warning("ignored %s's GitHub report: it isn't one this server takes", sender)
+        return False
+    return _store(sender, registry.GITHUB, said, "a GitHub")
+
+
 class KindReports:
     def listen_early(self) -> None:
         """Callbacks that must see @pm's first sync: pending invites (pm_follow.py) and AI reports."""
@@ -83,9 +94,15 @@ class KindReports:
         content = event.source.get("content")
         if event.type == code_report.RESULT_TYPE:   # console_update.py: how an Update click went
             return console_update.answered(self, own_agent(event.sender), content)
-        if event.type not in (kind_report.EVENT_TYPE, code_report.EVENT_TYPE):
+        if event.type == github_login.ANSWER_TYPE:  # console_github.py: a Sign in to GitHub click's code, then result
+            return await console_github.answered(self, own_agent(event.sender), content)
+        store = {kind_report.EVENT_TYPE: record, code_report.EVENT_TYPE: record_code,
+                 github_login.STATE_TYPE: record_github}.get(event.type)
+        if store is None:
             return
         try:
-            (record if event.type == kind_report.EVENT_TYPE else record_code)(event.sender, content)
+            store(event.sender, content)
+            if event.type == github_login.STATE_TYPE and github_login.state(content) is not None:
+                console_github.restarted(self, own_agent(event.sender))   # a click its old process never finished
         except OSError as e:                  # agents.json unwritable: only the badge waits (the next start reports
             log.error("couldn't record %s's report: %s", event.sender, e)   # again); never stops @pm's sync

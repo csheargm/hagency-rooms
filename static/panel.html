@@ -252,7 +252,8 @@ async function show() {
   expired = 0; clearTimeout(watchdog); pmChat = s.pm_chat || null; inPmChat = !!s.personal;
   if (msgMark && typeof githubMsgAfter === "function" && !(msgMark = githubMsgAfter(msgMark, s))) $("msg").textContent = "";
   const typing = document.activeElement && document.activeElement.id;
-  const sameCode = typing === "ghcode" && s.github && s.github.code === $("ghcode").value;   // a code gone: redrawn
+  const sameCode = typing === "ghcode" && s.github && s.github.code === $("ghcode").value   // a code gone: redrawn
+    || typeof ghCodeKept === "function" && ghCodeKept(typing, s, typing && $(typing).value);   // My agents' code too
   const fields = ["repo", "newagent", "newkind", "newmodel", "newbase"];
   if (typing && (fields.includes(typing) || sameCode || typing.startsWith("rename-"))) return;   // don't wipe what's being typed
   $("me").textContent = "";

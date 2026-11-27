@@ -20,7 +20,7 @@ function githubCard(s) {
   return `<section class="card"><h2>GitHub</h2>${body}<div class="hint">Choosing a room's repo needs write access to it
     on GitHub. @pm reads only your username.</div></section>`;
 }
-// Copy: the clipboard API, which Element's widget frame may refuse; then the code is selected in its
+// Copy (also My agents' GitHub code, panel_agents.js: its field named in data-field): the clipboard API, which Element's widget frame may refuse; then the code is selected in its
 // field instead (the panel doesn't redraw a focused field), so Ctrl+C / ⌘C copies it.
 async function copyCode(b, field, clipboard) {
   try {
@@ -43,5 +43,5 @@ function githubMsgAfter(mark, s) {
 }
 if (typeof document !== "undefined") document.addEventListener("click", e => {
   const b = e.target.closest && e.target.closest("button[data-copy]");
-  if (b) copyCode(b, document.getElementById("ghcode"), navigator.clipboard || {writeText: () => Promise.reject(new Error("none"))});
+  if (b) copyCode(b, document.getElementById(b.dataset.field || "ghcode"), navigator.clipboard || {writeText: () => Promise.reject(new Error("none"))});
 });

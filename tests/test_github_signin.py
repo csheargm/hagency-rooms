@@ -10,6 +10,7 @@ from unittest import mock
 
 from client import github_signin
 from common import github
+from common import github_login
 
 AGENT = "anna-agent"
 
@@ -41,11 +42,13 @@ class Offer(unittest.TestCase):
         with mock.patch.dict(os.environ, {"GH_TOKEN": "owner-token", "GITHUB_TOKEN": "x", "GH_HOST": "evil"}):
             self.assertTrue(self.offer("", run=self.gh()))
         cmd, env = self.runs[0]
-        self.assertEqual(cmd[:3], ["gh", "auth", "login"])
+        self.assertEqual(cmd, ["gh", *github_login.LOGIN])     # the one recipe (ADR 0021)
         self.assertIn("--web", cmd)
         self.assertIn("--insecure-storage", cmd)                # GPT review: the keychain is shared by all agents
         self.assertEqual(env["GH_CONFIG_DIR"], str(self.root / AGENT))
         self.assertEqual(env["GIT_CONFIG_GLOBAL"], str(self.root / AGENT / "gitconfig"))   # never the owner's git
+        self.assertEqual(env["GIT_CONFIG_NOSYSTEM"], "1")
+        self.assertNotEqual(env.get("GH_BROWSER"), github_login.NO_BROWSER)   # its owner is here: the browser opens
         for k in github.SCRUBBED_ENV:
             self.assertNotIn(k, env)
         self.assertEqual(stat.S_IMODE(os.stat(self.root / AGENT).st_mode), 0o700)
@@ -56,7 +59,7 @@ class Offer(unittest.TestCase):
             self.assertFalse(github_signin.offer(AGENT, "/app", ask=lambda p: "n", run=self.gh(), which=lambda n: "gh",
                                                  interactive=True))
         self.assertEqual(self.runs, [])
-        self.assertIn("GH_CONFIG_DIR=.gh/anna-agent GIT_CONFIG_GLOBAL=", str(said.call_args_list))
+        self.assertIn(github_login.command(AGENT), str(said.call_args_list))
 
     def test_already_signed_in_asks_nothing(self):
         (self.root / AGENT).mkdir(parents=True)
@@ -96,8 +99,8 @@ class Offer(unittest.TestCase):
                                                  which=lambda n: "gh", interactive=True))   # Ctrl-D
             self.assertFalse(github_signin.offer(AGENT, "/app", ask=mock.Mock(side_effect=OSError("tty gone")),
                                                  run=self.fail, which=lambda n: "gh", interactive=True))
-        self.assertIn("GIT_CONFIG_GLOBAL=.gh/anna-agent/gitconfig", github_signin.LATER.format(app="/app", agent=AGENT))
-        with mock.patch.object(github_signin.os, "chmod", side_effect=PermissionError("no")):
+        self.assertIn(github_login.command(AGENT), github_signin.later("/app", AGENT))
+        with mock.patch.object(github_login.os, "chmod", side_effect=PermissionError("no")):
             self.assertFalse(self.offer("y", run=self.fail))
 
 

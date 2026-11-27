@@ -54,7 +54,8 @@ def bound_repo(name) -> str | None:
 def _listed(name: str) -> str | None:
     return next((r for r in sorted(ALLOWED_REPOS) if REPO_RE.match(r) and r.lower() == name.lower()), None)
 GH_BIN = os.environ.get("GH_BIN", "gh")          # tests point this at tests/fake_gh.py
-IDENTITY_ROOT = Path(os.environ.get("GH_IDENTITY_ROOT", ROOT / ".gh"))
+IDENTITY_DIR = ".gh"                              # each agent's gh folder: .gh/<agent> (github_login.py)
+IDENTITY_ROOT = Path(os.environ.get("GH_IDENTITY_ROOT", ROOT / IDENTITY_DIR))
 CMD_TIMEOUT_S = 120
 
 # Event content keys shared by loop.py and the agent adapters.
@@ -86,11 +87,13 @@ class GitHubError(RuntimeError):
 
 
 # Live test 2026-11-23: a newcomer's agent failed with "(.gh/<agent>/ not signed in)", which said nothing
-# they could act on; "retry" can't help until it is signed in (docs/GITHUB_SETUP.md, step 1).
-NO_IDENTITY = ("{agent} needs a GitHub sign-in for issues and PRs. Its owner runs this in .hagency/app (home "
-               "folder), then \"@pm retry\" and the issue: A={agent}; GH_CONFIG_DIR=.gh/$A "
-               "GIT_CONFIG_GLOBAL=.gh/$A/gitconfig gh auth login --web --insecure-storage")
-# (rooms never show local paths: redact.room_safe cuts them, so the folder is said in words)
+# they could act on. Live test 2026-11-26: a shell command was no use on a phone either, so the words point
+# at the panel's button (ADR 0021); the panel shows terminal users the command (github_login.command).
+# Rooms never show local paths or commands (redact.room_safe), and it fits @pm's 200-character cut.
+# "Ask again", not "@pm retry" (review): retry resumes only a paused issue, never a failed plan or card;
+# a failed filing adds how to ask again itself (pm_plan.FILE_AGAIN).
+NO_IDENTITY = ("{agent} isn't signed in to GitHub yet, so it can't open issues or pull requests. Its owner: open "
+               "the Hagency panel → My agents → Sign in to GitHub, then ask @pm again.")
 
 
 def identity_dir(agent: str) -> Path | None:

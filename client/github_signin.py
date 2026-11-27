@@ -5,13 +5,10 @@ Live test: an agent could plan but not open issues or pull requests until someon
 for it by hand (common/github.NO_IDENTITY), and nothing during setup said so. Now connect.py offers it
 once the agent is connected, while its owner is at the keyboard: GitHub's own device sign-in (`gh auth
 login --web`), into that agent's own gh folder (.gh/<agent>, as github.run reads it), never the
-owner's usual gh login. --insecure-storage keeps the token in that folder (mode 700), not the keychain:
-gh's keychain entry is shared by every gh folder, so a second agent's sign-in could make the first one, or
-the owner, act as the second (GPT review); a background service can't always reach the keychain either.
-Git settings gh may offer to change land in that folder too, never the owner's. Skipped when it is already signed in, when gh isn't installed (said, with the
+owner's usual gh login: common/github_login.py, the one recipe (folder, environment, flags, and the
+command said for later), which the panel's "Sign in to GitHub" uses too (ADR 0021). Skipped when it is already signed in, when gh isn't installed (said, with the
 command for later), or when the answer is no. Never fatal: the agent works without GitHub.
 """
-import os
 import shutil
 import subprocess
 import sys
@@ -19,10 +16,13 @@ import sys
 from client import github_check
 from client.ask_line import ask_line
 from common import github
+from common import github_login
 
-LOGIN = ["gh", "auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web", "--insecure-storage"]
-LATER = ("  Later, in {app}: GH_CONFIG_DIR=.gh/{agent} GIT_CONFIG_GLOBAL=.gh/{agent}/gitconfig GIT_CONFIG_NOSYSTEM=1 "
-         + " ".join(LOGIN))
+LATER = "  Later, in {app}: {command}"
+
+
+def later(app, agent: str) -> str:
+    return LATER.format(app=app, command=github_login.command(agent))
 
 
 def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, interactive=None,
@@ -37,33 +37,29 @@ def offer(agent: str, app, ask=input, run=subprocess.run, which=shutil.which, in
         return True
     if which("gh") is None:
         print("note: to let your agent open issues and pull requests, install the GitHub CLI "
-              "(https://cli.github.com), then sign it in:\n" + LATER.format(app=app, agent=agent))
+              "(https://cli.github.com), then sign it in:\n" + later(app, agent))
         return False
     if not (sys.stdin.isatty() if interactive is None else interactive):
-        print("note: to let your agent open issues and pull requests, sign it in to GitHub:\n" + LATER.format(app=app, agent=agent))
+        print("note: to let your agent open issues and pull requests, sign it in to GitHub:\n" + later(app, agent))
         return False
     if not _yes("Sign in to GitHub? You and your agent will both use this account. [Y/n]" if creds and server else
                 "Sign your agent in to GitHub, so it can open issues and pull requests? [Y/n]", ask):
-        print(LATER.format(app=app, agent=agent))
+        print(later(app, agent))
         return False
-    folder = github.IDENTITY_ROOT / agent
-    env = {k: v for k, v in os.environ.items() if k not in github.SCRUBBED_ENV}   # never another login's token
-    env.update(GH_CONFIG_DIR=str(folder), GIT_CONFIG_GLOBAL=str(folder / "gitconfig"), GIT_CONFIG_NOSYSTEM="1")
     try:
-        folder.mkdir(parents=True, exist_ok=True)
-        os.chmod(folder, 0o700)               # its GitHub token lives here
-        if "--insecure-storage" not in run(["gh", "auth", "login", "--help"], env=env, capture_output=True, text=True,
-                                           check=False).stdout:   # older gh (review): say so, never a cryptic failure
+        env = github_login.env_for(github_login.prepare(agent))   # never another login's token
+        if not github_login.supported(run(["gh", *github_login.LOGIN[:2], "--help"], env=env, capture_output=True, text=True,
+                                          check=False).stdout):   # older gh (review): say so, never a cryptic failure
             print("note: your GitHub CLI is too old for this; update it (https://cli.github.com), then:\n"
-                  + LATER.format(app=app, agent=agent))
+                  + later(app, agent))
             return False
-        done = run(LOGIN, env=env, check=False).returncode == 0
+        done = run(["gh", *github_login.LOGIN], env=env, check=False).returncode == 0
     except (OSError, KeyboardInterrupt) as e:  # said, with the command for later: GitHub is optional
         print(f"\nnote: couldn't sign it in here ({type(e).__name__})")
         done = False
     if done and github.identity_dir(agent) is not None:
         return link(creds, server, prove)
-    print("note: your agent isn't signed in to GitHub yet." + "\n" + LATER.format(app=app, agent=agent))
+    print("note: your agent isn't signed in to GitHub yet." + "\n" + later(app, agent))
     return False
 
 

@@ -19,6 +19,7 @@ from aiohttp import ClientError
 from nio import ToDeviceMessage, UnknownToDeviceEvent
 
 from adapters.agents import self_update
+from adapters.agents.agent_github import BridgeGitHub
 from common import code_report
 from common import customize
 from common import github
@@ -41,15 +42,17 @@ def runs_own(owner: str) -> bool:
     return paths.ROOT.resolve() != customize.ROOT.resolve() or owner in customize.in_use()
 
 
-class BridgeUpdate:
-    """Mixed into bridge.Bridge."""
+class BridgeUpdate(BridgeGitHub):
+    """Mixed into bridge.Bridge; with the panel's Sign in to GitHub (agent_github.py, ADR 0021)."""
     updated = False
 
     async def report_and_listen(self) -> None:
-        """After the first sync: both reports to @pm, then @pm's update requests."""
+        """After the first sync: the reports to @pm, then @pm's update and GitHub sign-in requests."""
         await kind_report.send(self.client, PM_ID, CREDENTIALS)                  # My agents: the AI I run
         await code_report.send(self.client, PM_ID, code_report.build(STARTED, runs_own(self.owner)))
+        await self.report_github()                                               # My agents: signed in to GitHub?
         self.client.add_to_device_callback(self.on_update_request, UnknownToDeviceEvent)
+        self.client.add_to_device_callback(self.on_github_request, UnknownToDeviceEvent)
 
     async def on_update_request(self, event: UnknownToDeviceEvent) -> None:
         if event.type != UPDATE_TYPE or event.sender != PM_ID:
@@ -91,7 +94,10 @@ class BridgeUpdate:
             log.warning("couldn't tell @pm how the update went: %s", e)
 
     async def serve_until_updated(self) -> None:
-        await lifecycle.serve(self.client, f"{self.owner}-agent", self.sync_point, self.tasks)
+        try:
+            await lifecycle.serve(self.client, f"{self.owner}-agent", self.sync_point, self.tasks)
+        finally:
+            await self.stop_github()          # a GitHub sign-in under way: its gh killed, never orphaned by execv
         if not self.updated:
             return
         if os.name == "nt":
