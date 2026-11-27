@@ -50,11 +50,13 @@ def install_url() -> str:
     return f"https://github.com/apps/{urllib.parse.quote(SLUG)}/installations/new"
 
 
-def private_key() -> str:
-    """The App's private key, from a file only its owner can read (never logged, never in errors)."""
-    path = Path(KEY_PATH)
+def private_key(key_path: str | None = None) -> str:
+    """The App's private key, from a file only its owner can read (never logged, never in errors).
+    `key_path`: another App's key (the Trial Builder App, server/trial_github.py); default @pm's."""
+    key_path = KEY_PATH if key_path is None else key_path
+    path = Path(key_path)
     try:
-        if not KEY_PATH or path.stat().st_mode & 0o077:
+        if not key_path or path.stat().st_mode & 0o077:
             raise github.GitHubError("the GitHub App's private key must be a file only @pm can read "
                                      "(GITHUB_APP_PRIVATE_KEY_PATH, mode 600)")
         return path.read_text()
@@ -62,12 +64,13 @@ def private_key() -> str:
         raise github.GitHubError(f"can't read the GitHub App's private key ({type(e).__name__})") from None
 
 
-def app_jwt(now: float | None = None) -> str:
-    """The App's own short-lived identity: only for finding installations and minting tokens."""
+def app_jwt(now: float | None = None, app_id: str | None = None, key_path: str | None = None) -> str:
+    """The App's own short-lived identity: only for finding installations and minting tokens
+    (`app_id` / `key_path`: another App's, else @pm's)."""
     now = int(time.time() if now is None else now)
-    claims = {"iat": now - JWT_BACKDATE_S, "exp": now + JWT_TTL_S, "iss": APP_ID}
+    claims = {"iat": now - JWT_BACKDATE_S, "exp": now + JWT_TTL_S, "iss": APP_ID if app_id is None else app_id}
     try:
-        return jwt.encode(claims, private_key(), algorithm="RS256")
+        return jwt.encode(claims, private_key(key_path), algorithm="RS256")
     except (ValueError, TypeError, jwt.PyJWTError) as e:   # a malformed key: say so, never show it
         raise github.GitHubError(f"the GitHub App's private key isn't a valid RSA key ({type(e).__name__})") from None
 

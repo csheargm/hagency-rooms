@@ -5,7 +5,7 @@ them (pm_settings.private_room: only @pm invites; nobody else is in it), checked
 action. The same widget URL as in project rooms, so the same pre-approval (deploy/element_home.py).
 """
 ACTIONS = ("follow", "add", "code", "update", "selfupdate", "autoupdate", "github_signin", "github", "rename", "remove", "disconnect", "stop", "start",
-           "goback", "trial", "trial_model")   # console.act's personal ones (trial: pm_trial.py, ADR 0025)
+           "goback", "trial", "trial_model", "trial_build")   # console.act's personal ones (trial: pm_trial.py, ADR 0025)
 ROOM_ONLY = "This is your own Hagency panel; a project room's settings are in that room's panel."
 NOT_YOURS = "This is someone else's chat with Product Manager."
 TITLE = "My Hagency"

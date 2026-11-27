@@ -228,7 +228,18 @@ function trialCard(t) {
     (t.models || []).map(m => `<option ${m === t.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
     <button data-a="trial_model">Use</button></span></div>` : "";
   return `<section class="card"><h2>Server agent (free, limited)</h2><div class="set"><div>${what}<div class="hint">What you write to it goes to Ollama Cloud.</div></div>
-    <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat" : "Start it"}</button></div>${pick}</section>`;
+    <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat" : "Start it"}</button></div>${pick}${buildPart(t.build)}</section>`;
+}
+// Builds (pm_build.build_view, ADR 0027): only while the server's trial-worker runs. The server agent fixes a seeded
+// issue in a Hagency demo repo inside a sandbox and opens a pull request; a person merges. News comes in this chat.
+function buildPart(b) {
+  if (!b) return "";
+  const now = b.state ? `Your build is <b>${esc(b.state)}</b>; news comes in this chat.` : `${esc(b.left)} of ${esc(b.per_day)} builds left today.`;
+  const need = b.github ? "" : ` Needs GitHub connected (an account at least ${esc(b.days)} days old).`;
+  return `<div class="set"><div><b>Try a build</b>: watch the server agent fix an issue in a Hagency demo repo, in a sandbox, run the
+    tests and open a pull request for a person to merge. ${now}${need}<div class="hint">The issue and the code go to E2B (a sandbox
+    service) and Ollama Cloud; nothing of yours.</div></div>
+    <button data-a="trial_build" data-v=""${b.state || !b.left ? " disabled" : ""}>Try a build</button></div>`;
 }
 // "Start it" / "Open its chat" (pm_trial.trial_action): the server agent chat's room. Its link opens like our private
 // chat's (panel.html, a[data-pmchat]: in Element through the widget API, at once; elsewhere a new tab, by a click).

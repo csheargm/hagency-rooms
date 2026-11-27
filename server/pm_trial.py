@@ -12,6 +12,7 @@ import re
 from common import intents
 from common.redact import room_safe
 from server.pm_address import unaddressed
+from server.pm_build import BuildOffer
 from server import trial_limits
 from server import trial_models
 
@@ -45,7 +46,7 @@ def wants_trial(text: str) -> bool:
     return bool(TRIAL_RE.search(text)) and not (intents.NEGATED.search(text) or intents.BRING_OWN_RE.search(text))
 
 
-class TrialOffer:
+class TrialOffer(BuildOffer):   # pm_build.py: "Try a build" (ADR 0027)
     trial = None                          # trial_agent.TrialAgent while it runs (loop.run sets it)
 
     def trial_on(self) -> bool:
@@ -91,6 +92,8 @@ class TrialOffer:
                 return False
             await self.say(room.room_id, UNAVAILABLE)
             return True
+        if await self.on_build_text(room, event):    # "try a build" (pm_build.py; only while builds are on)
+            return True
         text = unaddressed(event.body, self.user_id)
         mine = event.sender in self.trial.visitors and self.trial_eligible(event.sender)   # models: only theirs to pick
         m = USE_RE.match(text)                  # first: "use glm-5.3 for the trial" names a model (independent review)
@@ -126,12 +129,15 @@ class TrialOffer:
             return None
         usage = self.trial.usage
         return {"on": person in self.trial.visitors, "used": usage.used(person), "per_day": usage.per_day(person),
-                "tier": self.trial.tiers.tier(person), "model": self.trial.model_of(person), "models": trial_models.names()}
+                "tier": self.trial.tiers.tier(person), "model": self.trial.model_of(person), "models": trial_models.names(),
+                **({"build": build} if (build := self.build_view(person)) else {})}   # only while builds are on (pm_build.py)
 
     async def trial_action(self, person: str, action: str = "trial", value: str = "") -> str | dict:
         """The panel's "Start it" / "Open its chat" button (the same as 🧪, answered in our private chat too):
         with the trial chat's room, which the panel opens (GPT review: "again" left them where they were); or its
         model picker."""
+        if action == "trial_build":
+            return await self.build_action(person) if self.trial_on() else UNAVAILABLE
         if action == "trial_model":
             said = self.choose_model(person, value) if self.trial_on() else UNAVAILABLE
             return "ok" if said.startswith("🧪") else said

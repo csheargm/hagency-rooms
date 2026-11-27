@@ -103,14 +103,50 @@ services:
       - ../../pm:/app                   # ~/hagency/pm: this commit's files (deploy.sh) and @pm's state
       - ./pm-secret:/run/hagency:ro     # root-owned on the host: @pm can read the secret, never replace it
       - ./secrets:/run/hagency-github:ro   # the App's private key (envfile.py checks it: mode 600, PM_UID)
+      - ../../trial-shared:/app/data/trial-shared   # trial builds' queue and heartbeat, shared with trial-worker (no secrets)
     depends_on: [synapse]
     networks: [edge]
     logging: *logs
     stop_grace_period: 2m               # @pm finishes what it started (lifecycle.py)
     restart: unless-stopped
+  # Trial builds (docs/adr/0027-trial-builds.md, docs/TRIAL_BUILDER_SETUP.md): it only orchestrates; untrusted code
+  # runs in E2B microVMs, never here. Only trial.env (the E2B key, the Trial App, its Ollama key): never @pm's .env, the
+  # registration secret or @pm's App key; never on db or edge. Not configured: it exits at once and stays stopped.
+  trial-worker:
+    image: python:3.12.16-slim
+    user: "${PM_UID}:${PM_UID}"
+    working_dir: /app
+    command: ["sh", "deploy/trial_worker_start.sh"]
+    env_file: [{path: ./trial.env, required: false}]
+    environment:
+      HOME: /tmp
+      TRIAL_SHARED_DIR: /shared
+      TRIAL_APP_PRIVATE_KEY_PATH: /run/hagency-trial/trial-app.pem
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ../server:/app/server:ro        # this commit's code only (no .env, no data)
+      - ../common:/app/common:ro
+      - ./trial_worker_start.sh:/app/deploy/trial_worker_start.sh:ro
+      - ../requirements.txt:/app/requirements.txt:ro
+      - ./requirements-trial.txt:/app/deploy/requirements-trial.txt:ro
+      - ../../trial-shared:/shared      # the queue, the heartbeat, the leases, the Ollama slot's lock
+      - ./trial-secrets:/run/hagency-trial:ro   # the Trial Builder App's key (mode 600)
+      - ../../trial-venv:/venv          # its pinned requirements, kept between starts (bootstrap.sh makes it)
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    cpus: 0.5
+    mem_limit: 512m
+    networks: [trial-out]
+    logging: *logs
+    stop_grace_period: 30s
+    restart: on-failure
 networks:
   edge: {}
   db: {internal: true}                  # no route out, and nothing but Synapse on it
+  trial-out: {}                         # trial-worker alone: out to E2B, GitHub and Ollama Cloud
 volumes:
   caddy_data: {}
   caddy_config: {}
