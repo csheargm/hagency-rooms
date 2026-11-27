@@ -86,7 +86,7 @@ def set_display_name(person: str, agent: str, name: str) -> bool:
 class Renaming:
     async def on_rename_text(self, room: MatrixRoom, event: RoomMessageText) -> bool:
         """True if the message asked to rename one of the sender's agents (answered here)."""
-        text = unaddressed(event.body) if self.in_private(room, event.sender) else self.addressed_text(event, room)
+        text = unaddressed(event.body, self.user_id) if self.in_private(room, event.sender) else self.addressed_text(event, room)
         m = RENAME_RE.match(text) if text is not None else None
         if not m:
             return False

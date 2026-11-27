@@ -87,7 +87,7 @@ class MoreAgents(Renaming):
         if await self.on_rename_text(room, event):
             return True
         private = self.in_private(room, event.sender)
-        text = unaddressed(event.body) if private else self.addressed_text(event, room)
+        text = unaddressed(event.body, self.user_id) if private else self.addressed_text(event, room)
         if text is None:
             return False
         naming = self.__dict__.setdefault("_naming", {})

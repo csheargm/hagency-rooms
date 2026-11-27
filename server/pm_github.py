@@ -194,7 +194,7 @@ class GitHubLink:
     async def on_github_text(self, room: MatrixRoom, event: RoomMessageText) -> bool:
         """True if the message was "connect my github" / "disconnect my github" (answered here)."""
         private = self.in_private(room, event.sender)
-        text = unaddressed(event.body) if private else self.addressed_text(event, room)
+        text = unaddressed(event.body, self.user_id) if private else self.addressed_text(event, room)
         if text is None or not (CONNECT_RE.search(text) or DISCONNECT_RE.search(text)):
             return False
         if DISCONNECT_RE.search(text):
