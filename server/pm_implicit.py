@@ -170,8 +170,9 @@ class Implicit:
                         gen: int) -> None:
         """No model read it. A reply to my message was plainly said to me: never silence ("didn't catch
         that", with why). Otherwise only what the rules know, quietly (it may be for someone else)."""
-        if intent == intents.UNKNOWN and await self.ask_redraft(room, sender, gen):
-            return                            # a change to the plan waiting: asked first, never redrafted on a guess
+        if intent == intents.UNKNOWN and (self.pending.get(room.room_id) or {}).get("kind") == "plan":
+            await self.ask_redraft(room, sender, gen)   # asked first, never redrafted on a guess, even when
+            return                            # it couldn't ask (GPT re-check: by_rules would redraft)
         if how == REPLIES and intent == intents.UNKNOWN:
             await self.by_rules(room, sender, text, intent, why)
         else:

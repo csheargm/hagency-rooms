@@ -187,6 +187,20 @@ class RedraftOnTheFallback(RoomBase, unittest.TestCase):
         self.assertIn("redraft the plan", self.said[-1])
 
 
+    def test_a_failed_ask_to_redraft_never_falls_through_to_a_redraft(self):
+        """GPT re-check: the first moderator check failed (a passing Matrix error), so by_rules redrafted."""
+        mine = RoomGetEventResponse()
+        mine.event = SimpleNamespace(sender=PM, body="Mode: assist.")
+        self.lp.client.room_get_event = mock.AsyncMock(return_value=mine)
+        self.lp.agent_online = lambda agent: False
+        self.lp.start_plan = mock.AsyncMock()
+        self.lp.ask_redraft = mock.AsyncMock(return_value=False)
+        plan = {"kind": "plan", "event_id": "$plan", "by": ANNA, "until": time.time() + 300}
+        self.lp.pending["!r"] = plan
+        self.tell(ANNA, "drop the French page", mention=False, reply_to="$older")
+        self.lp.start_plan.assert_not_awaited()
+        self.assertIs(self.lp.pending["!r"], plan)
+
 class OwnersAgentAndBudgets(RoomBase, unittest.TestCase):
     """Findings 3 and 4."""
     def test_an_agent_that_left_after_admission_gets_no_context(self):
