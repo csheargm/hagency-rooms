@@ -169,15 +169,18 @@ VIEW = {"room": "Demo", "repo": "a/b", "user": "anna", "moderator": True, "mode"
 TRIAL_FLOW = r"""
 <script>
 const VIEW = __VIEW__, sent = [];
-window.fetch = async (url, o) => { if (o && o.body) sent.push(JSON.parse(o.body).action);
+window.fetch = async (url, o) => { if (o && o.body) { const b = JSON.parse(o.body); sent.push([String(url), b.action, b.value]); }
   return {status: 200, json: async () => String(url).startsWith("console/state") ? VIEW : {result: "ok"}}; };
 try { sessionStorage.setItem("hagency-session", "s"); } catch (e) { /* the page then signs in: the test fails */ }
 const shown = el => !!el && !el.closest("[hidden]");
 window.addEventListener("load", () => setTimeout(async () => {
   const pane = document.getElementById("agents"), h2 = [...pane.querySelectorAll("h2")].map(h => h.textContent);
   const out = {bar: shown(document.getElementById("tabs")), agents: shown(pane), room: shown(document.getElementById("controls")), h2};
-  const go = [...pane.querySelectorAll('button[data-a="trial"]')].find(b => b.textContent === "Try it");
-  out.tryIt = shown(go); if (go) go.click(); await new Promise(r => setTimeout(r, 300));
+  const go = pane.querySelector('button[data-a="trial"]'), pick = document.getElementById("trialmodel");
+  out.button = go && shown(go) ? go.textContent : "";
+  if (pick) { pick.value = "gpt-oss:120b"; pick.focus(); pane.querySelector('button[data-a="trial_model"]').click(); }
+  else if (go) go.click();
+  await new Promise(r => setTimeout(r, 300));
   out.sent = sent;
   document.getElementById("result").textContent = JSON.stringify(out);
 }, 500));
@@ -234,8 +237,16 @@ class TabsInABrowser(unittest.TestCase):
             out = chrome(page_file(TRIAL_VIEW, folder, TRIAL_FLOW), str(Path(folder) / "profile"))
         self.assertEqual((out["bar"], out["agents"], out["room"]), (False, True, False))   # one tab: no bar
         self.assertEqual(out["h2"], ["My agents · 0", "Trial agent (shared, limited)", "GitHub"])
-        self.assertTrue(out["tryIt"])
-        self.assertEqual(out["sent"], ["trial"])                                   # Try it reaches @pm
+        self.assertEqual(out["button"], "Try it")
+        self.assertEqual(out["sent"], [["/console/action", "trial", "start"]])      # Try it reaches @pm
+
+    def test_a_running_trial_offers_its_chat_and_the_model_picker(self):
+        """GPT review: the running card too: "Open its chat again", and Use sends the model chosen."""
+        on = {**TRIAL_VIEW, "trial": {**TRIAL_VIEW["trial"], "on": True, "left": 7, "models": ["glm-5.3", "gpt-oss:120b"]}}
+        with tempfile.TemporaryDirectory() as folder:
+            out = chrome(page_file(on, folder, TRIAL_FLOW), str(Path(folder) / "profile"))
+        self.assertEqual(out["button"], "Open its chat again")
+        self.assertEqual(out["sent"], [["/console/action", "trial_model", "gpt-oss:120b"]])
 
 
 if __name__ == "__main__":
