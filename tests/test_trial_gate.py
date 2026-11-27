@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from server import trial_gate as tg
-from tests.trial_build_kit import CAPS
+from tests.trial_build_kit import FREE
 
 
 class Counts(unittest.TestCase):
@@ -19,8 +19,8 @@ class Counts(unittest.TestCase):
         self.assertEqual(tg.Usage(path, clock=lambda: now[0]).counts(7), (2, 2, 3))   # a restart keeps them
         now[0] += 86400
         self.assertEqual(usage.counts(7), (0, 2, 0))
-        self.assertEqual(tg.left_today(usage, 7, CAPS), 3)
-        self.assertEqual(tg.left_today(usage, 7, {**CAPS, "TRIAL_BUILDS_TOTAL": 3}), 1)
+        self.assertEqual(tg.left_today(usage, 7, FREE), 3)
+        self.assertEqual(tg.left_today(usage, 7, (3, 3)), 1)
 
 
 class Age(unittest.TestCase):

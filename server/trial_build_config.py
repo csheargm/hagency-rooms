@@ -19,8 +19,6 @@ REQUIRED = ("E2B_API_KEY", "TRIAL_APP_ID", "TRIAL_ORG", "OLLAMA_API_KEY")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")              # an org name
 REPO_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 DEFAULTS = {
-    "TRIAL_BUILDS_PER_ACCOUNT": 3,     # per GitHub account, per UTC day
-    "TRIAL_BUILDS_TOTAL": 10,          # per GitHub account, ever
     "TRIAL_BUILDS_PER_DAY": 20,        # the whole server, per UTC day (the demo allowlist bypasses it)
     "TRIAL_BUILD_QUEUE": 5,            # builds waiting; one runs at a time, server-wide
     "TRIAL_BUILD_STEPS": 40,           # tool calls in one build
@@ -107,8 +105,7 @@ def demo_users() -> list[str]:
 
 def caps() -> dict:
     """What @pm needs to gate and count (sent in the worker's heartbeat)."""
-    keys = ("TRIAL_BUILDS_PER_ACCOUNT", "TRIAL_BUILDS_TOTAL", "TRIAL_BUILDS_PER_DAY", "TRIAL_BUILD_QUEUE",
-            "TRIAL_MIN_ACCOUNT_DAYS")
+    keys = ("TRIAL_BUILDS_PER_DAY", "TRIAL_BUILD_QUEUE", "TRIAL_MIN_ACCOUNT_DAYS")   # a person's own caps: their tier
     return {**{k: number(k) for k in keys}, "demo_users": demo_users()}
 
 

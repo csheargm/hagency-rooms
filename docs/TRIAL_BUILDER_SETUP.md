@@ -1,13 +1,13 @@
 # Setting up trial builds
 
-Trial builds let a visitor without an agent watch the whole build flow: a trial builder fixes a seeded issue in a
+Builds let anyone signed in here watch the whole build flow from the **Server agent** card: it fixes a seeded issue in a
 Hagency demo repo, inside an E2B sandbox, runs the tests in a second sandbox with no network, opens a pull request
 with an "AI self-check" comment, and @pm says **Ready: a person merges**. Why it is built this way:
 [ADR 0027](adr/0027-trial-builds.md).
 
 **It stays off until you finish every step below.** Until then the `trial-worker` container exits at once and
-nothing changes for anyone. The talk-only trial agent (ADR 0025, `OLLAMA_API_KEY` in `deploy/.env`) must be on too:
-the **Try a build** button sits on its card in My Hagency.
+nothing changes for anyone. The server agent (ADR 0025, `OLLAMA_API_KEY` in `deploy/.env`) must be on too:
+the **Try a build** button sits on its card in My agents (My Hagency).
 
 You create five things: an E2B account with prepaid credit, an E2B template, a GitHub organisation with demo repos,
 a GitHub App, and one settings file on the server.
@@ -106,13 +106,15 @@ What goes where:
 | `OLLAMA_API_KEY` | `deploy/trial.env` | an Ollama Cloud key (the same as `deploy/.env`'s, or one of its own) |
 | `TRIAL_BUILD_MODEL` | `deploy/trial.env` | one of `TRIAL_MODELS`; measure its tool calling on your seeded issues first |
 | `TRIAL_BUILD_DEMO_USERS` | `deploy/trial.env` | your own Matrix ID, so you can always demo (bypasses the server's daily cap) |
-| caps (`TRIAL_BUILDS_PER_ACCOUNT` 3, `TRIAL_BUILDS_PER_DAY` 20, `TRIAL_BUILD_QUEUE` 5, …) | `deploy/trial.env` | the defaults are the owner's decisions |
+| server caps (`TRIAL_BUILDS_PER_DAY` 20, `TRIAL_BUILD_QUEUE` 5, …) | `deploy/trial.env` | the defaults are the owner's decisions |
+| a person's caps (free: 3 a day, 10 ever) | `server/trial_tiers.py` (their tier) | a paid tier can raise them later |
 | nothing new | `deploy/.env` | @pm never gets any of the above |
 
 ## Checking it
 
-1. In Element, as a test account with no agent of its own, GitHub connected (an account at least 30 days old): open
-   your chat with Product Manager → My Hagency → **Trial agent** card → **Try a build**.
+1. In Element, as a test account with GitHub connected (an account at least 30 days old): open
+   your chat with Product Manager → My Hagency → My agents → **Server agent** card → **Try a build**. (Owning an
+   agent doesn't matter: anyone who passes the gate can try.)
 2. You get "queued: you're #1", then "started", then "done: pull request #N … Ready: a person merges".
 3. On github.com, the PR in the demo repo has the label "written by AI in a sandbox" and an "AI self-check" comment.
    Merge or close it yourself: the trial never merges.
@@ -123,4 +125,4 @@ In `deploy/trial.env` set `TRIAL_BUILD=off`, then `sudo docker compose --env-fil
 trial-worker` (a plain `restart` would keep the old settings: Compose reads `trial.env` only when it creates the
 container). Our
 sandboxes are killed, waiting builds are told they were switched off, and **Try a build** disappears; the talk-only
-trial agent keeps working. To pause spending at the source, revoke the E2B key in E2B's dashboard.
+server agent keeps working. To pause spending at the source, revoke the E2B key in E2B's dashboard.

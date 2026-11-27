@@ -1,4 +1,4 @@
-"""The Trial agent card's "Try a build" part (static/panel_agents.js, ADR 0027): shown only when @pm sends it,
+"""The Server agent card's "Try a build" part (static/panel_agents.js, ADR 0027): shown only when @pm sends it,
 with what it does, where the code goes, and the button disabled while a build of theirs waits or runs.
 Run: .venv/bin/python -m unittest tests.test_trial_build_card"""
 import json

@@ -3,8 +3,9 @@
 The gate: a person with an account on THIS server (not federated), who connected GitHub (ADR 0007:
 the account they proved is theirs), whose GitHub account is at least TRIAL_MIN_ACCOUNT_DAYS old
 (30). Sign-up is open to any email (ADR 0013), so the caps count per GitHub account id, never per
-Matrix id: TRIAL_BUILDS_PER_ACCOUNT a UTC day (3) and TRIAL_BUILDS_TOTAL ever (10), and
-TRIAL_BUILDS_PER_DAY for the whole server (20), which the operator's demo allowlist bypasses.
+Matrix id: the person's tier sets how many a UTC day and how many ever (trial_tiers.BUILDS_DAY /
+BUILDS_TOTAL, free: 3 and 10), and TRIAL_BUILDS_PER_DAY for the whole server (20), which the
+operator's demo allowlist bypasses.
 A build is counted when it is queued, and never given back: a failed build still cost something.
 The caps come from the worker's heartbeat (trial_build_config.caps), so they live in trial.env only.
 
@@ -26,14 +27,14 @@ from common.bridge_config import ROOT, SERVER_NAME
 
 USAGE_FILE = ROOT / "data" / "trial-build-usage.json"
 AGE_CACHE_S = 24 * 3600
-REMOTE = "Trial builds are for people with an account on this server."
-NO_GITHUB = ("Trial builds need your GitHub account connected first: in My Hagency, click **Connect GitHub**. "
+REMOTE = "Builds are for people with an account on this server."
+NO_GITHUB = ("Builds need your GitHub account connected first: in My Hagency, click **Connect GitHub**. "
              "It must be at least {days} days old.")
 NO_AGE = "I couldn't check your GitHub account's age just now. Please try again in a few minutes."
-TOO_NEW = "Trial builds need a GitHub account at least {days} days old; yours is {age} days old."
-PER_DAY = "You've used today's {n} trial builds. They come back at 00:00 UTC."
-TOTAL = "You've used all {n} of your trial builds. To keep building, bring your own agent: type \"bring my own\"."
-SERVER = "This server has used all of today's trial builds. Please try again tomorrow (after 00:00 UTC)."
+TOO_NEW = "Builds need a GitHub account at least {days} days old; yours is {age} days old."
+PER_DAY = "You've used today's {n} server agent builds. They come back at 00:00 UTC."
+TOTAL = "You've used all {n} of your server agent builds. To keep building, use your own agent (type \"bring my own\")."
+SERVER = "This server has used all of today's server agent builds. Please try again tomorrow (after 00:00 UTC)."
 _ages: dict[int, tuple[float, float | None]] = {}     # github id → (read at, created at)
 
 
@@ -95,15 +96,18 @@ class Usage:
             os.replace(tmp, self.path)
 
 
-def left_today(usage: Usage, github_id: int | None, caps: dict) -> int:
+def left_today(usage: Usage, github_id: int | None, allowance: tuple[int, int]) -> int:
+    """Builds left today; `allowance`: (a day, ever), from their tier."""
     if github_id is None:
-        return int(caps.get("TRIAL_BUILDS_PER_ACCOUNT", 0))
+        return allowance[0]
     today, total, _ = usage.counts(github_id)
-    return max(0, min(int(caps["TRIAL_BUILDS_PER_ACCOUNT"]) - today, int(caps["TRIAL_BUILDS_TOTAL"]) - total))
+    return max(0, min(allowance[0] - today, allowance[1] - total))
 
 
-async def refusal(person: str, link: dict | None, caps: dict, usage: Usage, now: float, read=None) -> str | None:
-    """Why `person` may not start a build now, or None (go ahead: counted by the caller once queued)."""
+async def refusal(person: str, link: dict | None, caps: dict, allowance: tuple[int, int], usage: Usage, now: float,
+                  read=None) -> str | None:
+    """Why `person` may not start a build now, or None (go ahead: counted by the caller once queued).
+    `caps`: the server's (the worker's heartbeat); `allowance`: theirs, (a day, ever), from their tier."""
     days = int(caps.get("TRIAL_MIN_ACCOUNT_DAYS", 30))
     if identity.split(person)[1] != SERVER_NAME:
         return REMOTE
@@ -115,10 +119,10 @@ async def refusal(person: str, link: dict | None, caps: dict, usage: Usage, now:
     if (age := int((now - created) // 86400)) < days:
         return TOO_NEW.format(days=days, age=max(0, age))
     today, total, server = usage.counts(link["id"])
-    if total >= int(caps["TRIAL_BUILDS_TOTAL"]):
-        return TOTAL.format(n=caps["TRIAL_BUILDS_TOTAL"])
-    if today >= int(caps["TRIAL_BUILDS_PER_ACCOUNT"]):
-        return PER_DAY.format(n=caps["TRIAL_BUILDS_PER_ACCOUNT"])
+    if total >= allowance[1]:
+        return TOTAL.format(n=allowance[1])
+    if today >= allowance[0]:
+        return PER_DAY.format(n=allowance[0])
     if server >= int(caps["TRIAL_BUILDS_PER_DAY"]) and person not in (caps.get("demo_users") or []):
         return SERVER
     return None

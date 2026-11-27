@@ -25,7 +25,8 @@ BROKEN = "def add(a, b):\n    return a - b\n"
 FIXED = "def add(a, b):\n    return a + b\n"
 TEMPLATE = {"src/calc.py": BROKEN, "tests/test_calc.py": "from src.calc import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
             "README.md": "A demo repo.\n"}
-CAPS = {"TRIAL_BUILDS_PER_ACCOUNT": 3, "TRIAL_BUILDS_TOTAL": 10, "TRIAL_BUILDS_PER_DAY": 20, "TRIAL_BUILD_QUEUE": 5,
+FREE = (3, 10)                        # the free tier's builds: a day, ever (trial_tiers.TIERS)
+CAPS = {"TRIAL_BUILDS_PER_DAY": 20, "TRIAL_BUILD_QUEUE": 5,
         "TRIAL_MIN_ACCOUNT_DAYS": 30, "demo_users": []}
 _KEY: Path | None = None
 

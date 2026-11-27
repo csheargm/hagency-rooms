@@ -1,4 +1,4 @@
-"""@pm's side of trial builds (ADR 0027): "Try a build" on the Trial agent card in My Hagency, or "try a
+"""@pm's side of builds by the server agent (ADR 0027): "Try a build" on the Server agent card in My agents, or "try a
 build" in our private chat; the queue and outcome messages, in that chat.
 
 Offered only while the talk-only trial runs (pm_trial.py) AND the trial-worker's heartbeat is fresh
@@ -19,6 +19,7 @@ from server import trial_build
 from server import trial_build_config
 from server import trial_gate
 from server import trial_jobs
+from server import trial_tiers
 from server.pm_address import unaddressed
 
 log = logging.getLogger("loop")
@@ -27,20 +28,20 @@ RELAY_S = 5
 EXCERPT_CHARS = 400
 PRIVACY = ("It works on a private Hagency demo repo (not yours): the issue and the code go to E2B (a sandbox "
            "service) and Ollama Cloud. Nothing of yours is used.")
-QUEUED = "🛠️ Your trial build is queued: you're **#{n}**. I'll tell you here when it starts and when it's done. " + PRIVACY
-ALREADY = "🛠️ Your trial build is {where}. One at a time: I'll tell you here when it's done."
-BUSY = "⏳ Trial builds are busy: {n} are waiting already. Please try again in a while."
-OFF = "Trial builds aren't available just now."
-OWN = "You have your own agent, so trial builds aren't for you: ask your agent to build instead."
-STARTED = "🛠️ Your trial build has started: issue #{issue} in {repo}, \"{title}\". It usually takes a few minutes."
-DONE = ("✅ Your trial build is done: pull request #{pr} in {repo}, for issue #{issue}. Changed: {files}. The tests "
+QUEUED = "🛠️ Your server agent build is queued: you're **#{n}**. I'll tell you here when it starts and when it's done. " + PRIVACY
+ALREADY = "🛠️ Your server agent build is {where}. One at a time: I'll tell you here when it's done."
+BUSY = "⏳ Server agent builds are busy: {n} are waiting already. Please try again in a while."
+OFF = "Builds by the server agent aren't available just now."
+NOT_FOR_YOU = "Builds by the server agent aren't available to your account."
+STARTED = "🛠️ Your server agent build has started: issue #{issue} in {repo}, \"{title}\". It usually takes a few minutes."
+DONE = ("✅ Your server agent build is done: pull request #{pr} in {repo}, for issue #{issue}. Changed: {files}. The tests "
         "passed (run again in a separate sandbox with no network), and an **AI self-check** was posted on it as a "
         "comment, not an approval. **Ready: a person merges** (the trial never merges).\n\nThe self-check said: {review}")
 POSTED = "an **AI self-check** was posted on it as a comment, not an approval"
 NOT_POSTED = "the AI self-check couldn't be posted on it (read the change yourself)"
-OPENED_UNFINISHED = ("⚠️ Your trial build opened pull request #{pr} in {repo}, but didn't finish: {why}. Its AI "
+OPENED_UNFINISHED = ("⚠️ Your server agent build opened pull request #{pr} in {repo}, but didn't finish: {why}. Its AI "
                      "self-check may be missing. A person reviews and merges it (the trial never merges).")
-FAILED = "⚠️ Your trial build didn't finish: {why}. Nothing was opened. You have {left} trial builds left today."
+FAILED = "⚠️ Your server agent build didn't finish: {why}. Nothing was opened. You have {left} builds left today."
 
 
 def excerpt(text: object, limit: int = EXCERPT_CHARS) -> str:
@@ -82,7 +83,13 @@ class BuildOffer:
         return self.build_jobs().alive() if self.trial_on() else None
 
     def may_build(self, person: str, caps: dict) -> bool:
+        """Anyone who may use the server agent, with agents of their own or not (the gate decides the rest)."""
         return self.trial_eligible(person) or person in (caps.get("demo_users") or [])
+
+    def build_allowance(self, person: str) -> tuple[int, int]:
+        """(builds a day, builds ever) from their tier (trial_tiers.py: free 3 and 10; a paid tier may raise them)."""
+        tiers = self.trial.tiers if self.trial is not None else trial_tiers.Tiers()   # down: their tier is unknown, so FREE
+        return tuple(max(0, int(tiers.limit(person, k))) for k in (trial_tiers.BUILDS_DAY, trial_tiers.BUILDS_TOTAL))
 
     async def start_build(self, room_id: str, person: str) -> str:
         """The gate, then the queue; what was said (also posted in room_id)."""
@@ -91,8 +98,8 @@ class BuildOffer:
         if caps is None:
             said = OFF
         elif not self.may_build(person, caps):
-            said = OWN
-        elif refused := await trial_gate.refusal(person, link, caps, self.build_usage(), time.time()):
+            said = NOT_FOR_YOU
+        elif refused := await trial_gate.refusal(person, link, caps, self.build_allowance(person), self.build_usage(), time.time()):
             said = refused
         else:
             said = self.queue_build(room_id, person, link, caps)
@@ -127,14 +134,15 @@ class BuildOffer:
         return {"result": "ok", "says": plain} if said.startswith("🛠️") else plain
 
     def build_view(self, person: str) -> dict | None:
-        """The Trial agent card's build part, or None (builds off)."""
+        """The Server agent card's build part, or None (builds off)."""
         caps = self.build_caps()
         if caps is None or not self.may_build(person, caps):
             return None
         mine = self.build_jobs().of(person)
         link = github_link.link_of(person)
-        return {"left": trial_gate.left_today(self.build_usage(), link["id"] if link else None, caps),
-                "per_day": caps["TRIAL_BUILDS_PER_ACCOUNT"], "github": bool(link),
+        allowance = self.build_allowance(person)
+        return {"left": trial_gate.left_today(self.build_usage(), link["id"] if link else None, allowance),
+                "per_day": allowance[0], "github": bool(link),
                 "days": caps.get("TRIAL_MIN_ACCOUNT_DAYS", 30),
                 "state": None if mine is None else "running" if mine[1]["state"] == trial_jobs.RUNNING else f"queued #{mine[1]['position']}"}
 
@@ -143,8 +151,8 @@ class BuildOffer:
         jobs, said = self.build_jobs(), 0
         for job_id, job, event in jobs.news():
             link = github_link.link_of(job.get("visitor") or "")
-            caps = jobs.alive() or trial_build_config.caps()
-            left = trial_gate.left_today(self.build_usage(), link["id"] if link else job.get("github_id"), caps)
+            allowance = self.build_allowance(job.get("visitor") or "")
+            left = trial_gate.left_today(self.build_usage(), link["id"] if link else job.get("github_id"), allowance)
             try:
                 await self.say(job["dm"], news_words(job, event, left))
             except RuntimeError as e:    # Matrix refused: said again next round (the job keeps it unsaid)

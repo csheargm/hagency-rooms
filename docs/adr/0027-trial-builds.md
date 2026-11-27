@@ -1,7 +1,7 @@
 # 0027: Trial agents that build
 
 ## Status
-Accepted, 2026-11-27. Builds on ADR 0025 (the talk-only trial agent). Drafted as "0024 (draft)"; renumbered, since
+Accepted, 2026-11-27. Builds on ADR 0025 (the server agent, "Server agent (free, limited)"; code name trial). Drafted as "0024 (draft)"; renumbered, since
 0024 is the agent auto-update work and 0026 the panel restore.
 
 Owner decisions (answers to the draft's open questions):
@@ -15,7 +15,7 @@ Owner decisions (answers to the draft's open questions):
 7. **Concurrency:** **one active build server-wide**, a **queue of at most 5**.
 
 ## Context
-Visitors without an agent of their own can talk to the shared trial agent (ADR 0025), but cannot see the BUILD flow:
+Everyone signed in can talk to the shared server agent (ADR 0025), but cannot see the BUILD flow:
 claim an issue, write code, run tests, open a PR, get a review, reach "ready, a person merges". The owner wants that flow
 shown by the server itself, without overloading the VM and safely enough to run untrusted code.
 
@@ -84,7 +84,8 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
   @pm offers builds only while the heartbeat is fresh, so **the feature is OFF unless E2B_API_KEY, TRIAL_APP_ID (and its
   key file), TRIAL_ORG and OLLAMA_API_KEY are configured**: without them the worker exits at once, writes no heartbeat,
   and nothing changes for anyone (the trial card, the welcome and @pm's words are exactly as before).
-- **The visitor flow, GUI first** (`server/pm_build.py`): a **Try a build** part on the Trial agent card in My Hagency,
+- **The visitor flow, GUI first** (`server/pm_build.py`): a **Try a build** part on the Server agent card in My agents (My Hagency), for everyone who passes the gate (owning
+  an agent doesn't exclude anyone),
   or "try a build" in their chat with @pm. The gate (`server/trial_gate.py`), then "queued: you're #N" with where the
   code goes; "started: issue #N in <repo>"; "done: pull request #N … Ready: a person merges" with an escaped,
   length-capped excerpt of the self-check (no links, no mentions, no markup); or "didn't finish: <fixed reason>".
@@ -92,7 +93,8 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
   (replacing its in-process semaphore) and by every build model call; a waiting talk answer leaves a marker and builds
   never take the slot while one is fresh. The worker counts its tokens in its own month (`trial_budget.Budget`,
   `build-budget.json`), pausing at `TRIAL_MAX_SHARE` (0.7) of the plan or `TRIAL_MONTHLY_TOKENS`; a 429/402 pauses it.
-- **Caps** (counted by @pm when a job is queued, never given back): per GitHub account 3 a UTC day and 10 ever; 20 a day
+- **Caps** (counted by @pm when a job is queued, never given back): per GitHub account, the person's tier's `builds_day` and `builds_total` (`server/trial_tiers.py`; free: 3 and 10, so a
+  paid tier can raise them later); 20 a day
   for the server, bypassed by the operator's `TRIAL_BUILD_DEMO_USERS`; the queue holds 5; one job at a time per visitor;
   2 sandbox-hours a day (`TRIAL_SANDBOX_S_PER_DAY`), after which builds wait for 00:00 UTC.
 - **Kill switch:** `TRIAL_BUILD=off` in `trial.env`, then recreate `trial-worker` (`up -d --force-recreate`; a plain

@@ -1,4 +1,4 @@
-"""Flow tests for trial builds (ADR 0027), as a visitor lives them: "Try a build" on the Trial agent card
+"""Flow tests for trial builds (ADR 0027), as a visitor lives them: "Try a build" on the Server agent card
 (or "try a build" to @pm) → the gate → queued → the worker builds in a (fake) sandbox → the patch is
 checked → a no-network test sandbox → a PR → the AI self-check comment → @pm: "a person merges".
 Also: refusals said plainly, the caps, the gate, and with no keys nothing changes.
@@ -16,6 +16,7 @@ from server import github_link
 from server import pm_build
 from server import trial_gate
 from server import trial_jobs
+from server import trial_tiers
 from server import trial_worker
 from tests import trial_build_kit as kit
 from tests.test_trial_flow import TrialBase, said_to
@@ -90,7 +91,7 @@ class TheFlow(BuildFlowBase):
         self.work_and_relay()
         self.assertIn("didn't finish: the change was refused, because it changed the tests", self.dm()[-1])
         self.assertIn("Nothing was opened", self.dm()[-1])
-        self.assertIn("2 trial builds left today", self.dm()[-1])
+        self.assertIn("2 builds left today", self.dm()[-1])
         self.assertFalse(self.worker.fake.pulls)
 
     def test_model_words_reach_the_room_without_links_mentions_or_markup(self):
@@ -117,13 +118,26 @@ class Gate(BuildFlowBase):
 
     def test_people_from_other_servers(self):
         far = "@bob:elsewhere.example"
-        said = self.run_(trial_gate.refusal(far, {"login": "b", "id": 1}, kit.CAPS, self.lp._build_usage, time.time()))
+        said = self.run_(trial_gate.refusal(far, {"login": "b", "id": 1}, kit.CAPS, kit.FREE, self.lp._build_usage, time.time()))
         self.assertEqual(said, trial_gate.REMOTE)
 
-    def test_someone_with_their_own_agent(self):
+    def test_owning_an_agent_no_longer_excludes(self):
+        with mock.patch.object(type(self.lp), "has_connected_agent", lambda self, p: True):   # NEW's own agent
+            self.assertIsNotNone(self.lp.build_view(NEW))
+            self.assertIn("queued", self.click())
+
+    def test_someone_who_may_not_use_the_server_agent(self):
         with mock.patch.object(type(self.lp), "trial_eligible", lambda self, p: False):
             self.assertIsNone(self.lp.build_view(NEW))
-            self.assertEqual(self.run_(self.lp.start_build("!dm", NEW)), pm_build.OWN)
+            self.assertEqual(self.run_(self.lp.start_build("!dm", NEW)), pm_build.NOT_FOR_YOU)
+
+    def test_the_allowance_is_the_tiers(self):
+        self.assertEqual(self.lp.build_allowance(NEW), kit.FREE)
+        paid = {**trial_tiers.TIERS[trial_tiers.FREE], trial_tiers.BUILDS_DAY: 7, trial_tiers.BUILDS_TOTAL: 50}
+        with mock.patch.dict(trial_tiers.TIERS, {"paid": paid}):
+            self.assertTrue(self.lp.trial.tiers.set_tier(NEW, "paid"))
+            self.assertEqual(self.lp.build_allowance(NEW), (7, 50))
+            self.assertEqual(self.lp.trial_view(NEW)["build"]["per_day"], 7)
 
 
 class Caps(BuildFlowBase):
@@ -142,7 +156,7 @@ class Caps(BuildFlowBase):
 
     def test_ten_ever_per_account(self):
         self.lp._build_usage.data = {"day": trial_gate.day(time.time()), "server": 0, "today": {}, "total": {"777": 10}}
-        self.assertIn("all 10 of your trial builds", self.click())
+        self.assertIn("all 10 of your server agent builds", self.click())
 
     def test_the_queue_holds_five(self):
         for n in range(5):

@@ -13,8 +13,9 @@ from common.saved_dict import SavedDict
 
 FREE = "free"
 MESSAGES, TOKENS, TOKENS_REMOTE = "messages", "tokens", "tokens_remote"   # a person's daily limits
+BUILDS_DAY, BUILDS_TOTAL = "builds_day", "builds_total"   # builds (ADR 0027): a UTC day, and ever (per GitHub account)
 TIERS = {FREE: {MESSAGES: "TRIAL_PER_VISITOR", TOKENS: "TRIAL_VISITOR_TOKENS", TOKENS_REMOTE: "TRIAL_REMOTE_TOKENS",
-                "upgrade": "More usage is coming with paid plans."}}
+                BUILDS_DAY: 3, BUILDS_TOTAL: 10, "upgrade": "More usage is coming with paid plans."}}
 
 
 class Tiers:
