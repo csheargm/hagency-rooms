@@ -156,7 +156,7 @@ class GuardDisk(unittest.TestCase):
         d = tempfile.TemporaryDirectory()
         self.addCleanup(d.cleanup)
         mock.patch.object(guard, "FLAG", Path(d.name) / "flags" / "media-paused").start()
-        mock.patch.object(guard, "measure", return_value=(0.59, 0)).start()
+        mock.patch.object(guard, "measure", return_value=(0.59, 0, None)).start()
         self.sent = mock.patch.object(guard.subprocess, "run", return_value=mock.Mock(returncode=0)).start()
 
     def test_a_disk_note_is_sent_with_any_measuring_problem(self):
@@ -169,6 +169,40 @@ class GuardDisk(unittest.TestCase):
             self.assertEqual(guard.main(TUE), 0)
         self.sent.assert_not_called()
         record.assert_called_once_with(TUE, over=False)
+
+
+class GuardWithoutVnstat(unittest.TestCase):
+    """GPT whole-batch review: a vnstat failure exited before the disk history, so no disk alert went out."""
+    ROUTE = "Iface\tDestination\nens3\t00000000\n"
+
+    def setUp(self):
+        mock.patch("builtins.print").start()
+        self.addCleanup(mock.patch.stopall)
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        mock.patch.object(guard, "FLAG", Path(d.name) / "flags" / "media-paused").start()
+        mock.patch.object(guard.shutil, "disk_usage", return_value=mock.Mock(used=90, total=100)).start()
+        mock.patch.object(guard.Path, "read_text", return_value=self.ROUTE).start()
+
+    def test_the_disk_is_recorded_and_warned_about_with_the_traffic_problem(self):
+        vnstat = mock.Mock(returncode=1, stderr="vnstatd not running")
+        alert = mock.Mock(returncode=0)
+        with mock.patch.object(guard.subprocess, "run", side_effect=[vnstat, alert]) as run, \
+                mock.patch.object(guard.disk_history, "record", return_value=(["Disk grew 4 GB this week."], [])) as record:
+            self.assertEqual(guard.main(MON), 1)                         # the run still shows failed
+        record.assert_called_once_with(MON, over=True)
+        text = run.call_args.kwargs["input"]
+        for words in ("90% full", "Disk grew 4 GB", "vnstatd not running"):
+            self.assertIn(words, text)
+
+    def test_no_vnstat_at_all_or_an_unwatched_interface_is_said_too(self):
+        for effect in (FileNotFoundError("vnstat"), mock.Mock(returncode=0, stdout='{"interfaces": []}')):
+            with self.subTest(effect=effect), \
+                    mock.patch.object(guard.subprocess, "run", side_effect=[effect, mock.Mock(returncode=0)]) as run, \
+                    mock.patch.object(guard.disk_history, "record", return_value=([], [])):
+                self.assertEqual(guard.main(MON), 1)
+                self.assertIn("traffic" if isinstance(effect, Exception) else "vnstat doesn't watch ens3",
+                              run.call_args.kwargs["input"])
 
 
 class Timer(unittest.TestCase):
