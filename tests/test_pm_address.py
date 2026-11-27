@@ -43,6 +43,31 @@ class Pill(unittest.TestCase):
         self.assertIsNone(self.said(f"[Product Manager]({other}) stop", mentions=()))
         self.assertIsNone(self.said("@pm:evil.example stop", mentions=()))
 
+    def test_more_forms_and_without_the_mentions_field(self):
+        enc = "https://matrix.to/#/%40pm%3Amatrix.hagencylabs.xyz"
+        for body in (f"{LINK}: retry #13", f"{LINK}, retry #13", f"[PM]({enc}) retry #13", f"{PM}, retry #13"):
+            for mentions in ((PM,), ()):
+                with self.subTest(body=body, mentions=mentions):
+                    self.assertEqual(self.said(body, mentions), "retry #13")
+
+    def test_links_and_ids_that_name_more_or_other_than_pm_are_refused(self):
+        for body in (f"[Product Manager]({LINK}/extra) stop", f"{LINK}/extra stop", "@pm.ops:example.org stop",
+                     "@pm:matrix.hagencylabs.xyz.evil stop", f"[Product Manager](https://evil.example/#/{PM}) stop"):
+            with self.subTest(body=body):
+                self.assertIsNone(self.said(body, mentions=()))
+
+    def test_the_short_forms_still_work(self):
+        for body in ("@pm retry #13", "pm: retry #13", "@pm:retry #13", "Product Manager, retry #13"):
+            with self.subTest(body=body):
+                self.assertEqual(self.said(body, mentions=()), "retry #13")
+
+    def test_an_unclosed_link_is_read_in_linear_time(self):
+        import time
+        body = "[x](" + "https://matrix.to/#/" * 2000
+        start = time.perf_counter()
+        self.said(body, mentions=())
+        self.assertLess(time.perf_counter() - start, 0.05)
+
     def test_a_pill_later_in_the_message_still_counts_as_a_mention(self):
         self.assertEqual(self.said(f"can you show the plan [Product Manager]({LINK})"),
                          f"can you show the plan [Product Manager]({LINK})")

@@ -10,14 +10,9 @@ from nio import RoomMessageText
 
 from common.bridge_config import ROOT
 from common.saved_dict import SavedDict
+from server import pm_pill
 
-ADDRESS_RE = re.compile(r"^\s*@?(pm|product manager)\b(?!:\S)[:,]?\s*(.*)$", re.I | re.S)
-# Live test 2026-11-26: "@Product Manager retry #13", typed with Element's mention pill on a phone, got
-# "I didn't catch that": the pill's plain body is a link or a full ID, not the words "Product Manager".
-# Leading forms: [label](https://matrix.to/#/@pm:server), https://matrix.to/#/@pm:server, @pm:server.
-PILL_RE = re.compile(r"^\s*(?:\[[^\]\n]{0,100}\]\(https://matrix\.to/#/(?P<a>@[^)\s/?]+)[^)\s]*\)"
-                     r"|https://matrix\.to/#/(?P<b>@[^\s/?]+)\S*|(?P<c>@[a-z0-9._=/+-]+:[A-Za-z0-9.-]+(?::\d+)?))"
-                     r"[:,]?(?:\s+|$)", re.I)
+ADDRESS_RE = re.compile(r"^\s*@?(pm|product manager)\b(?![.:][A-Za-z0-9-]+[.:])[:,]?\s*(.*)$", re.I | re.S)
 
 
 def without_quote(body: str) -> str:
@@ -29,19 +24,21 @@ def without_quote(body: str) -> str:
     return "\n".join(lines).strip()
 
 
-def without_pill(text: str, me: str | None) -> str:
-    """The text with a leading mention pill of `me` turned into "@pm " (a pill of anyone else stays)."""
-    m = PILL_RE.match(text)
-    if m and me and (m.group("a") or m.group("b") or m.group("c")).lower() == me.lower():
-        return "@pm " + text[m.end():]
-    return text
+def without_pill(text: str, me: str | None) -> tuple[str, bool]:
+    """(text, False) with a leading mention pill of `me` turned into "@pm "; (text, True) when the text
+    starts with someone else's pill, so it is never read as "@pm …" (GPT review: "@pm.ops:x stop")."""
+    pill = pm_pill.leading(text)
+    if pill is None:
+        return text, False
+    user, rest = pill
+    return ("@pm " + text[rest:], False) if me and user.lower() == me.lower() else (text, True)
 
 
 def unaddressed(body: str, me: str | None = None) -> str:
     """What the person wrote, without its quote and a leading "@pm" / "Product Manager": in our private
     chat people type the address too ("@pm add another agent …"), and it must read the same."""
-    text = without_pill(without_quote(body), me)
-    m = ADDRESS_RE.match(text)
+    text, other = without_pill(without_quote(body), me)
+    m = None if other else ADDRESS_RE.match(text)
     return m.group(2) if m else text
 
 
@@ -72,8 +69,8 @@ class Addressing:
 
     def addressed_text(self, event: RoomMessageText, room=None) -> str | None:
         """The message without its "@pm" / "Product Manager" address, or None if not for me."""
-        body = without_pill(without_quote(event.body), self.user_id)
-        m = ADDRESS_RE.match(body)
+        body, other = without_pill(without_quote(event.body), self.user_id)
+        m = None if other else ADDRESS_RE.match(body)
         if room is not None and self.is_one_to_one(room, event.sender):
             return m.group(2) if m else body
         mentions = event.source.get("content", {}).get("m.mentions", {})
