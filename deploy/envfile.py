@@ -21,6 +21,7 @@ MAX_KEY_BYTES = 16384
 MIN_KEY_DER = 600                                # a 2048-bit RSA key is ~1200 bytes of DER
 DER_SEQUENCE = 0x30
 REPO = r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}"   # owner/name, as github.REPO_RE
+TRIAL_MODEL = r"[a-z0-9][a-z0-9._:-]{0,80}(\*[0-9]{1,2}(\.[0-9]{1,2})?)?"   # an Ollama model, optionally *weight
 DOMAIN = r"(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}"
 RULES = {
     "ROOMS_DOMAIN": DOMAIN, "MATRIX_DOMAIN": DOMAIN, "SERVER_NAME": DOMAIN, "ADMIN_DOMAIN": DOMAIN,
@@ -46,7 +47,7 @@ RULES = {
     "HAGENCY_GITHUB_CLIENT_ID": r"[A-Za-z0-9.]{16,40}",
     "HAGENCY_GITHUB_CLIENT_SECRET": r"[A-Za-z0-9_]{20,128}",
     # The trial agent (ADR 0025, server/trial_limits.py): on only with an Ollama Cloud API key.
-    "OLLAMA_API_KEY": r"[A-Za-z0-9._-]{16,256}", "TRIAL_MODELS": r"[a-z0-9][a-z0-9._:*-]{0,90}(,[a-z0-9][a-z0-9._:*-]{0,90}){0,11}",
+    "OLLAMA_API_KEY": r"[A-Za-z0-9._-]{16,256}", "TRIAL_MODELS": rf"{TRIAL_MODEL}(,{TRIAL_MODEL}){{0,11}}",   # server/trial_models.ENTRY
     "TRIAL_PER_VISITOR": r"[0-9]{1,4}", "TRIAL_PER_SERVER": r"[0-9]{1,6}",   # messages a day (UTC)
     "TRIAL_MAX_TOKENS": r"[0-9]{1,5}", "TRIAL_TIMEOUT_S": r"[0-9]{1,3}",
     # Its monthly budget guard (trial_budget.py): the share of the Ollama plan trials may use, a token cap,

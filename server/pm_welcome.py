@@ -194,7 +194,7 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         if not entry or room.room_id != entry.get("dm") or event.reacts_to != entry.get("offer"):
             return False
         key = event.key.replace("️", "")
-        if key in (HOUSE, BRING, TRIAL) and key not in entry.get("done", []):
+        if key in (HOUSE, BRING, *((TRIAL,) if self.trial_on() else ())) and key not in entry.get("done", []):
             self.welcomes()[event.sender] = {**entry, "done": [*entry.get("done", []), key]}   # each button once
             await self.choose(room.room_id, event.sender, key)
         return True

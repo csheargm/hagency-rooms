@@ -32,6 +32,13 @@ def room(room_id, *members, invited=()):
                            invited_users={m: None for m in invited})
 
 
+async def hear(agent, room, event):
+    """A message as sync delivers it (the room in the client's view), then its answer finished."""
+    agent.client.rooms.setdefault(room.room_id, room)
+    await agent.on_message(room, event)
+    await agent.drain()
+
+
 def message(sender, body, mentions=None, ts=NOW_MS):
     content = {"body": body, **({"m.mentions": {"user_ids": mentions}} if mentions else {})}
     return SimpleNamespace(sender=sender, body=body, source={"content": content}, server_timestamp=ts, event_id="$e")
@@ -101,7 +108,7 @@ class Enrolling(Base):
 class Answering(Base):
     def test_its_visitor_gets_an_answer_in_their_private_chat(self):
         self.enrol()
-        self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "What's a good first issue?")))
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "What's a good first issue?")))
         self.assertEqual(self.said()[-1], "An answer.\n\n— Trial agent · glm-5.3")   # every reply names its model
         self.assertEqual(self.asked[0][-1], {"role": "user", "content": "What's a good first issue?"})
 
@@ -109,7 +116,7 @@ class Answering(Base):
         self.enrol()
         dm = room("!trialdm", NEW, "@anna-agent:" + S, "@admin-bot:" + S, PM, ANNA)
         for sender in ("@anna-agent:" + S, "@admin-bot:" + S, PM, ME, ANNA):
-            self.run_(self.agent.on_message(dm, message(sender, "Trial agent, hello", mentions=[ME])))
+            self.run_(hear(self.agent, dm, message(sender, "Trial agent, hello", mentions=[ME])))
         self.assertEqual((len(self.posts), self.asked), (1, []))          # only the hello
 
     def test_another_agent_enrolled_by_mistake_is_still_ignored(self):
@@ -117,7 +124,7 @@ class Answering(Base):
         self.agent.visitors[bad] = {"dm": "!x"}
         self.agent.rooms["!x"] = [bad]
         self.eligible.add(bad)
-        self.run_(self.agent.on_message(room("!x", bad), message(bad, "loop?")))
+        self.run_(hear(self.agent, room("!x", bad), message(bad, "loop?")))
         self.assertEqual(self.asked, [])
 
     def test_in_a_project_room_only_a_mention_by_the_visitor_who_brought_it(self):
@@ -125,22 +132,22 @@ class Answering(Base):
         self.enrol(OTHER)
         project = room("!proj", NEW, OTHER)
         self.run_(self.agent.on_invite(project, SimpleNamespace(state_key=ME, membership="invite", sender=NEW)))
-        self.run_(self.agent.on_message(project, message(NEW, "just chatting")))           # not for it
-        self.run_(self.agent.on_message(project, message(OTHER, "Trial agent, hi", [ME])))   # didn't bring it here
+        self.run_(hear(self.agent, project, message(NEW, "just chatting")))           # not for it
+        self.run_(hear(self.agent, project, message(OTHER, "Trial agent, hi", [ME])))   # didn't bring it here
         self.assertEqual(self.asked, [])
-        self.run_(self.agent.on_message(project, message(NEW, "Trial agent (shared, limited): hi", [ME])))
+        self.run_(hear(self.agent, project, message(NEW, "Trial agent (shared, limited): hi", [ME])))
         self.assertEqual(len(self.asked), 1)
 
     def test_only_in_rooms_the_visitor_is_in(self):
         self.enrol()
         self.agent.rooms["!gone"] = [NEW]
-        self.run_(self.agent.on_message(room("!gone", ANNA, invited=(NEW,)), message(NEW, "hi", [ME])))
+        self.run_(hear(self.agent, room("!gone", ANNA, invited=(NEW,)), message(NEW, "hi", [ME])))
         self.assertEqual(self.asked, [])
 
     def test_old_messages_are_not_answered(self):
         self.enrol()
         self.agent.started_ms = NOW_MS
-        self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "hi", ts=NOW_MS - 60_000)))
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi", ts=NOW_MS - 60_000)))
         self.assertEqual(self.asked, [])
 
     def test_a_model_failure_is_said_plainly(self):
@@ -149,14 +156,14 @@ class Answering(Base):
         async def broken(chat, count=None, model=None):
             raise TrialModelError("the AI service didn't answer in time")
         self.agent.ask_model = broken
-        self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "hi")))
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi")))
         self.assertIn("couldn't answer just now: the AI service didn't answer in time", self.said()[-1])
 
     def test_a_visitor_who_connected_their_own_agent_is_pointed_to_it_once(self):
         self.enrol()
         self.eligible.discard(NEW)
         for _ in range(2):
-            self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "hi")))
+            self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi")))
         self.assertEqual(self.said()[1:], [trial_turn.HAS_OWN])
         self.assertEqual(self.asked, [])
 
@@ -166,7 +173,7 @@ class Capped(Base):
         self.enrol()
         dm = self.client.rooms["!trialdm"]
         for n in range(4):
-            self.run_(self.agent.on_message(dm, message(NEW, f"question {n}")))
+            self.run_(hear(self.agent, dm, message(NEW, f"question {n}")))
         self.assertEqual(len(self.asked), 2)
         capped = self.said()[3:]
         self.assertEqual(len(capped), 1)                                   # then quiet until the reset
@@ -179,14 +186,14 @@ class Capped(Base):
             self.client.rooms["!dm2"] = room("!dm2", OTHER)
             self.agent.visitors[OTHER] = {"dm": "!dm2"}
             self.agent.rooms["!dm2"] = [OTHER]
-            self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "one")))
-            self.run_(self.agent.on_message(self.client.rooms["!dm2"], message(OTHER, "two")))
+            self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "one")))
+            self.run_(hear(self.agent, self.client.rooms["!dm2"], message(OTHER, "two")))
         self.assertEqual(len(self.asked), 1)
         self.assertIn("all of this server's trial messages", self.said()[-1])
 
     def test_counts_are_kept_on_disk(self):
         self.enrol()
-        self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "one")))
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "one")))
         again = trial_agent.TrialAgent(self.client, lambda who: True, data_dir=self.dir, budget=self.budget)
         self.assertEqual(again.usage.used(NEW), 1)
         self.assertIn(NEW, again.visitors)
@@ -223,7 +230,7 @@ class PullRequests(Base):
     def test_a_pr_of_this_rooms_repo_is_read_and_sent_with_the_question(self):
         self.enrol()
         with mock.patch.object(trial_reads, "pr_diff", mock.AsyncMock(return_value="acme/app PR #3: diff text")) as read:
-            self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "what does PR #3 change?")))
+            self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "what does PR #3 change?")))
         read.assert_awaited_once_with("acme/app", 3)
         self.assertIn("diff text", self.asked[0][-1]["content"])
 
@@ -273,7 +280,7 @@ class NeverInTheLoop(Base):
 
     def test_it_never_posts_a_task_or_a_result(self):
         self.enrol()
-        self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "please merge PR #3")))
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "please merge PR #3")))
         for _, content in self.posts:
             self.assertFalse({github.TASK_KEY, github.RESULT_KEY} & set(content))
 

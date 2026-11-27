@@ -18,6 +18,7 @@ from server import trial_budget
 from server import trial_models
 from server import trial_turn
 from server.loop import Loop
+from tests.test_trial_agent import hear
 from tests.test_welcome import Base, DM, NEW, PM, S, WELCOME_ROOM, member, reaction, text
 
 ME = f"@{trial_agent.LOCALPART}:{S}"
@@ -77,7 +78,7 @@ class TrialFlow(TrialBase):
         # They accept its invite and write to it.
         self.trial_client.rooms["!trialdm"] = SimpleNamespace(room_id="!trialdm", users={ME: None, NEW: None}, invited_users={})
         msg = SimpleNamespace(sender=NEW, body="What is a pull request?", source={"content": {}}, server_timestamp=NOW_MS, event_id="$q")
-        self.run_(self.lp.trial.on_message(self.trial_client.rooms["!trialdm"], msg))
+        self.run_(hear(self.lp.trial, self.trial_client.rooms["!trialdm"], msg))
         self.assertEqual(self.trial_posts[-1], ("!trialdm", "A pull request is a proposed change.\n\n— Trial agent · glm-5.3"))
 
     def test_typing_it_in_our_chat_works_too(self):
@@ -91,7 +92,7 @@ class TrialFlow(TrialBase):
         dm = SimpleNamespace(room_id="!trialdm", users={ME: None, NEW: None}, invited_users={})
         self.trial_client.rooms["!trialdm"] = dm
         for n in range(3):
-            self.run_(self.lp.trial.on_message(dm, SimpleNamespace(sender=NEW, body=f"q{n}", source={"content": {}},
+            self.run_(hear(self.lp.trial, dm, SimpleNamespace(sender=NEW, body=f"q{n}", source={"content": {}},
                                                                     server_timestamp=NOW_MS, event_id=f"$q{n}")))
         last = self.trial_posts[-1][1]
         self.assertIn("00:00 UTC", last)

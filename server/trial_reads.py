@@ -8,6 +8,7 @@ import re
 from common import github
 from common import github_app
 from common.redact import secret_safe
+from server import trial_limits
 
 MAX_DIFF_CHARS = 12000                # what fits next to the question
 PR_RE = re.compile(r"\b(?:PR|pull request|pull)\s*#?\s*(\d{1,7})\b", re.I)
@@ -35,7 +36,7 @@ def shaped(repo: str, n: int, pr: dict, files: list) -> str:
     text = "\n".join(parts)
     if len(text) > MAX_DIFF_CHARS:
         text = text[:MAX_DIFF_CHARS] + "\n… (the rest of the diff was cut)"
-    return secret_safe(text)
+    return secret_safe(text, trial_limits.api_key())
 
 
 async def pr_diff(repo: str, n: int) -> str:

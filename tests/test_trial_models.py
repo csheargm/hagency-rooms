@@ -7,6 +7,7 @@ from unittest import mock
 
 from server import pm_trial
 from server import trial_models
+from tests.test_trial_agent import hear
 from tests.test_trial_flow import ME, NOW_MS, TrialBase, said_to
 from tests.test_welcome import DM, NEW, reaction, text
 
@@ -48,7 +49,7 @@ class Picking(TrialBase):
         self.lp.trial.ask_model = model
 
     def ask_trial(self, body="hi"):
-        self.run_(self.lp.trial.on_message(self.dm, SimpleNamespace(sender=NEW, body=body, source={"content": {}},
+        self.run_(hear(self.lp.trial, self.dm, SimpleNamespace(sender=NEW, body=body, source={"content": {}},
                                                                      server_timestamp=NOW_MS, event_id="$q")))
 
     def test_use_a_model_in_our_chat_then_its_replies_name_it(self):

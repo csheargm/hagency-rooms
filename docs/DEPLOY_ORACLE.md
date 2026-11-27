@@ -254,7 +254,8 @@ Off until `OLLAMA_API_KEY` (an Ollama Cloud API key) is set in `deploy/.env`; th
 Its other settings have defaults in `.env.example`: `TRIAL_MODELS` (the models visitors may pick, first = default; glm-5.3), 50 messages per visitor and 1000 for the
 server per UTC day, `TRIAL_MAX_SHARE` 0.5 of the plan's month (all users of the key count) and
 `TRIAL_MONTHLY_TOKENS`, one call at a time. A 429/402 from Ollama pauses trials and logs
-"trial agent paused" (`docker compose logs pm`). Its counts are in `~/hagency/pm/data/trial-*.json`.
+"trial agent paused" (`docker compose logs pm`). `TRIAL_MAX_SHARE` is checked between calls and the key may be
+shared, so also set a pay-as-you-go spending limit in the Ollama account for a hard stop. Its counts are in `~/hagency/pm/data/trial-*.json`.
 
 ## Next (separate steps)
 

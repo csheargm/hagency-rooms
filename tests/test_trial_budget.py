@@ -11,7 +11,7 @@ from unittest import mock
 from server import trial_budget
 from server import trial_turn
 from server.trial_model import TrialLimited
-from tests.test_trial_agent import Base, NEW, OTHER, message, room
+from tests.test_trial_agent import Base, NEW, OTHER, hear, message, room
 
 NOON = datetime.datetime(2026, 11, 27, 12, 0, tzinfo=datetime.timezone.utc).timestamp()
 PLAN = {"included": {"balance_usd": 72.5, "allowance_usd": 100, "period": {"from": "x", "until": "y"}},
@@ -88,7 +88,7 @@ class InTheChat(Base):
         self.balance = {"included": {"balance_usd": 20, "allowance_usd": 100}}
         self.enrol()
         for n in range(2):
-            self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, f"q{n}")))
+            self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, f"q{n}")))
         self.assertEqual(self.asked, [])
         self.assertEqual(self.said()[1:], [f"{trial_turn.RESTING} {trial_turn.BRING}"])
         self.assertEqual(self.agent.usage.used(NEW), 0)                         # not counted
@@ -101,11 +101,11 @@ class InTheChat(Base):
             raise TrialLimited(429, 120)
         self.agent.ask_model = limited
         with self.assertLogs("trial", "ERROR"):
-            self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "hi")))
+            self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi")))
         self.assertIn("paused", self.said()[-1])
         self.assertIn("about 2 min", self.said()[-1])
         self.assertIn("bring my own", self.said()[-1])
-        self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "again")))
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "again")))
         self.assertEqual(len(self.asked), 1)                                    # paused: not asked again
 
     def test_tokens_used_are_counted_for_the_month(self):
@@ -115,7 +115,7 @@ class InTheChat(Base):
             count(321)
             return "ok"
         self.agent.ask_model = counted
-        self.run_(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "hi")))
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi")))
         self.assertEqual(self.budget.data["tokens"], 321)
 
     def test_one_model_call_at_a_time_and_a_busy_note_after_the_wait(self):
@@ -132,10 +132,11 @@ class InTheChat(Base):
             return "done"
         self.agent.ask_model = slow
 
-        async def both():
+        async def both():                     # as sync delivers them: one callback after the other
             self.agent.slot = asyncio.Semaphore(1)
-            await asyncio.gather(self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "one")),
-                                 self.agent.on_message(self.client.rooms["!dm2"], message(OTHER, "two")))
+            await self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "one"))
+            await self.agent.on_message(self.client.rooms["!dm2"], message(OTHER, "two"))   # returns at once
+            await self.agent.drain()
         with mock.patch.dict(os.environ, {"TRIAL_QUEUE_WAIT_S": "0.05"}):
             self.run_(both())
         self.assertEqual(most[0], 1)

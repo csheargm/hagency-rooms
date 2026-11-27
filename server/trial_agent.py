@@ -18,6 +18,7 @@ Messages sent while @pm restarts are not answered (it starts from "now"; it is a
 import asyncio
 import logging
 import time
+import urllib.parse
 from types import SimpleNamespace
 
 from aiohttp import ClientError
@@ -38,6 +39,7 @@ LOCALPART = "hagency.trial-agent"     # "." : never <name>-agent, <name>-<label>
 DISPLAY_NAME = "Trial agent (shared, limited)"
 CHAT_NAME = "Trial agent"
 INVITE_ONLY_ME = 100                  # only the trial agent adds people to its private chats
+FRESH_CHAT_S = 600                    # a chat made this recently counts as theirs before sync shows it
 HISTORY = {"type": "m.room.history_visibility", "state_key": "", "content": {"history_visibility": "invited"}}
 
 
@@ -68,7 +70,9 @@ class TrialAgent(Turns):
         self.slot = asyncio.Semaphore(1)  # one model call at a time: the key's plan allows 3, shared with others
         self.ask_model = ask
         self.history: dict = {}                                    # (room, visitor) → recent turns, in memory only
-        self.locks: dict = {}
+        self.locks: dict = {}                                      # visitor → one answer at a time (trial_turn.py)
+        self.enrolling: dict = {}                                  # visitor → one enrolment at a time
+        self.waiting: set = set()                                  # answers underway (trial_turn.on_message)
 
     def me(self) -> str:
         return self.client.user_id
@@ -85,23 +89,27 @@ class TrialAgent(Turns):
             self.rooms[room_id] = [*self.sponsors(room_id), visitor]
 
     def dm_of(self, visitor: str) -> str | None:
-        dm = (self.visitors.get(visitor) or {}).get("dm")
-        room = self.client.rooms.get(dm or "")
-        in_it = room is not None and (visitor in room.users or visitor in getattr(room, "invited_users", {}))
-        return dm if in_it else None
+        """Our private chat, while they're in it or invited, or made so recently sync may not show it yet."""
+        entry = self.visitors.get(visitor) or {}
+        dm, room = entry.get("dm"), self.client.rooms.get(entry.get("dm") or "")
+        if room is None:
+            return dm if dm and time.time() - float(entry.get("since") or 0) < FRESH_CHAT_S else None
+        return dm if visitor in room.users or visitor in getattr(room, "invited_users", {}) else None
 
     async def enroll(self, visitor: str) -> str | None:
-        """Make `visitor` one of mine and open (or reuse) our private chat; its room id, or None."""
-        dm = self.dm_of(visitor)
-        if dm:
-            return dm
+        """Make `visitor` one of mine and open (or reuse) our private chat; its room id, or None. One at a
+        time per visitor (the panel and the chat at once make one chat: GPT review)."""
+        async with self.enrolling.setdefault(visitor, asyncio.Lock()):
+            return self.dm_of(visitor) or await self.open_chat(visitor)
+
+    async def open_chat(self, visitor: str) -> str | None:
         resp = await self.client.room_create(is_direct=True, invite=[visitor], preset=RoomPreset.private_chat,
                                              name=CHAT_NAME, initial_state=[HISTORY],
                                              power_level_override={"invite": INVITE_ONLY_ME})
         if not hasattr(resp, "room_id"):
             log.warning("couldn't open a trial chat with %s: %s", visitor, resp)
             return None
-        self.visitors[visitor] = {"dm": resp.room_id, "since": time.time()}
+        self.visitors[visitor] = {**(self.visitors.get(visitor) or {}), "dm": resp.room_id, "since": time.time()}   # model kept
         self.add_sponsor(resp.room_id, visitor)
         await self.post(resp.room_id, hello(trial_limits.number("TRIAL_PER_VISITOR")))
         return resp.room_id
@@ -139,6 +147,21 @@ class TrialAgent(Turns):
             if inviter:
                 await self.on_invite(room, SimpleNamespace(state_key=self.me(), membership="invite", sender=inviter))
 
+    async def reconcile(self) -> None:
+        """At start: rooms whose visitors left while @pm was away (no leave event is replayed): their records
+        go, and I leave a room nobody who brought me is still in (or invited to: a chat not yet accepted)."""
+        for room_id in list(self.rooms):
+            room = self.client.rooms.get(room_id)
+            here = [v for v in self.sponsors(room_id) if room is not None
+                    and (v in room.users or v in getattr(room, "invited_users", {}))]
+            if here:
+                if here != self.sponsors(room_id):
+                    self.rooms[room_id] = here
+                continue
+            self.rooms.pop(room_id, None)
+            if room is not None:
+                await self.client.room_leave(room_id)
+
     async def on_member(self, room: MatrixRoom, event: RoomMemberEvent) -> None:
         """The last visitor who brought me here left: I leave too."""
         if event.membership not in ("leave", "ban") or event.state_key not in self.sponsors(room.room_id):
@@ -160,7 +183,11 @@ class TrialAgent(Turns):
 async def sign_in() -> AsyncClient:
     """My account (made once, password in .env like @pm's), signed in, with my display name."""
     env = await asyncio.to_thread(setup_accounts.load_env)
-    password, _ = await asyncio.to_thread(setup_accounts.ensure_user, env, LOCALPART, setup_accounts.shared_secret())
+    profile = await asyncio.to_thread(setup_accounts.api, "GET", f"/_matrix/client/v3/profile/{urllib.parse.quote(user_id())}")
+    # No account although a password is saved (its first registration failed, or a fresh database): verify
+    # signs in with it and registers it again if that fails (GPT review), as setup_accounts.ensure_pm does.
+    password, _ = await asyncio.to_thread(setup_accounts.ensure_user, env, LOCALPART, setup_accounts.shared_secret(),
+                                          False, "_status" in profile)
     client = AsyncClient(HOMESERVER, user_id(), device_id="TRIAL_AGENT")
     resp = await lifecycle.login(client, password, device_name="trial")
     if not isinstance(resp, LoginResponse):
@@ -179,6 +206,7 @@ async def run(agent: TrialAgent) -> None:
         client.add_event_callback(agent.on_member, RoomMemberEvent)
         client.add_event_callback(agent.on_message, RoomMessageText)
         await agent.invites_while_away()
+        await agent.reconcile()
         await client.sync_forever(timeout=30_000)
     finally:
         await client.close()

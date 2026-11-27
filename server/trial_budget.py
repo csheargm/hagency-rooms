@@ -7,14 +7,19 @@ pay-as-you-go beyond it. So, before each trial answer:
     period passes TRIAL_MAX_SHARE (default 0.5), and always once its included credits are gone. An
     older plan reporting session/weekly "remaining_percent" is read the same way.
   - Our own count of the tokens trial answers used this UTC month: trials stop at TRIAL_MONTHLY_TOKENS.
-    It applies always, and is the only guard while the balance can't be read.
+    A high estimate is reserved before each call (and replaced by Ollama's count after), so no call
+    passes the cap. It applies always, and is the only guard while the balance has never been read.
+  - The balance is only read between calls and other users of the key spend too: the share is a soft
+    line. For a hard one, set a spending limit for pay-as-you-go in the Ollama account itself.
   - Ollama answering 429 (too many requests) or 402 (payment needed): trials pause (Retry-After, else
     TRIAL_PAUSE_S) and the operator sees it in the log.
-State (month's tokens, a pause) is kept in data/trial-budget.json, so a restart keeps it.
+State (month's tokens, a pause, the last balance reading) is kept in data/trial-budget.json, so a
+restart keeps it; an unreadable file stops trials (logged) rather than starting a fresh month.
 """
 import datetime
 import json
 import logging
+import math
 import os
 import time
 from pathlib import Path
@@ -28,6 +33,8 @@ log = logging.getLogger("trial")
 BALANCE_URL = "https://ollama.com/api/balance"
 DEFAULTS = {"TRIAL_MAX_SHARE": 0.5, "TRIAL_MONTHLY_TOKENS": 5_000_000, "TRIAL_BUDGET_CHECK_S": 300, "TRIAL_PAUSE_S": 900}
 BALANCE_TIMEOUT_S = 10
+NEAR_SHARE, NEAR_CHECK_S = 0.1, 60    # within 10 points of the limit: the balance is read every minute
+MIN_PAUSE_S, MAX_PAUSE_S = 60, 24 * 3600   # a Retry-After is kept within these
 BUDGET_FILE = ROOT / "data" / "trial-budget.json"
 SHARE, TOKENS, PAUSED = "share", "tokens", "paused"   # why trials are stopped
 
@@ -66,13 +73,22 @@ def used_share(data: object) -> float | None:
 class Budget:
     def __init__(self, path: Path | None = None, clock=time.time, fetch=None) -> None:
         self.path, self.clock, self.fetch = path or BUDGET_FILE, clock, fetch or fetch_balance
+        self.damaged = False
         try:
             self.data = json.loads(self.path.read_text())
+        except FileNotFoundError:
+            self.data = {}                    # nothing yet: this month starts at 0
         except (OSError, ValueError):
-            self.data = {}                    # nothing yet (or a damaged file): this month starts at 0
-        if not isinstance(self.data, dict):
             self.data = {}
-        self.share, self.checked = None, 0.0  # the plan's used share, as last read, and when
+            self.damaged = True               # GPT review: fail closed, never a fresh month by a broken file
+        if not isinstance(self.data, dict):
+            self.data, self.damaged = {}, True
+        if self.damaged:
+            log.error("the trial budget file %s is unreadable: trials stay stopped until it is fixed or removed", self.path)
+        # the plan's used share as last read, and when: kept on disk, so a restart keeps an "over" reading
+        share = self.data.get("share")
+        self.share = float(share) if isinstance(share, (int, float)) and math.isfinite(share) else None
+        self.checked = float(self.data.get("checked", 0)) if isinstance(self.data.get("checked"), (int, float)) else 0.0
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,33 +98,52 @@ class Budget:
 
     def _month(self) -> dict:
         if self.data.get("month") != month(self.clock()):
-            self.data = {"month": month(self.clock()), "tokens": 0, "paused_until": self.data.get("paused_until", 0)}
+            kept = {k: self.data[k] for k in ("paused_until", "share", "checked") if k in self.data}
+            self.data = {"month": month(self.clock()), "tokens": 0, **kept}
         return self.data
 
     def add_tokens(self, n: float) -> None:
-        self._month()["tokens"] = int(self.data.get("tokens", 0)) + max(0, round(n))
+        self._month()["tokens"] = max(0, int(self.data.get("tokens", 0)) + round(n))   # a settle after a new month: never below 0
         self._save()
 
+    def reserve(self, n: float) -> bool:
+        """Count `n` (an estimate, on the high side) before a call; False, and nothing counted, if it would
+        pass this month's token cap. Saved first, so a crash mid-call still leaves it counted."""
+        if int(self._month().get("tokens", 0)) + n > setting("TRIAL_MONTHLY_TOKENS"):
+            return False
+        self.add_tokens(n)
+        return True
+
+    def settle(self, reserved: float, used: float) -> None:
+        """Ollama's own count replaces the estimate (a failed call keeps the estimate)."""
+        self.add_tokens(max(0.0, used) - reserved)
+
     def pause(self, seconds: float, why: str) -> None:
-        self.data["paused_until"] = self.clock() + max(60.0, seconds)
+        seconds = min(max(MIN_PAUSE_S, seconds), MAX_PAUSE_S) if math.isfinite(seconds) else setting("TRIAL_PAUSE_S")
+        self.data["paused_until"] = self.clock() + seconds
         self._save()
-        log.error("trial agent paused for %.0f min: %s (operator: check the Ollama plan's usage)", max(60.0, seconds) / 60, why)
+        log.error("trial agent paused for %.0f min: %s (operator: check the Ollama plan's usage)", seconds / 60, why)
 
     async def stopped(self) -> str | None:
         """Why trials must not call the model now (PAUSED, SHARE, TOKENS), or None."""
         now = self.clock()
+        if self.damaged:
+            return TOKENS
         if float(self.data.get("paused_until", 0)) > now:
             return PAUSED
         if int(self._month().get("tokens", 0)) >= setting("TRIAL_MONTHLY_TOKENS"):
             return TOKENS
-        if now - self.checked >= setting("TRIAL_BUDGET_CHECK_S"):
-            self.checked = now
+        limit = min(1.0, setting("TRIAL_MAX_SHARE"))
+        near = self.share is not None and self.share >= limit - NEAR_SHARE   # close: read it more often
+        if now - self.checked >= (NEAR_CHECK_S if near else setting("TRIAL_BUDGET_CHECK_S")):
+            self.checked = self.data["checked"] = now
             share = used_share(await self.fetch())
             if share is None:                 # the last reading stands (an "over" one keeps trials stopped)
                 log.warning("couldn't read the Ollama balance: the last reading and the monthly token cap guard trials")
             else:
-                self.share = share
-        return SHARE if self.share is not None and self.share >= min(1.0, setting("TRIAL_MAX_SHARE")) else None
+                self.share = self.data["share"] = share
+            self._save()
+        return SHARE if self.share is not None and self.share >= limit else None
 
     def paused_for(self) -> float:
         return max(0.0, float(self.data.get("paused_until", 0)) - self.clock())

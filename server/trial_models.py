@@ -12,18 +12,20 @@ import re
 # (3T-class: counts double), its coding model, a fast DeepSeek and OpenAI's open model.
 DEFAULT_LIST = "glm-5.3,kimi-k3.1-pro*2,kimi-k2.7-code,deepseek-v4.1-flash,gpt-oss:120b"
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9._:-]{0,80}")
+ENTRY = r"[a-z0-9][a-z0-9._:-]{0,80}(?:\*[0-9]{1,2}(?:\.[0-9]{1,2})?)?"   # also deploy/envfile.py's rule
 WEIGHT_RE = re.compile(rf"({NAME_RE.pattern})(?:\*([0-9]{{1,2}}(?:\.[0-9]{{1,2}})?))?")
 MAX_MODELS = 12
 
 
 def weighted() -> dict[str, float]:
-    """name → weight, in the operator's order; malformed entries are skipped (all malformed: the default list)."""
+    """name → weight, in the operator's order. A malformed entry is skipped; if none is usable, only the
+    default list's FIRST model (never the whole bundled list: GPT review). deploy/envfile.py refuses such a list."""
     out: dict[str, float] = {}
     for raw in (os.environ.get("TRIAL_MODELS", "").strip() or DEFAULT_LIST).split(","):
         m = WEIGHT_RE.fullmatch(raw.strip().lower())
         if m and len(out) < MAX_MODELS:
             out.setdefault(m.group(1), float(m.group(2) or 1) or 1.0)
-    return out or weighted_default()
+    return out or dict([next(iter(weighted_default().items()))])
 
 
 def weighted_default() -> dict[str, float]:

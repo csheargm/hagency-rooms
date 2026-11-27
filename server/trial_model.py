@@ -6,6 +6,9 @@ one, each cut to size and scrubbed of anything shaped like a credential or a loc
 is scrubbed the same way before it is posted. An empty answer is a failure, never a blank reply.
 """
 import asyncio
+import email.utils
+import math
+import time
 
 import aiohttp
 
@@ -37,11 +40,17 @@ class TrialLimited(TrialModelError):
         self.status, self.retry_after = status, retry_after
 
 
-def retry_after(headers) -> float | None:
+def retry_after(headers, now: float | None = None) -> float | None:
+    """Retry-After in seconds (a number or an HTTP date); None when absent or unreadable (the default pause)."""
+    raw = str(headers.get("Retry-After", "") or "").strip()
     try:
-        return float(headers.get("Retry-After", ""))
-    except (TypeError, ValueError):
-        return None                       # absent, or a date: the default pause applies
+        seconds = float(raw)
+    except ValueError:
+        try:
+            seconds = email.utils.parsedate_to_datetime(raw).timestamp() - (time.time() if now is None else now)
+        except (TypeError, ValueError, IndexError):
+            return None
+    return seconds if math.isfinite(seconds) and seconds > 0 else None
 
 
 def tokens_of(data: dict) -> int:
@@ -50,16 +59,19 @@ def tokens_of(data: dict) -> int:
     return sum(v for v in n if isinstance(v, int) and v > 0)
 
 
+def chars(chat: list[dict]) -> int:
+    return sum(len(str(m.get("content", ""))) for m in chat)
+
+
 def estimate(chat: list[dict], data: dict) -> int:
     """No counts in the answer: about 4 characters a token, for what went out and what came back."""
     said = data.get("message") if isinstance(data.get("message"), dict) else {}
-    chars = sum(len(str(m.get("content", ""))) for m in chat) + len(str(said.get("content", "")))
-    return chars // 4 + 1
+    return (chars(chat) + len(str(said.get("content", "")))) // 4 + 1
 
 
 def scrub(text: object, limit: int) -> str:
     """No credentials, no local paths, at most `limit` characters."""
-    return room_safe(secret_safe(text), limit=limit)
+    return room_safe(secret_safe(text, trial_limits.api_key()), limit=limit)   # the exact key too (GPT review)
 
 
 def messages(history: list[dict], question: str, diff: str | None = None) -> list[dict]:

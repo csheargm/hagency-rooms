@@ -55,6 +55,11 @@ Step 1 only: talk. (0024 is left for the agent auto-update work.)
   page, in its hello and in @pm's "ready" message.
 
 ## Consequences
+- The balance is read between calls and other users of the key spend too, so `TRIAL_MAX_SHARE` is a soft line
+  (read every minute once within 10 points of it). For a hard stop, the owner sets a pay-as-you-go spending limit
+  in the Ollama account. A token estimate is reserved before each call so the token cap is never passed.
+- Answers run as their own tasks (at most 6 waiting), so Matrix sync never waits on the model; the visitor's
+  membership (and the room's repo, for a PR) is checked again before a PR is read and before posting.
 - The operator sets `OLLAMA_API_KEY` in `deploy/.env` to turn it on (the other settings have defaults).
 - Messages sent to it while @pm restarts are not answered (it starts from "now"; invites are still checked).
 - A visitor who has the PR's room is assumed to be allowed to read its repo, as with @pm's status board.
