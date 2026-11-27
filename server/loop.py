@@ -134,8 +134,8 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
 
     # --- chat: agent results -----------------------------------------
     async def on_message(self, room: MatrixRoom, event: RoomMessageText) -> None:
-        if lifecycle.is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
-            return
+        if lifecycle.is_stale(event, self.started_ms) and not self.awaited_solo(event) or not self.sync_point.first_time(event.event_id):
+            return                            # awaited_solo: a ruleset answer sent while @pm restarted (pm_solo_rules)
         result = event.source.get("content", {}).get(github.RESULT_KEY)
         if isinstance(result, dict) and event.sender in self.agents_in(room):
             await self.guarded(self.take_result(room, event.sender, result))

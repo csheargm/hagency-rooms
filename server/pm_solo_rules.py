@@ -48,6 +48,18 @@ class SoloRules(SoloCode):
             self._solo_jobs = SavedDict(path.with_name(path.stem + "-solo-jobs.json")) if path else {}
         return self._solo_jobs
 
+    def awaited_solo(self, event) -> bool:
+        """A ruleset answer @pm still waits for on disk (GPT review: one posted during a restart was dropped as
+        history, and the bypass it added was never recorded, so switching off left it on GitHub)."""
+        result = (getattr(event, "source", None) or {}).get("content", {}).get(github.RESULT_KEY)
+        return isinstance(result, dict) and result.get("kind") == solo_review.TASK_KIND and \
+            str(result.get("task_id")) in self.solo_jobs()
+
+    def unanswered_add(self, rid: str) -> dict | None:
+        """The latest ask to add the bypass in this room whose answer hasn't come yet."""
+        asks = [j for j in self.solo_jobs().values() if j.get("room") == rid and j.get("on")]
+        return max(asks, key=lambda j: j.get("at", 0)) if asks else None
+
     async def ruleset_agent(self, room: MatrixRoom, sender: str) -> tuple[str | None, tuple | None]:
         """The room owner's agent that can run the ruleset task (the asker's first, when they are an owner), and
         else (owner, agent) of the first one whose code is too old for it (code_report.runs_task), or None."""

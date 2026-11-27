@@ -46,6 +46,8 @@ SOLO_READY_NO_BYPASS = ("PR #{pr} ready — a person merges. GitHub's review rul
                         "and it doesn't let repo admins past it yet. ")
 NO_REPO_YET = "Pick this room's GitHub repo first: solo review is switched on for that repo's rules."
 REPO_MOVED = "This room's repo changed since I asked, so solo review stays off. Ask me again for the new repo."
+UNANSWERED = ("{agent} hasn't said yet whether it let repo admins past GitHub's review rule on {repo}. When it does, "
+              "I'll ask it to take that out again. If no answer comes: ")
 MERGE_FAILED = ("**What you can do:**\n\n- If GitHub's rules stopped it: {steps} Then say **@pm retry #{n}** and I'll "
                 "try the merge again.\n- Or: {link}")
 
@@ -138,6 +140,9 @@ class Solo(SoloRules):
         await self.say(rid, err or OFF)
         if not err and before["bypass_added"]:
             await self.take_out(room, sender, before)   # pm_solo_rules.py: by the owner's agent, or said plainly
+        elif not err and (job := self.unanswered_add(rid)):   # GPT review: its answer may be lost; said plainly
+            await self.say(rid, UNANSWERED.format(agent=local(job["agent"]), repo=job.get("repo"))
+                           + solo_review.TAKE_OUT.format(repo=job.get("repo")))
         return err
 
     def waiting_for_checker(self, rid: str) -> str:
