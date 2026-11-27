@@ -13,6 +13,9 @@ CONSOLE = "console"
 SET_REPO = "set_repo"
 RETRY = "retry"
 START = "start"        # "what should we do first?": the next steps, for this room
+SOLO_ON, SOLO_OFF = "solo_on", "solo_off"   # solo review (ADR 0023): a person's own agents check each other
+SOLO = (SOLO_ON, SOLO_OFF)
+_SOLO = r"solo[ -]?review(ing)?\b"
 # "this room works on owner/name", "set the repo to owner/name", "use https://github.com/owner/name":
 # the repo is the command's own argument (never any other owner/name-looking text in the message).
 SET_REPO_RE = re.compile(
@@ -22,6 +25,11 @@ SET_REPO_RE = re.compile(
 NEGATED = re.compile(r"\b(don'?t|do not|never|not|no longer|stop using)\b", re.I)
 
 _RULES = [   # checked in order; the first match wins, so the safest meanings come first
+    # Solo review off is the safe direction, so before "stop" ("turn off solo review" isn't a halt); a stop said
+    # in the same message still wins (classify).
+    # The verb right before the words only (GPT review: "stop everything, solo review off" must stay a stop).
+    (SOLO_OFF, rf"\b(turn|switch) off (the )?{_SOLO}|\b{_SOLO} (is |to |now )?off\b|\b(stop|disable|disallow|end|no more|"
+               rf"no longer allow|don'?t allow|do not allow|never allow) (the |using |any )?{_SOLO}|\bno {_SOLO}"),
     # The follow-me settings mention "my agent" explicitly, so they can go before "stop" without
     # ever swallowing a real stop ("stop bringing my agent" is a setting, not a halt).
     # The old per-room web switch (ADR 0006 retired it), only ever answered. Either way round, and
@@ -36,6 +44,9 @@ _RULES = [   # checked in order; the first match wins, so the safest meanings co
     (FOLLOW_ALWAYS, r"\b(always |please )?(bring|invite|add) my agent\b"),
     (OFF, r"\b(stop|pause|halt|kill|freeze|turn (\w+ ){0,3}off|switch (\w+ ){0,3}off|shut (\w+ )?down|"
           r"hold (on|off)|cancel)\b"),
+    # Turning it on is a relaxation: always asked with a 👍 first (pm_solo.py), whatever the words.
+    (SOLO_ON, rf"\b(allow|enable|turn on|switch on|start|use|let)\b.{{0,20}}\b{_SOLO}\b|\b{_SOLO}\b.{{0,20}}\bon\b|"
+              r"\blet my (own |other )*agents? (review|check) (each other|one another)"),
     (ASSIST, r"\b(approv\w*|check with (us|me)|ask (us|me)|assist\w*|let (us|me) (review|check|decide)|"
              r"review (each|every|it|them)|human review|before (you )?merg\w*|we merge|i('ll| will) merge)\b"),
     (AUTONOMOUS, r"\b(all the way|to the end|end to end|on your own|autonomous\w*|without asking|"
@@ -61,6 +72,7 @@ _RULES = [   # checked in order; the first match wins, so the safest meanings co
     (HELP, r"\b(help|what can you do|how do (i|we) use you)\b"),
 ]
 _COMPILED = [(intent, re.compile(rx, re.I)) for intent, rx in _RULES]
+_STOP_RX = next(rx for intent, rx in _COMPILED if intent == OFF)
 YES_RE = re.compile(r"^\s*(yes|yep|yeah|confirm(ed)?|go|do it|ok(ay)?|sure|✅|👍|👌)[\s.!]*$", re.I)
 CONFIRM_REACTIONS = ("✅", "✔", "☑", "👍", "👌", "🆗", "💯")
 
@@ -84,8 +96,10 @@ def classify(text: str) -> str:
     text = text.strip()[:MAX_TEXT]
     for intent, rx in _COMPILED:
         m = rx.search(text)
-        if m and intent in (ASSIST, AUTONOMOUS) and NEGATED.search(text[:m.start()]):
+        if m and intent in (ASSIST, AUTONOMOUS, SOLO_ON) and NEGATED.search(text[:m.start()]):
             return UNKNOWN            # "do not go autonomous" is not a request for it
+        if m and intent == SOLO_OFF and _STOP_RX.search(text[:m.start()] + " " + text[m.end():]):
+            return OFF                # "stop, and turn solo review off": the stop wins
         if m and (intent != SET_REPO or repo_named(text)):
             return intent
     return UNKNOWN

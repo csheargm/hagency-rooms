@@ -191,6 +191,7 @@ class Connect(LinkCase):
     def test_the_console_state_carries_the_card(self):
         self.lp.pending = {}
         self.lp.level, self.lp.agent_online = (lambda rid: asyncio.sleep(0, "off")), (lambda agent: None)
+        self.lp.solo_on = lambda rid: asyncio.sleep(0, False)
         with mock.patch.object(room_state, "is_moderator", lambda c, r, u: asyncio.sleep(0, True)), \
                 mock.patch.object(room_state, "repo_of", lambda c, rid: asyncio.sleep(0, None)), \
                 mock.patch.object(room_state, "discussion_of", lambda c, rid: asyncio.sleep(0, False)), \

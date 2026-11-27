@@ -245,6 +245,7 @@ class FollowAndConsole(Base):
         self.lp.client.rooms = {"!r": self.room(CX, CXC)}
         self.lp.is_person = lambda r, u: u == CX
         self.lp.level = mock.AsyncMock(return_value="off")
+        self.lp.solo_on = mock.AsyncMock(return_value=False)
         self.lp.pending = {}
         self.lp._seen = {"cx-codex-agent": {"online": True}}
         with mock.patch.object(room_state, "repo_of", mock.AsyncMock(return_value=None)), \

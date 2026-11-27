@@ -7,6 +7,8 @@ posted as a comment carrying the verdict, and a repo that requires no reviews me
 from common.github import GitHubError, run_json
 
 AS_COMMENT = "Verdict: {verdict} (posted as a comment: GitHub doesn't let an account approve its own pull request)\n\n"
+# Solo review (ADR 0023): the author's own other agent checked it, so GitHub must never count it as an approval.
+AS_SOLO = "Verdict: {verdict} (solo review: the author's own other agent checked it, so it is posted as a comment)\n\n"
 
 
 async def opened_it(agent: str, pr: int, repo: str) -> bool:

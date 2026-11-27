@@ -138,7 +138,7 @@ async def view(loop, room_id: str, user: str) -> dict:
                                       "version": (customize.in_use().get(registry.local_name(user) or "") or "")[:7] if agent else None})
     return {"user": local, "agents": mine, "can_add": can_add(user, mine), "first_pick": first_pick(loop, user), "kinds": agent_kinds.kinds(), "room": room.display_name, "repo": await room_state.repo_of(loop.client, room_id),
             "moderator": await room_state.is_moderator(loop.client, room, user),
-            "mode": await loop.level(room_id), "agent": agent and agent.split(":")[0][1:],
+            "mode": await loop.level(room_id), "solo": await loop.solo_on(room_id), "agent": agent and agent.split(":")[0][1:],
             "visibility": await project_rooms.visibility(loop.client, room_id), "runs_in": await runs_in(loop, room_id, user),
             "follow": registry.follow(user) if agent else None, "github": github_link.status(user),   # pm_github.py
             "pm_chat": (getattr(loop, "dm_rooms", None) or {}).get(user),   # my private chat with them (their view only): its links open it

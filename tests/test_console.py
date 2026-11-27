@@ -122,7 +122,7 @@ class Actions(unittest.TestCase):
                                     is_person=lambda r, u: u in r.users and not u.split(":")[0].endswith("-agent"),
                                     set_follow=set_follow, confirm=confirm, pending={}, lock=asyncio.Lock(),
                                     paused_here=lambda rid: asyncio.sleep(0, ("your-name/hagency-hello", [])),
-                                    level=lambda rid: asyncio.sleep(0, "off"),
+                                    level=lambda rid: asyncio.sleep(0, "off"), solo_on=lambda rid: asyncio.sleep(0, False),
                                     agent_online=lambda agent: True if agent == "alice-at-matrix-org-a5829e99c7-agent" else None,
                                     ever_connected=lambda agent: agent == "alice-at-matrix-org-a5829e99c7-agent",
                                     user_id="@pm:" + BETTY.partition(":")[2])

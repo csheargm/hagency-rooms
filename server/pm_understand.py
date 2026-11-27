@@ -14,7 +14,7 @@ from nio import MatrixRoom, RoomGetEventResponse
 
 from common.pm_actions import INTENT_OF as BRAIN_ACTIONS
 from server import pm_brain
-from common import room_state
+from common import intents, room_state
 from server.pm_chat import CONFIRM_S, LEVEL_WORDS, ONLY_MODERATORS, without_quote
 from server.pm_implicit import SPECULATIVE, TO_CONFIRM, Implicit, mode_question
 from server.pm_owner_brain import SIMPLE, OwnerBrain
@@ -25,7 +25,7 @@ SETTING_QUESTIONS = {"follow_always": "Bring your agent along whenever you join 
                      "follow_never": "Never bring your agent along?"}
 ANSWER_FIRST = "Please answer my question above first; then ask me again."
 CLICK_TO_APPROVE = "To approve it, click 👍 on my question above (or type \"ok\" in reply)."
-REPLACEABLE = ("setting", "mode", "implicit")    # my small 👍 questions: the same person may ask again
+REPLACEABLE = ("setting", "mode", "implicit", "solo")    # my small 👍 questions: the same person may ask again
 MAX_JOBS = 12                 # understanding jobs at once (each may wait ~50 s for an agent); past it, the rules
 TOO_MANY = "I'm reading a lot of messages just now," + SIMPLE
 
@@ -147,6 +147,8 @@ class Understanding(OwnerBrain, Implicit):
         elif action == "none":
             if reply or named:                # empty and unnamed: "not for @pm" (pm_actions.UNADDRESSED)
                 await self.say(rid, reply or "Noted.", plain=True)   # the model's words: plain text, no links
+        elif BRAIN_ACTIONS[action] in intents.SOLO:   # pm_solo.py: on asks its own 👍 first (moderators); off is safe
+            await self.solo(room, sender, BRAIN_ACTIONS[action], gen, named)
         else:
             await self.act_implicit(room, sender, BRAIN_ACTIONS[action], text, gen, named)
 

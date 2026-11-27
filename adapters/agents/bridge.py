@@ -14,21 +14,14 @@ import markdown
 from nio import (AsyncClient, InviteMemberEvent, LoginResponse, MatrixRoom, MegolmEvent, ReactionEvent, RoomMessage,
                  RoomMessageAudio, RoomMessageText)
 
-from adapters.agents import agents
+from adapters.agents import agents, bridge_followup, room_context, tasks, workdirs
 from adapters.agents.agent_stop import BridgeStop
 from adapters.agents.agent_update import BridgeUpdate
 from adapters.agents.bridge_custom import BridgeCustom
-from adapters.agents import bridge_followup
 from adapters.agents.bridge_voice import BridgeVoice
-from common import github
-from common import identity
-from common import lifecycle
-from adapters.agents import room_context
+from common import github, identity, lifecycle, room_state, solo_review
 from common.redact import room_safe, secret_safe
-from common import room_state
-from adapters.agents import tasks
 from adapters.agents.understand_task import BridgeUnderstand   # @pm reads with the room owner's agent (ADR 0022)
-from adapters.agents import workdirs
 from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password
 TYPING_REFRESH_S = 20       # re-send typing before the 30s server timeout lapses
 TYPING_TIMEOUT_MS = 30_000
@@ -145,7 +138,8 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
 
     async def run_task(self, room_id: str, task: dict) -> None:
         what = f"PR #{task.get('pr')}" if task.get("pr") else f"#{task.get('issue')}"
-        claimed = {"plan": "planning from the discussion…", "file_issues": "opening the planned issues…", "card": "making a panel card…"}.get(
+        claimed = {"plan": "planning from the discussion…", "file_issues": "opening the planned issues…", "card": "making a panel card…",
+                   "solo_ruleset": "updating the repo's review rule for solo review…"}.get(
             task.get("kind"), f"{task.get('kind')}: claimed {what}")
         await self.send(room_id, claimed, source=github.linkify(claimed, task.get("repo")))
         typing = asyncio.create_task(self.keep_typing(room_id))
@@ -159,7 +153,13 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
                 elif kind in tasks.AUTONOMOUS_ONLY and await room_state.level(self.client, room_id) != "autonomous":
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "room is no longer autonomous", "line": f"{kind} skipped: room is no longer autonomous"}
+                elif (task.get("on") if kind == solo_review.TASK_KIND else task.get("admin")) is True \
+                        and not await solo_review.enabled(self.client, room_id):   # ADR 0023: re-read from the room now
+                    result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
+                              "error": "solo review is off in this room", "line": f"{kind} refused: solo review is off here"}
                 else:
+                    if kind == "merge" and task.get("admin") is True:   # ADR 0023: read again right before --admin
+                        task = {**task, "_still": lambda: solo_review.still_allowed(self.client, room_id, task["repo"])}
                     base = ROOT / "rooms" / self.owner / "work" / (room_context.repo_dir(room_repo) if room_repo else "no-repo")
                     result = await tasks.handle(f"{self.owner}-agent", self.backend, base, task)
         finally:
@@ -276,7 +276,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
 def step_key(task: dict) -> tuple:
     """A loop step's identity across resends (each resend has a new task_id)."""
     return (str(task.get("repo")), task.get("kind"), str(task.get("issue")), str(task.get("pr")),
-            task.get("task_id") if task.get("kind") == "card" else None)   # each card ask is its own (pm_cards.py)
+            task.get("task_id") if task.get("kind") in ("card", solo_review.TASK_KIND) else None)   # each its own ask
 
 
 def main() -> None:

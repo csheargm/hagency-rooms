@@ -1,14 +1,17 @@
 """The Hagency panel's "Project repo" card actions (console.act hands them here): choose the room's
-repo, remove it (pm_unbind.py: the page asked twice first), and check that it is ready. Each goes
+repo, remove it (pm_unbind.py: the page asked twice first), and check that it is ready; and the Mode
+card's Solo review toggle (pm_solo.py), which also changes how the repo's review rule is met. Each goes
 through @pm's own checks, and choosing or removing is also answered in the chat.
 """
 from server import github_setup
 from common import room_state
 
-ACTIONS = ("repo", "unrepo", "check")
+ACTIONS = ("repo", "unrepo", "check", "solo")
 
 
 async def act(loop, room, user: str, action: str, value: str) -> str:
+    if action == "solo":                  # pm_solo.py: the Mode card's Solo review toggle (on: moderators)
+        return await loop.solo_from_panel(room, user, value)
     if action == "repo":
         return await loop.set_repo(room, user, value.strip())
     if action == "unrepo":

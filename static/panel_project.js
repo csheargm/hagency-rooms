@@ -43,9 +43,15 @@ function repoConfirmed(b) {              // panel.html's click handler: false = 
 const MODES = {off: "Paused: no new work is handed out and nothing is merged.",
   assist: "Agents build and review; a person merges each change.",
   autonomous: "Agents build, review and merge on their own."};
+const SOLO = {off: "Off: only another person's agent reviews and verifies the work.",
+  on: "On: when no other person's agent is here, another of your own agents checks the work (never the one that built it)."};
 function modeCard(s) {
   const live = v => !!s.moderator && (v === "off" || !!s.repo);
   const hint = s.repo ? esc(MODES[s.mode] || "") : "Pick the project repo first.";
+  // Solo review (ADR 0023): on is the moderators'; off is anyone's (the safe direction, like Off above).
+  const solo = s.solo ? "on" : "off", soloLive = v => v === "off" || (!!s.moderator && !!s.repo);
   return `<section class="card"><h2>Mode</h2>${buttons("mode", ["off", "assist", "autonomous"], s.mode, live)}
-    <div class="hint">${hint}${s.moderator ? "" : " Only the owner or a maintainer can change it."}</div></section>`;
+    <div class="hint">${hint}${s.moderator ? "" : " Only the owner or a maintainer can change it."}</div>
+    <h3>Solo review</h3>${buttons("solo", ["off", "on"], solo, soloLive)}
+    <div class="hint">${SOLO[solo]}</div></section>`;
 }
