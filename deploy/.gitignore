@@ -9,3 +9,4 @@ synapse-admin-config.json
 .synapse-loaded
 secrets/
 element-home/
+state/
