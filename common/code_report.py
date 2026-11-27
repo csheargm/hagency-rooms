@@ -30,7 +30,8 @@ UPDATE_MAX_S = 80 * 60                # self_update.apply at most: its lock wait
 UNKNOWN_KIND = "unknown task kind"    # an agent's answer to a task its code predates (tasks.py; pm_cards, pm_solo_rules read it)
 # A task kind newer than some agents: the commit time from which master's agents run it (live test 2026-11-27:
 # an agent on older code got solo_ruleset and posted "unknown task kind"). 1795804541: 0afcfbb, solo review merged.
-TASK_SINCE = {"solo_ruleset": 1795804541}
+SOLO_STEP = "solo_step"               # not a task kind: a solo check or admin merge (server/pm_solo_code.py)
+TASK_SINCE = {"solo_ruleset": 1795804541, SOLO_STEP: 1795804541}
 NONE = object()                               # "number" left out (older agents), unlike a present null (GPT review)
 log = logging.getLogger("bridge")
 

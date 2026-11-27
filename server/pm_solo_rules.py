@@ -21,10 +21,10 @@ from common.saved_dict import SavedDict
 from server import console_auto_update
 from server import github_setup, ownership
 from server.pm_cards import cannot, local
+from server.pm_solo_code import NEEDS_UPDATE, UNREADABLE, SoloCode
 
 KEEP = object()               # write_solo: keep that field as it is
 KEEP_JOBS_S = 7 * 24 * 3600   # an unanswered ask is forgotten after this
-UNREADABLE = "⚠️ I couldn't read this room's settings just now, so I changed nothing. Please try again in a minute."
 BYPASS_QUESTION = ("To merge with only your own agents, Hagency needs to let repo admins merge past GitHub's review "
                    "rule on {repo}. 👍 to allow.")   # the owner's own words
 BYPASS_MOVED = "This room's repo changed since I asked, so I changed nothing on GitHub."
@@ -33,7 +33,6 @@ NOT_MODERATOR = "Only the room owner or a maintainer can allow that, so I change
 REPO_CHANGED = "This room's repo changed meanwhile, so I didn't note that for it."
 NO_OWNER_AGENT = "No agent of the room owner's is here to update GitHub's review rule on {repo}. "
 NOT_WANTED = "If you don't want it anymore, take **Repository admin** out of the rule's Bypass list on GitHub."
-NEEDS_UPDATE = "{agent} needs an update first: it runs code from before solo review. "   # live test 2026-11-27
 ASKED = "I've asked it to update. Once My agents shows it Up to date, switch Solo review {again}."
 BY_HAND = "Update it in My agents (in your chat with Product Manager), then switch Solo review {again}."
 AGAIN_ON, AGAIN_OFF = "off and on again", "on and off again"   # off: the bypass stays until then (review)
@@ -41,7 +40,7 @@ AGAIN = (" Or bring the room owner's agent into the room and switch Solo review 
          "when its GitHub account is the repo's admin.")
 
 
-class SoloRules:
+class SoloRules(SoloCode):
     def solo_jobs(self) -> dict:
         """task_id → a ruleset ask {room, agent, on, by, at}, on disk next to the boards."""
         if "_solo_jobs" not in self.__dict__:
@@ -87,6 +86,9 @@ class SoloRules:
         if repo != expect or (on and not solo_review.live(state, repo)):   # solo is only on with a repo; its
             if repo and on:                                                 # removal says what's left
                 await self.say(rid, BYPASS_MOVED if repo != expect else BYPASS_OFF)
+            return
+        if on and agent and (err := await self.record_on(rid)):   # older agent code reads only an explicit "on"
+            await self.say(rid, err)
             return
         if agent is None and old:             # an owner's agent is here, on code from before the task
             await self.needs_update(rid, *old, on, bool(ids))

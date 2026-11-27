@@ -24,7 +24,8 @@ from server.pm_chat import ONLY_MODERATORS
 from server.pm_implicit import TO_CONFIRM
 from server.pm_paused import no_reviewer_steps, num
 from server.pm_settings import NEED_POWER
-from server.pm_solo_rules import KEEP, REPO_CHANGED, UNREADABLE, SoloRules
+from server.pm_solo_code import UNREADABLE, update_line
+from server.pm_solo_rules import KEEP, REPO_CHANGED, SoloRules
 
 SOLO_TASK = solo_review.TASK_KIND
 QUESTION = ("Turn on **solo review**? When no other person's agent is here, another of the builder's owner's own "
@@ -121,7 +122,7 @@ class Solo(SoloRules):
         rid = room.room_id
         repo = await room_state.repo_of(self.client, rid)
         err = NO_REPO_YET if not repo else REPO_MOVED if asked is not KEEP and asked != repo else \
-            (await self.write_solo(rid, True))[0]
+            (await self.write_solo(rid, True))[0] or await self.record_on(rid)   # for its repo (pm_solo_code)
         if err:
             await self.say(rid, err)
             return err
@@ -151,7 +152,11 @@ class Solo(SoloRules):
         others = routing.checkers_for(agents, item["builder"], ownership.owner_id)
         if others or not await self.solo_on(room.room_id):
             return others, False
-        return routing.own_checkers(agents, item["builder"], ownership.owner_id), True
+        own = routing.own_checkers(agents, item["builder"], ownership.owner_id)
+        fit = [a for a in own if self.runs_solo(a)]   # pm_solo_code: never a solo check to code that predates it
+        if own and not fit:                   # said by no_checker_steps, with "@pm retry #N"
+            item["old_checker"] = [local(own[0]), await self.ask_update(own[0])]
+        return fit, True
 
     def no_checker_steps(self, n: int, steps: str | None, solo: bool, room: MatrixRoom | None = None,
                          item: dict | None = None) -> str:
@@ -159,8 +164,9 @@ class Solo(SoloRules):
         mine = ownership.owner_id(item["builder"]) if item else None
         asleep = [local(a) for a in (self.agents_in(room) if room and mine else [])
                   if a != item["builder"] and ownership.owner_id(a) == mine and self.agent_online(local(a)) is False]
-        first = (OFFLINE.format(names=", ".join(asleep), n=n) if solo and asleep   # review: in the room, but offline
-                 else (NO_OTHER if solo else HINT).format(n=n))
+        old = (item or {}).pop("old_checker", None) if solo else None   # pm_solo_code: code from before solo review
+        first = (update_line(old[0], old[1], n) if old else OFFLINE.format(names=", ".join(asleep), n=n)
+                 if solo and asleep else (NO_OTHER if solo else HINT).format(n=n))   # review: in the room, but offline
         return "**What you can do:**\n\n" + f"- {first}" + (f"\n- Or: {steps}" if steps else "")
 
     def merge_failed_steps(self, item: dict, key: str, kind: str) -> str | None:
@@ -237,6 +243,13 @@ class Solo(SoloRules):
             await self.dispatch(room_id, item, item["reviewer"], f"{item['reviewer']}: review PR #{item['pr']} again "
                                 f"(it changed) against #{num(key)}", routing.check_task(item, num(key)))
         elif lvl == "autonomous" and info.get("mergeable") == "MERGEABLE" and await self.checks_green(room_id, key, item):
+            if not self.runs_solo(item["builder"]):   # pm_solo_code: its code would refuse (or not know) the admin merge
+                item["resume"] = "approved"           # "@pm retry #N" tries the merge again, PR kept
+                return await self.stop(room_id, key, item, f"{local(item['builder'])} runs code from before solo review",
+                                       "**What you can do:**\n\n- " + update_line(local(item["builder"]), await self.ask_update(
+                                           item["builder"]), num(key)))
+            if err := await self.record_on(room_id):   # older agent code reads only an explicit "on" for this repo
+                return await self.say(room_id, err)    # still "approved": tried again at the next poll
             item["stage"] = "merging"
             await self.dispatch(room_id, item, item["builder"], f"{item['builder']}: merge PR #{item['pr']} (solo review)",
                                 {"kind": "merge", "issue": num(key), "pr": item["pr"], "sha": item["sha"], "admin": True})

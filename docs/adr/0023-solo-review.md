@@ -114,5 +114,12 @@ anyone can switch it off at once; the GitHub consent stays tied to the room's re
   question takes a 👍, a reply to that very message, or the panel's Approve (whose card shows the question),
   never a stray unthreaded "yes". Rejected: the 👍 emoji alone — a threaded reply or the Approve click is
   equally that person's own act on that very question.
+- **Agents on older code** (independent review): code from before this default reads only an explicit @pm
+  event, on and for the room's repo, so "never set" looked off to it and it refused an admin merge @pm had
+  sent ("solo review is off in this room"). Before a step the agent re-checks (an admin merge, the ruleset
+  task) and when a moderator switches it on, @pm writes the switch out as on for the room's repo
+  (`pm_solo_code.record_on`; an off is never written as on). An agent whose reported code predates solo review
+  itself (`code_report.TASK_SINCE["solo_step"]`) gets no solo check or admin merge: the room is told it needs
+  an update first, it is asked to update through the auto-update scheduler, and `@pm retry #N` goes on.
 - Readiness ("Check readiness"), the panel's Mode card and the pinned status read the same state, so a room
   that never set it shows solo review on; the readiness check counts a bypass only for the repo it checks.
