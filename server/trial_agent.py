@@ -72,6 +72,7 @@ class TrialAgent(Turns):
         self.ask_model = ask
         self.history: dict = {}                                    # (room, visitor) → recent turns, in memory only
         self.answering: set = set()                                # visitors with an answer underway (trial_turn.py)
+        self.told_busy: set = set()                                # visitors told "still"/"busy" since their last answer
         self.enrolling: dict = {}                                  # visitor → one enrolment at a time
         self.waiting: set = set()                                  # answers underway (trial_turn.on_message)
         self.busy = busy if busy is not None else set()            # @pm's: a restart lets them finish (lifecycle.serve)
@@ -230,7 +231,10 @@ def start_later(loop) -> None:
         return
 
     async def online() -> None:
-        loop.trial = await start(loop.trial_eligible, loop.busy, loop.sync_point.stop)
+        try:
+            loop.trial = await start(loop.trial_eligible, loop.busy, loop.sync_point.stop)
+        except Exception as e:        # noqa: BLE001 — any failure (a refused admin API, a proxy's HTML page): the
+            log.error("trial agent not started: %s", e)   # trial stays off and unoffered; the operator sees why here
     loop.trial_starting = asyncio.create_task(online())
 
 

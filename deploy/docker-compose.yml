@@ -96,7 +96,9 @@ services:
       TRIAL_MAX_SHARE: ${TRIAL_MAX_SHARE:-0.5}   # trials stop at this share of the Ollama plan's month (never pay-as-you-go)
       TRIAL_MONTHLY_TOKENS: ${TRIAL_MONTHLY_TOKENS:-5000000}
       TRIAL_QUEUE_WAIT_S: ${TRIAL_QUEUE_WAIT_S:-20}   # one model call at a time; then "busy, try again"
-      TRIAL_PAUSE_S: ${TRIAL_PAUSE_S:-900}   # a 429/402 from Ollama pauses trials this long (or its Retry-After)
+      TRIAL_PAUSE_S: ${TRIAL_PAUSE_S:-900}
+      TRIAL_VISITOR_TOKENS: ${TRIAL_VISITOR_TOKENS:-150000}   # tokens per visitor per UTC day
+      TRIAL_REMOTE_TOKENS: ${TRIAL_REMOTE_TOKENS:-50000}     # the same for people from other servers   # a 429/402 from Ollama pauses trials this long (or its Retry-After)
     volumes:
       - ../../pm:/app                   # ~/hagency/pm: this commit's files (deploy.sh) and @pm's state
       - ./pm-secret:/run/hagency:ro     # root-owned on the host: @pm can read the secret, never replace it

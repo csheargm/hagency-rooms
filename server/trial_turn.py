@@ -20,6 +20,7 @@ import asyncio
 import logging
 import math
 import re
+import time
 
 from nio import MatrixRoom, RoomMessageText
 
@@ -31,6 +32,7 @@ from server import trial_limits
 from server import trial_model
 from server import trial_models
 from server import trial_reads
+from common.bridge_config import SERVER_NAME
 from server.pm_address import without_quote
 
 log = logging.getLogger("trial")
@@ -39,16 +41,23 @@ MAX_WAITING = 6                       # answers queued or running at once; more:
 NAME_RE = re.compile(r"^\W*(@?hagency\.)?trial[ -]agent\b", re.I)   # "Trial agent, …" at the start
 BRING = "To bring your own agent (no daily cap, with tools and the GitHub loop): type \"bring my own\" in your chat with Product Manager."
 CAPPED = {trial_limits.VISITOR: "You've used today's {n} trial messages.",
+          trial_limits.TOKENS: "You've used today's trial allowance (long questions and pull requests use it faster).",
           trial_limits.SERVER: "The trial agent has used all of this server's trial messages for today."}
 HAS_OWN = "You have your own agent now, so the trial agent steps aside: talk to your agent instead."
 FAILED = "⚠️ I couldn't answer just now: {why}. Please try again in a minute."
 QUEUE_WAIT_S = 20                     # TRIAL_QUEUE_WAIT_S: how long a message waits for the one model slot
 BUSY = "I'm busy answering someone else right now. Please try again in a minute."
 STILL = "I'm still answering your last message: one at a time, please."
-RESTING = "The trial agent has used its share of this month's AI budget, so it's resting until next month."
+RESTING = "The trial agent has used its share of this month's AI budget, so it's resting until next month (00:00 UTC on the 1st)."
+TOO_BIG = ("That request is too big for what's left of today's trial allowance or this month's trial budget. "
+           "Try a shorter question, or one without a pull request.")
 STOPPED = {trial_budget.PAUSED: "The trial agent is paused: the AI service it uses said it has reached its limit for now. "
                                 "It should be back in about {mins} min.",
-           trial_budget.SHARE: RESTING, trial_budget.TOKENS: RESTING}
+           trial_budget.SHARE: "The trial agent has used its share of the AI plan for this period, so it's resting until the "
+                               "plan's next period.",
+           trial_budget.WINDOW: "The trial agent has used its share of the AI service for now; it should be back in a few hours.",
+           trial_budget.DAMAGED: "The trial agent is paused while the server's operator checks its settings. Please try again later.",
+           trial_budget.TOKENS: RESTING}
 
 
 def is_agent_or_bot(user: str) -> bool:
@@ -89,17 +98,28 @@ class Turns:
         if self.stopping.is_set() or not self.for_me(room, event):
             return                             # @pm is restarting: nothing new starts (it would be cut off)
         if event.sender in self.answering:     # one at a time per visitor: never a queue of theirs (GPT review)
-            await self.post_safely(room.room_id, STILL)
+            self.say_once(room.room_id, event.sender, STILL)
             return
         if len(self.waiting) >= MAX_WAITING:
-            await self.post_safely(room.room_id, BUSY)
+            self.say_once(room.room_id, event.sender, BUSY)
             return
         self.answering.add(event.sender)
+        self.told_busy.discard(event.sender)
         task = asyncio.create_task(self.handle(room.room_id, event))
         for tasks in (self.waiting, self.busy):
             tasks.add(task)
             task.add_done_callback(tasks.discard)
-        task.add_done_callback(lambda _: self.answering.discard(event.sender))
+        task.add_done_callback(lambda _: self.answered(event.sender))
+
+    def say_once(self, room_id: str, visitor: str, text: str) -> None:
+        """STILL or BUSY, at most once until their next answer starts (independent review: a flood of them got
+        the shared account rate limited), posted in the background so sync never waits on it."""
+        if visitor in self.told_busy:
+            return
+        self.told_busy.add(visitor)
+        task = asyncio.create_task(self.post_safely(room_id, text))
+        self.busy.add(task)
+        task.add_done_callback(self.busy.discard)
 
     async def drain(self) -> None:
         """Wait for the answers underway (tests; a restart lets them finish)."""
@@ -151,6 +171,10 @@ class Turns:
     def stop_words(self, stop: str) -> str:
         return f"{STOPPED[stop].format(mins=max(1, math.ceil(self.budget.paused_for() / 60)))} {BRING}"
 
+    def answered(self, visitor: str) -> None:
+        self.answering.discard(visitor)
+        self.told_busy.discard(visitor)
+
     def notice(self, visitor: str, stop: str, words: str) -> tuple[str | None, None, None]:
         return (words if self.usage.first_notice(visitor, stop) else None), None, None
 
@@ -184,13 +208,31 @@ class Turns:
         model = trial_models.chosen((self.visitors.get(visitor) or {}).get("model"))
         weight = trial_models.weight(model)       # a bigger model's tokens count more against the month
         reserved = trial_model.high_estimate(chat, trial_limits.number("TRIAL_MAX_TOKENS")) * weight
-        if not self.budget.reserve(reserved):     # this answer could pass the month's token cap: not asked
-            self.usage.give_back(visitor)         # nor counted against their day (GPT review)
-            return self.notice(visitor, trial_budget.TOKENS, self.stop_words(trial_budget.TOKENS))
-        reply = await (self.ask_model or trial_model.ask)(
-            chat, count=lambda used: self.budget.settle(reserved, used * weight), model=model)
+        if (refused := self.reserve(visitor, reserved)) is not None:   # "": refused, already said today
+            self.usage.give_back(visitor)         # never asked: not counted against their day either
+            return refused or None, None, None
+        reply = await (self.ask_model or trial_model.ask)(chat, count=lambda used: self.settle(visitor, reserved, used * weight),
+                                                          model=model)
         turn = [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
         return f"{reply}\n\n— Trial agent · {model}", (repo if diff else None), turn   # every reply names its model
+
+    def reserve(self, visitor: str, n: float) -> str | None:
+        """Reserve `n` of the visitor's day and of the month; None when both fit, else what to say ("": refused,
+        and the used-up allowance was said already today). A request too big for what's left says so each time:
+        a request too big for what's left says so each time (independent review), a used-up allowance once a day."""
+        remote = identity.split(visitor)[1] != SERVER_NAME
+        if not self.usage.reserve_tokens(visitor, n, remote):
+            if self.usage.tokens_used(visitor) + trial_model.SMALL_TOKENS < self.usage.allowance(visitor, remote):
+                return TOO_BIG
+            return cap_words(trial_limits.TOKENS, time.time()) if self.usage.first_notice(visitor, trial_limits.TOKENS) else ""
+        if not self.budget.reserve(n):            # this answer could pass the month's token cap: not asked
+            self.usage.settle_tokens(visitor, n, 0)
+            return TOO_BIG
+        return None
+
+    def settle(self, visitor: str, reserved: float, used: float) -> None:
+        self.budget.settle(reserved, used)
+        self.usage.settle_tokens(visitor, reserved, used)
 
     async def repo(self, room_id: str) -> str | None:
         try:

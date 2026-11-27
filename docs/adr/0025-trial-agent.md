@@ -47,6 +47,10 @@ Step 1 only: talk. (0024 is left for the agent auto-update work.)
   an unreadable balance keeps the last reading. Our own token count stops them at `TRIAL_MONTHLY_TOKENS` per UTC
   month in any case (the only guard while the balance can't be read). A 429 or 402 from Ollama pauses every trial
   (its Retry-After, else `TRIAL_PAUSE_S`), says so to the visitor and logs it for the operator.
+- **Per visitor, in tokens too**: `TRIAL_VISITOR_TOKENS` (150k) a day, `TRIAL_REMOTE_TOKENS` (50k) for people from
+  other servers, charged with the same reserve/settle as the month (independent review: message caps alone let a
+  few throwaway accounts spend the month in a day). A request too big for what's left says so; "still answering"
+  and "busy" are said at most once per answer underway, in the background.
 - **One call at a time** for the whole server (the plan allows 3, shared): a message waits up to
   `TRIAL_QUEUE_WAIT_S`, then "busy, try again in a minute" (not counted).
 - **Privacy**: only the visitor's own messages to it, its recent answers to them, and a requested PR diff go to

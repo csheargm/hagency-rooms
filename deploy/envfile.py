@@ -53,7 +53,8 @@ RULES = {
     # Its monthly budget guard (trial_budget.py): the share of the Ollama plan trials may use, a token cap,
     # how long a message waits for the one model slot, and how long a 429/402 from Ollama pauses trials.
     "TRIAL_MAX_SHARE": r"0(\.[0-9]{1,3})?|1(\.0{1,3})?", "TRIAL_MONTHLY_TOKENS": r"[0-9]{1,10}",
-    "TRIAL_QUEUE_WAIT_S": r"[1-9][0-9]{0,2}", "TRIAL_PAUSE_S": r"[0-9]{1,6}",
+    "TRIAL_QUEUE_WAIT_S": r"[1-9][0-9]{0,2}",
+    "TRIAL_VISITOR_TOKENS": r"[0-9]{1,9}", "TRIAL_REMOTE_TOKENS": r"[0-9]{1,9}",   # tokens a visitor may use a day "TRIAL_PAUSE_S": r"[0-9]{1,6}",
 }
 # Sign-up and sign-in settings: a bad value turns that feature off (signup.py and sso_login.py check them
 # against RULES and bootstrap prints which), instead of stopping the deploy, so a typo made while
@@ -76,7 +77,8 @@ OPTIONAL = {"OPERATOR", "ALLOW_REMOTE", "REMOTE_PER_HOUR",     # OPERATOR: empty
             "HAGENCY_OPEN_SIGNUP", "HAGENCY_TEST_LIMITS", "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
             "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET",
             "OLLAMA_API_KEY", "TRIAL_MODELS", "TRIAL_PER_VISITOR", "TRIAL_PER_SERVER", "TRIAL_MAX_TOKENS", "TRIAL_TIMEOUT_S",
-            "TRIAL_MAX_SHARE", "TRIAL_MONTHLY_TOKENS", "TRIAL_QUEUE_WAIT_S", "TRIAL_PAUSE_S"}
+            "TRIAL_MAX_SHARE", "TRIAL_MONTHLY_TOKENS", "TRIAL_QUEUE_WAIT_S", "TRIAL_PAUSE_S",
+            "TRIAL_VISITOR_TOKENS", "TRIAL_REMOTE_TOKENS"}
 
 
 def read() -> dict:

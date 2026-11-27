@@ -33,7 +33,7 @@ class SecondPass(Base):
             path = self.dir / "bad.json"
             path.write_text(bad)
             with self.assertLogs("trial", "ERROR"):
-                self.assertEqual(asyncio.run(trial_budget.Budget(path, fetch=self.fetch_balance).stopped()), trial_budget.TOKENS)
+                self.assertEqual(asyncio.run(trial_budget.Budget(path, fetch=self.fetch_balance).stopped()), trial_budget.DAMAGED)
 
     def test_more_damaged_budget_files(self):
         for bad in ('{"month": "2026-13", "tokens": 5}', '{"month": "2026-11", "tokens": 1, "paused_until": 1e309}',

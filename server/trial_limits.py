@@ -1,6 +1,8 @@
 """The trial agent's settings and daily caps (ADR 0025). Everything comes from the environment
 (deploy/.env, passed in by docker-compose.yml); with no OLLAMA_API_KEY the trial is off.
 
+Each visitor also has a daily token allowance (TRIAL_VISITOR_TOKENS; TRIAL_REMOTE_TOKENS for people
+from other servers), charged with the same high estimate as the month's cap and settled after.
 Caps count model calls per UTC day: TRIAL_PER_VISITOR (default 50) for each visitor and
 TRIAL_PER_SERVER (default 1000) for the whole server. The counts are kept on disk
 (data/trial-usage.json), so a restart never hands out a fresh day's allowance. A call is counted
@@ -17,9 +19,12 @@ from common.bridge_config import ROOT
 
 KEY_ENV = "OLLAMA_API_KEY"
 DEFAULT_URL = "https://ollama.com/api/chat"
-DEFAULTS = {"TRIAL_PER_VISITOR": 50, "TRIAL_PER_SERVER": 1000, "TRIAL_MAX_TOKENS": 1500, "TRIAL_TIMEOUT_S": 90}
+DEFAULTS = {"TRIAL_PER_VISITOR": 50, "TRIAL_PER_SERVER": 1000, "TRIAL_MAX_TOKENS": 1500, "TRIAL_TIMEOUT_S": 90,
+            # tokens a visitor may use a day (weighted, as the month's cap counts them): a few throwaway accounts
+            # can't spend the month (independent review); people from other servers (no sign-up here) get less
+            "TRIAL_VISITOR_TOKENS": 150_000, "TRIAL_REMOTE_TOKENS": 50_000}
 USAGE_FILE = ROOT / "data" / "trial-usage.json"
-VISITOR, SERVER = "visitor", "server"   # which cap was reached
+VISITOR, SERVER, TOKENS = "visitor", "server", "visitor_tokens"   # which cap was reached
 
 
 def api_key() -> str:
@@ -93,6 +98,30 @@ class Usage:
             data["visitors"][visitor] = int(data["visitors"].get(visitor, 0)) + 1
             self._save()
             return None
+
+    def allowance(self, visitor: str, remote: bool) -> int:
+        return number("TRIAL_REMOTE_TOKENS" if remote else "TRIAL_VISITOR_TOKENS")
+
+    def tokens_used(self, visitor: str) -> int:
+        with self.lock:
+            return int(self._today().setdefault("tokens", {}).get(visitor, 0))
+
+    def reserve_tokens(self, visitor: str, n: float, remote: bool) -> bool:
+        """Count `n` of today's allowance before a call; False (nothing counted) if it doesn't fit."""
+        with self.lock:
+            tokens = self._today().setdefault("tokens", {})
+            if int(tokens.get(visitor, 0)) + n > self.allowance(visitor, remote):
+                return False
+            tokens[visitor] = int(tokens.get(visitor, 0)) + round(n)
+            self._save()
+            return True
+
+    def settle_tokens(self, visitor: str, reserved: float, used: float) -> None:
+        """Ollama's count replaces the estimate (a failed call keeps it)."""
+        with self.lock:
+            tokens = self._today().setdefault("tokens", {})
+            tokens[visitor] = max(0, int(tokens.get(visitor, 0)) + round(max(0.0, used) - reserved))
+            self._save()
 
     def give_back(self, visitor: str) -> None:
         """A message that never reached the model (budget, or they left meanwhile) doesn't count."""

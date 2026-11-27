@@ -64,23 +64,29 @@ class TrialOffer:
             try:
                 said = READY.format(n=trial_limits.number("TRIAL_PER_VISITOR")) if await self.trial.enroll(person) \
                     else FAILED.format(why="Matrix refused to open the chat")
-            except RuntimeError as e:     # its hello couldn't be posted: they're told here, and can ask again
-                log.error("trial chat for %s: %s", person, e)
-                said = FAILED.format(why=room_safe(e))
+            except RuntimeError as e:     # its hello couldn't be posted: they're told plainly here, the detail is logged
+                log.error("trial chat for %s: %s", person, room_safe(e))
+                said = FAILED.format(why="its chat couldn't be opened just now")
         await self.say(room_id, said)
         return said
 
     async def on_trial_text(self, room, event) -> bool:
         """"try the trial agent" in our private chat (True: answered). Off: never mine, as before."""
         in_dm = room.room_id == (self.welcomes().get(event.sender) or {}).get("dm") or self.is_one_to_one(room, event.sender)
-        if not self.trial_on() or not in_dm:     # as pm_welcome.on_welcome_text decides "our private chat"
+        if not in_dm or not trial_limits.enabled():   # no key: never mine (as pm_welcome decides "our private chat")
             return False
+        if not self.trial_on():                  # the key is set but it's down or still signing in: say so
+            if not TRIAL_RE.search(unaddressed(event.body, self.user_id)):
+                return False
+            await self.say(room.room_id, UNAVAILABLE)
+            return True
         text = unaddressed(event.body, self.user_id)
         mine = event.sender in self.trial.visitors and self.trial_eligible(event.sender)   # models: only theirs to pick
-        if TRIAL_RE.search(text):
-            await self.start_trial(room.room_id, event.sender)
-        elif mine and (m := USE_RE.match(text)) and (trial_models.allowed(m.group("name")) or m.group("kw") or m.group("kw2") or m.group("trial")):
+        m = USE_RE.match(text)                  # first: "use glm-5.3 for the trial" names a model (independent review)
+        if mine and m and (trial_models.allowed(m.group("name")) or m.group("kw") or m.group("kw2") or m.group("trial")):
             await self.say(room.room_id, self.choose_model(event.sender, m.group("name")))
+        elif TRIAL_RE.search(text):
+            await self.start_trial(room.room_id, event.sender)
         elif mine and MODELS_RE.search(text):
             await self.say(room.room_id, self.model_list(event.sender))
         else:
@@ -98,6 +104,10 @@ class TrialOffer:
     def model_list(self, person: str) -> str:
         now, names = self.trial.model_of(person), trial_models.names()
         return MODEL_LIST.format(now=now, names=", ".join(names), other=next((n for n in names if n != now), now))
+
+    def counts_once(self, key: str) -> bool:
+        """A welcome button is used up by its click, except 🧪 while the trial is down (it says so; it works later)."""
+        return key != TRIAL or self.trial_on()
 
     def trial_view(self, person: str) -> dict | None:
         """The panel's Trial agent card (My Hagency), or None (off, or they have their own agent)."""

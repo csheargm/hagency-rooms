@@ -59,6 +59,7 @@ def tokens_of(data: dict) -> int:
     return sum(n) if all(isinstance(v, int) and v >= 0 for v in n) else 0
 
 
+SMALL_TOKENS = 3000                   # about what a short question and its answer use: "too big" vs "used up"
 TEMPLATE_TOKENS = 16                  # each message's chat-template wrapping, generously
 
 

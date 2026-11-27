@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from server import pm_trial
 from server import trial_agent
 from server import trial_budget
 from server import trial_model
@@ -112,7 +113,7 @@ class Reservation(Base):
         with mock.patch.dict(os.environ, {"TRIAL_MONTHLY_TOKENS": "1000", "TRIAL_MAX_TOKENS": "1500"}):
             self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi")))
         self.assertEqual(self.asked, [])
-        self.assertIn(trial_turn.RESTING, self.said()[-1])
+        self.assertEqual(trial_turn.TOO_BIG, self.said()[-1])        # this request, not "until next month"
 
     def test_the_estimate_is_reserved_then_replaced_and_kept_on_failure(self):
         self.enrol()
@@ -147,7 +148,7 @@ class BudgetFile(unittest.TestCase):
         self.path.write_text("{broken")
         with self.assertLogs("trial", "ERROR"):
             b = self.budget()
-        self.assertEqual(asyncio.run(b.stopped()), trial_budget.TOKENS)
+        self.assertEqual(asyncio.run(b.stopped()), trial_budget.DAMAGED)
 
     def test_an_over_reading_survives_a_restart(self):
         self.balance = {"included": {"balance_usd": 10, "allowance_usd": 100}}
@@ -255,7 +256,7 @@ class WelcomeOff(TrialBase):
         before = len(said_to(self, "!dm"))
         self.run_(self.lp.on_welcome_reaction(DM, reaction(NEW, "🧪")))
         self.assertNotIn("🧪", self.lp._welcomes[NEW]["done"])  # still usable once it's back
-        self.assertEqual(len(said_to(self, "!dm")), before)       # nothing said
+        self.assertEqual(said_to(self, "!dm")[before:], [pm_trial.UNAVAILABLE])   # said plainly (independent review)
         self.trial_client.room_create.assert_not_awaited()
 
 

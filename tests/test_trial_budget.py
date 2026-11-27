@@ -90,7 +90,7 @@ class InTheChat(Base):
         for n in range(2):
             self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, f"q{n}")))
         self.assertEqual(self.asked, [])
-        self.assertEqual(self.said()[1:], [f"{trial_turn.RESTING} {trial_turn.BRING}"])
+        self.assertEqual(self.said()[1:], [f"{trial_turn.STOPPED[trial_budget.SHARE]} {trial_turn.BRING}"])
         self.assertEqual(self.agent.usage.used(NEW), 0)                         # not counted
 
     def test_a_429_pauses_every_trial_and_says_so(self):

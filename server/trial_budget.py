@@ -39,7 +39,7 @@ MAX_NUMBER = 10**15                    # far above any count or time here; a big
 NEAR_SHARE, NEAR_CHECK_S = 0.1, 60    # within 10 points of the limit: the balance is read every minute
 MIN_PAUSE_S, MAX_PAUSE_S = 60, 24 * 3600   # a Retry-After is kept within these
 BUDGET_FILE = ROOT / "data" / "trial-budget.json"
-SHARE, TOKENS, PAUSED = "share", "tokens", "paused"   # why trials are stopped
+SHARE, TOKENS, PAUSED, WINDOW, DAMAGED = "share", "tokens", "paused", "window", "damaged"   # why trials are stopped
 
 
 def setting(name: str) -> float:
@@ -71,6 +71,12 @@ def used_share(data: object) -> float | None:
     shown = [w.get("remaining_percent") for w in (included.get("session"), included.get("weekly")) if isinstance(w, dict)]
     shown = [p for p in shown if isinstance(p, (int, float))]
     return (100 - min(shown)) / 100 if shown else None
+
+
+def is_window(data: object) -> bool:
+    """The reading is an older plan's session/weekly window (it resets in hours), not a period's credits."""
+    included = data.get("included") if isinstance(data, dict) else None
+    return isinstance(included, dict) and not isinstance(included.get("allowance_usd"), (int, float))
 
 
 def valid(data: object) -> bool:
@@ -105,6 +111,7 @@ class Budget:
         share = self.data.get("share")
         self.share = float(share) if isinstance(share, (int, float)) and math.isfinite(share) else None
         self.checked = float(self.data.get("checked", 0)) if isinstance(self.data.get("checked"), (int, float)) else 0.0
+        self.window = self.data.get("window") is True      # the reading came from an older plan's session/weekly window
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,7 +121,7 @@ class Budget:
 
     def _month(self) -> dict:
         if self.data.get("month") != month(self.clock()):
-            kept = {k: self.data[k] for k in ("paused_until", "share", "checked") if k in self.data}
+            kept = {k: self.data[k] for k in ("paused_until", "share", "checked", "window") if k in self.data}
             self.data = {"month": month(self.clock()), "tokens": 0, **kept}
         return self.data
 
@@ -142,10 +149,10 @@ class Budget:
         log.error("trial agent paused for %.0f min: %s (operator: check the Ollama plan's usage)", seconds / 60, why)
 
     async def stopped(self) -> str | None:
-        """Why trials must not call the model now (PAUSED, SHARE, TOKENS), or None."""
+        """Why trials must not call the model now (DAMAGED, PAUSED, TOKENS, SHARE, WINDOW), or None."""
         now = self.clock()
         if self.damaged:
-            return TOKENS
+            return DAMAGED
         if float(self.data.get("paused_until", 0)) > now:
             return PAUSED
         if int(self._month().get("tokens", 0)) >= setting("TRIAL_MONTHLY_TOKENS"):
@@ -154,13 +161,18 @@ class Budget:
         near = self.share is not None and self.share >= limit - NEAR_SHARE   # close: read it more often
         if now - self.checked >= (NEAR_CHECK_S if near else setting("TRIAL_BUDGET_CHECK_S")):
             self.checked = self.data["checked"] = now
-            share = used_share(await self.fetch())
+            balance = await self.fetch()
+            share = used_share(balance)
+            if share is not None:
+                self.window = self.data["window"] = is_window(balance)
             if share is None:                 # the last reading stands (an "over" one keeps trials stopped)
                 log.warning("couldn't read the Ollama balance: the last reading and the monthly token cap guard trials")
             else:
                 self.share = self.data["share"] = share
             self._save()
-        return SHARE if self.share is not None and self.share >= limit else None
+        if self.share is None or self.share < limit:
+            return None
+        return WINDOW if self.window else SHARE
 
     def paused_for(self) -> float:
         return max(0.0, float(self.data.get("paused_until", 0)) - self.clock())
