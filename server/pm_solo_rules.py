@@ -176,10 +176,10 @@ class SoloRules:
                 or (state["asked"] == repo and not again) or await self.review_rule(repo) is False):
             return False
         who = sender or next(iter((await room_state.owners_now(self.client, rid))[0]), None)
-        entry = {"kind": "solo", "repo": repo, "bypass": True, "moderators": True}
-        if who is None or not await self.ask_once(rid, who, self.generation.get(rid, 0),
-                                                  BYPASS_QUESTION.format(repo=repo), entry, sender is not None):
-            return False
+        question = BYPASS_QUESTION.format(repo=repo)   # the panel's "Waiting for you" card shows it too (GPT review)
+        entry = {"kind": "solo", "repo": repo, "bypass": True, "moderators": True, "items": [{"title": question}]}
+        if who is None or not await self.ask_once(rid, who, self.generation.get(rid, 0), question, entry, False):
+            return False                      # unnamed: a 👍 or a reply to it, never a stray "yes" (GPT review)
         err, _ = await self.write_solo(rid, None, repo=repo, asked=repo, for_repo=repo)
         if err:                               # not noted: the next solo merge that needs it asks again
             await self.say(rid, err)

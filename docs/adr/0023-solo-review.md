@@ -109,8 +109,10 @@ anyone can switch it off at once; the GitHub consent stays tied to the room's re
   only while that is still the room's repo (`ask_ruleset(expect=...)`); records are written only for the
   room's own repo, checked under the switch's lock (`write_solo(for_repo=...)`); the 👍 counts only from a
   joined moderator read now; a malformed single-event read is off; a record left for another repo (e.g. across
-  a restart) is dropped by the next offer instead of blocking it. Rejected: requiring the 👍 emoji itself
-  rather than any explicit confirmation (a reply "yes" to the question, the panel's Approve) — each is a
-  person's own act on that very question, which is what the safeguard asks for.
+  a restart) is dropped by the next offer instead of blocking it; the switch and binding are read again after
+  the owner's agent is chosen; a failed repo read in the poll never drops the current repo's record. The
+  question takes a 👍, a reply to that very message, or the panel's Approve (whose card shows the question),
+  never a stray unthreaded "yes". Rejected: the 👍 emoji alone — a threaded reply or the Approve click is
+  equally that person's own act on that very question.
 - Readiness ("Check readiness"), the panel's Mode card and the pinned status read the same state, so a room
   that never set it shows solo review on; the readiness check counts a bypass only for the repo it checks.

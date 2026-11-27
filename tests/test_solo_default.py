@@ -164,6 +164,13 @@ class GptReview(Default):
         self.assertEqual(self.tasks(solo_review.TASK_KIND), [])
         self.assertEqual(self.said[-1][0], pm_solo_rules.BYPASS_OFF)
 
+    def test_the_question_takes_no_stray_yes_and_the_panel_card_names_it(self):
+        from server import pm_implicit
+        self.run_(self.lp.act(self.room, CX, intents.classify("@pm allow solo review")))   # asked by a person
+        asked = self.lp.pending["!r"]
+        self.assertTrue(pm_implicit.unnamed_ask(asked))               # a 👍 or a reply to it only
+        self.assertEqual(asked["items"], [{"title": ASK}])           # "Waiting for you" shows the repo and change
+
     def test_a_thumb_from_someone_no_longer_a_moderator_changes_nothing(self):
         self.refused_merge()
         with mock.patch("common.room_state.joined_moderator", mock.AsyncMock(return_value=False)):
