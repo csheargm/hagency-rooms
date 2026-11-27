@@ -59,6 +59,25 @@ class Gate(Base):
         self.run_(self.lp.ask_ruleset(self.room, CX, False, [42], REPO))
         self.assertEqual(self.tasks(solo_review.TASK_KIND)[-1]["rulesets"], [42])
 
+    def saved_merge(self):
+        """A solo merge sent while the builder ran updated code, which it no longer does."""
+        self.codes["cx-agent"] = NEW
+        item = self.approved(False)
+        self.codes["cx-agent"] = OLD
+        self.said.clear()
+        return item
+
+    def test_a_held_or_resent_solo_merge_is_gated_too(self):
+        """GPT review round 2: held tasks and the watchdog's resend sent the saved task without the gate."""
+        from server import loop_progress
+        item = self.saved_merge()
+        item["sent_at"] = 1                   # no answer for long: the watchdog would resend it
+        with mock.patch.object(loop_progress, "STEP_TIMEOUT_S", 1):
+            self.assertTrue(self.run_(self.lp.watchdog("!r", KEY, item)))
+        self.assertEqual((item["stage"], self.tasks("merge")), ("stopped", []))
+        self.assertIn("cx-agent needs an update first", self.said[-1][0])
+        self.assertTrue(self.run_(self.lp.saved_merge_waits("!r", KEY, {**item, "held": True})))
+
     def test_the_gates_by_reported_time(self):
         loop = pm_solo_code.SoloCode()
         self.assertTrue(loop.runs_solo(CXA))                                 # solo checks: still fine

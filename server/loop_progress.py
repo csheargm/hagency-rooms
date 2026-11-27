@@ -83,8 +83,9 @@ class Progress:
             active = [(k, v) for k, v in self.state.items()     # only the room's current repo's items
                       if v["room"] == room_id and v.get("repo") == repo and v["stage"] in ACTIVE]
             for key, item in active:
-                if item.get("held"):          # a step decided while stopped: send it now
-                    await self.dispatch(room_id, item, item["agent"], item["body"], item["task"])
+                if item.get("held"):          # a step decided while stopped: send it now (a solo merge: gated)
+                    if not await self.saved_merge_waits(room_id, key, item):
+                        await self.dispatch(room_id, item, item["agent"], item["body"], item["task"])
                     continue
                 if not await self.watchdog(room_id, key, item):
                     before = item["stage"]
@@ -137,6 +138,8 @@ class Progress:
             who = str(item.get("agent", "the agent")).split(":")[0].lstrip("@")
             if item.get("sends", 1) >= MAX_SENDS or "task" not in item:
                 return await self.stop(room_id, key, item, f"no answer from {who} on #{num(key)}")
+            if await self.saved_merge_waits(room_id, key, item):   # pm_solo_code: never to code too old for it
+                return True
             await self.dispatch(room_id, item, item["agent"], item["body"], item["task"], resend=True)
             await self.say(room_id, f"no answer from {who} on #{num(key)} yet; asked again")
             return True

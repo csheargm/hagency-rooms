@@ -27,6 +27,13 @@ class SoloCode:
         code = (registry.find(owner, local(agent)) or {}).get(registry.CODE) if owner else None
         return code_report.runs_task(code, step)
 
+    async def saved_merge_waits(self, room_id: str, key: str, item: dict) -> bool:
+        """A saved solo merge about to go out again (held while stopped, or the watchdog's resend): the same gate
+        (GPT review: a task saved before an update, or a builder rolled back, skipped it). True: paused."""
+        task = item.get("task") or {}
+        return task.get("kind") == "merge" and any(task.get(f) is True for f in ("admin", "solo")) \
+            and await self.merge_waits_for_update(room_id, key, item)
+
     async def merge_waits_for_update(self, room_id: str, key: str, item: dict) -> bool:
         """A solo merge goes only to code that re-reads the switch at the merge and refuses code-owner rules
         (code_report.SOLO_MERGE; GPT review). Else it pauses, the builder is asked to update, and "@pm retry #N"
@@ -35,6 +42,7 @@ class SoloCode:
         if self.runs_solo(builder, code_report.SOLO_MERGE):
             return False
         item["resume"] = "approved"
+        item.pop("held", None)                # a held merge never goes out after the retry: the merge is decided again
         await self.stop(room_id, key, item, f"{local(builder)} runs code too old for a solo merge", "**What you can do:**"
                         "\n\n- " + update_line(local(builder), await self.ask_update(builder), num(key)))
         return True
