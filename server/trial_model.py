@@ -54,9 +54,18 @@ def retry_after(headers, now: float | None = None) -> float | None:
 
 
 def tokens_of(data: dict) -> int:
-    """Tokens this answer used, as Ollama reports them (prompt + answer)."""
+    """Tokens this answer used, as Ollama reports them (prompt + answer); 0 unless both are there."""
     n = [data.get(k) for k in ("prompt_eval_count", "eval_count")]
-    return sum(v for v in n if isinstance(v, int) and v > 0)
+    return sum(n) if all(isinstance(v, int) and v >= 0 for v in n) else 0
+
+
+TEMPLATE_TOKENS = 16                  # each message's chat-template wrapping, generously
+
+
+def high_estimate(chat: list[dict], max_reply: int) -> int:
+    """At most what a call can use: 1 token per 2 characters (real text averages about 4), the template,
+    and the longest reply allowed (num_predict caps it)."""
+    return chars(chat) // 2 + TEMPLATE_TOKENS * (len(chat) + 1) + max_reply
 
 
 def chars(chat: list[dict]) -> int:

@@ -127,7 +127,7 @@ class InTheChat(Base):
         async def slow(chat, count=None, model=None):
             running[0] += 1
             most[0] = max(most[0], running[0])
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(1.5)            # longer than the shortest wait (1 s)
             running[0] -= 1
             return "done"
         self.agent.ask_model = slow
@@ -137,7 +137,7 @@ class InTheChat(Base):
             await self.agent.on_message(self.client.rooms["!trialdm"], message(NEW, "one"))
             await self.agent.on_message(self.client.rooms["!dm2"], message(OTHER, "two"))   # returns at once
             await self.agent.drain()
-        with mock.patch.dict(os.environ, {"TRIAL_QUEUE_WAIT_S": "0.05"}):
+        with mock.patch.dict(os.environ, {"TRIAL_QUEUE_WAIT_S": "1"}):
             self.run_(both())
         self.assertEqual(most[0], 1)
         self.assertIn(trial_turn.BUSY, self.said())

@@ -23,7 +23,7 @@ from types import SimpleNamespace
 
 from aiohttp import ClientError
 from nio import (AsyncClient, InviteMemberEvent, JoinResponse, LoginResponse, MatrixRoom, RoomMemberEvent,
-                 RoomMessageText, RoomPreset)
+                 RoomMessageText, RoomPreset, SyncResponse)
 
 from common import lifecycle
 from common import setup_accounts
@@ -60,7 +60,7 @@ def hello(per_day: int) -> str:
 
 
 class TrialAgent(Turns):
-    def __init__(self, client: AsyncClient, eligible, ask=None, usage=None, data_dir=None, budget=None) -> None:
+    def __init__(self, client: AsyncClient, eligible, ask=None, usage=None, data_dir=None, budget=None, busy=None) -> None:
         folder = data_dir or ROOT / "data"
         self.client, self.eligible, self.started_ms = client, eligible, int(time.time() * 1000)
         self.visitors = SavedDict(folder / "trial.json")          # visitor → {"dm", "since"}
@@ -70,9 +70,10 @@ class TrialAgent(Turns):
         self.slot = asyncio.Semaphore(1)  # one model call at a time: the key's plan allows 3, shared with others
         self.ask_model = ask
         self.history: dict = {}                                    # (room, visitor) → recent turns, in memory only
-        self.locks: dict = {}                                      # visitor → one answer at a time (trial_turn.py)
+        self.answering: set = set()                                # visitors with an answer underway (trial_turn.py)
         self.enrolling: dict = {}                                  # visitor → one enrolment at a time
         self.waiting: set = set()                                  # answers underway (trial_turn.on_message)
+        self.busy = busy if busy is not None else set()            # @pm's: a restart lets them finish (lifecycle.serve)
 
     def me(self) -> str:
         return self.client.user_id
@@ -100,7 +101,11 @@ class TrialAgent(Turns):
         """Make `visitor` one of mine and open (or reuse) our private chat; its room id, or None. One at a
         time per visitor (the panel and the chat at once make one chat: GPT review)."""
         async with self.enrolling.setdefault(visitor, asyncio.Lock()):
-            return self.dm_of(visitor) or await self.open_chat(visitor)
+            dm = self.dm_of(visitor) or await self.open_chat(visitor)
+            if dm and not (self.visitors.get(visitor) or {}).get("greeted"):   # a hello that failed is sent again
+                await self.post(dm, hello(trial_limits.number("TRIAL_PER_VISITOR")))
+                self.visitors[visitor] = {**self.visitors[visitor], "greeted": True}
+            return dm
 
     async def open_chat(self, visitor: str) -> str | None:
         resp = await self.client.room_create(is_direct=True, invite=[visitor], preset=RoomPreset.private_chat,
@@ -109,9 +114,9 @@ class TrialAgent(Turns):
         if not hasattr(resp, "room_id"):
             log.warning("couldn't open a trial chat with %s: %s", visitor, resp)
             return None
-        self.visitors[visitor] = {**(self.visitors.get(visitor) or {}), "dm": resp.room_id, "since": time.time()}   # model kept
+        self.visitors[visitor] = {**(self.visitors.get(visitor) or {}), "dm": resp.room_id, "since": time.time(),
+                                  "greeted": False}   # their model kept
         self.add_sponsor(resp.room_id, visitor)
-        await self.post(resp.room_id, hello(trial_limits.number("TRIAL_PER_VISITOR")))
         return resp.room_id
 
     def model_of(self, visitor: str) -> str:
@@ -200,19 +205,34 @@ async def sign_in() -> AsyncClient:
 async def run(agent: TrialAgent) -> None:
     client = agent.client
     try:
-        await client.sync(timeout=0, full_state=True)        # from now: no history is answered
+        first = await client.sync(timeout=0, full_state=True)   # from now: no history is answered
+        if not isinstance(first, SyncResponse):               # never reconcile against an empty view (GPT review)
+            raise RuntimeError(f"the trial agent's first sync failed: {first}")
         agent.started_ms = int(time.time() * 1000)
         client.add_event_callback(agent.on_invite, InviteMemberEvent)
         client.add_event_callback(agent.on_member, RoomMemberEvent)
         client.add_event_callback(agent.on_message, RoomMessageText)
+        await agent.reconcile()                               # first: an invite joined just now isn't synced yet
         await agent.invites_while_away()
-        await agent.reconcile()
         await client.sync_forever(timeout=30_000)
     finally:
+        for task in list(agent.waiting):                      # sync ended: nothing more goes out through it
+            task.cancel()
         await client.close()
 
 
-async def start(eligible) -> TrialAgent | None:
+def start_later(loop) -> None:
+    """Sign in in the background and set loop.trial once online: a rate-limited sign-in (up to 15 min)
+    must never hold up @pm itself (GPT review). Until then the trial simply isn't offered."""
+    if not trial_limits.enabled():
+        return
+
+    async def online() -> None:
+        loop.trial = await start(loop.trial_eligible, loop.busy)
+    loop.trial_starting = asyncio.create_task(online())
+
+
+async def start(eligible, busy=None) -> TrialAgent | None:
     """The trial agent, running, or None (no key: off; a failure is logged and the offer stays hidden,
     since @pm only offers it while this returned an agent)."""
     if not trial_limits.enabled():
@@ -222,7 +242,7 @@ async def start(eligible) -> TrialAgent | None:
     except (setup_accounts.AccountError, OSError, ClientError, asyncio.TimeoutError, AttributeError) as e:
         log.warning("trial agent not started: %s", e)    # optional feature: off, and never offered (see docstring)
         return None
-    agent = TrialAgent(client, eligible)
+    agent = TrialAgent(client, eligible, busy=busy)
     agent.task = asyncio.create_task(run(agent))
     # A crash ends the task: running() turns False, so @pm stops offering it and says it's unavailable.
     agent.task.add_done_callback(lambda t: t.cancelled() or not t.exception() or log.error("trial agent stopped: %s", t.exception()))

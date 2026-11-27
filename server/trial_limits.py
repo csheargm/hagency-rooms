@@ -94,6 +94,15 @@ class Usage:
             self._save()
             return None
 
+    def give_back(self, visitor: str) -> None:
+        """A message that never reached the model (budget, or they left meanwhile) doesn't count."""
+        with self.lock:
+            data = self._today()
+            if int(data["visitors"].get(visitor, 0)) > 0:
+                data["visitors"][visitor] = int(data["visitors"][visitor]) - 1
+                data["server"] = max(0, int(data.get("server", 0)) - 1)
+                self._save()
+
     def first_notice(self, visitor: str, cap: str) -> bool:
         """True once a day per visitor and cap: the limit is said once, then the agent stays quiet."""
         with self.lock:

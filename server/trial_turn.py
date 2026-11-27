@@ -14,7 +14,7 @@ TRIAL_QUEUE_WAIT_S, then is told the agent is busy (not counted). The plan's mon
 Ollama pauses every trial, said plainly to the visitor and logged for the operator. Before a PR is read
 and before the answer is posted, the visitor must still be in the room (and the room's repo unchanged).
 Mixed into trial_agent.TrialAgent (client, me, started_ms, visitors, rooms, usage, budget, slot,
-ask_model, history, locks, eligible, sponsors, post).
+ask_model, history, answering, waiting, busy, eligible, sponsors, post).
 """
 import asyncio
 import logging
@@ -44,6 +44,7 @@ HAS_OWN = "You have your own agent now, so the trial agent steps aside: talk to 
 FAILED = "⚠️ I couldn't answer just now: {why}. Please try again in a minute."
 QUEUE_WAIT_S = 20                     # TRIAL_QUEUE_WAIT_S: how long a message waits for the one model slot
 BUSY = "I'm busy answering someone else right now. Please try again in a minute."
+STILL = "I'm still answering your last message: one at a time, please."
 RESTING = "The trial agent has used its share of this month's AI budget, so it's resting until next month."
 STOPPED = {trial_budget.PAUSED: "The trial agent is paused: the AI service it uses said it has reached its limit for now. "
                                 "It should be back in about {mins} min.",
@@ -87,12 +88,18 @@ class Turns:
         """Quick: the answer is its own task, so sync (invites, leaves, others' messages) never waits."""
         if not self.for_me(room, event):
             return
+        if event.sender in self.answering:     # one at a time per visitor: never a queue of theirs (GPT review)
+            await self.post_safely(room.room_id, STILL)
+            return
         if len(self.waiting) >= MAX_WAITING:
             await self.post_safely(room.room_id, BUSY)
             return
+        self.answering.add(event.sender)
         task = asyncio.create_task(self.handle(room.room_id, event))
-        self.waiting.add(task)
-        task.add_done_callback(self.waiting.discard)
+        for tasks in (self.waiting, self.busy):
+            tasks.add(task)
+            task.add_done_callback(tasks.discard)
+        task.add_done_callback(lambda _: self.answering.discard(event.sender))
 
     async def drain(self) -> None:
         """Wait for the answers underway (tests; a restart lets them finish)."""
@@ -100,13 +107,11 @@ class Turns:
             await asyncio.gather(*list(self.waiting), return_exceptions=True)
 
     async def handle(self, room_id: str, event: RoomMessageText) -> None:
-        lock = self.locks.setdefault(event.sender, asyncio.Lock())   # one answer at a time per visitor
-        async with lock:
-            try:
-                await self.answer(room_id, event)
-            except (RuntimeError, OSError) as e:   # Matrix refused, or a count couldn't be saved: said if possible
-                log.error("trial agent couldn't answer %s in %s: %s", event.sender, room_id, e)
-                await self.post_safely(room_id, FAILED.format(why="something went wrong on the server"))
+        try:
+            await self.answer(room_id, event)
+        except (RuntimeError, OSError, ValueError, TypeError) as e:   # Matrix refused, a count couldn't be saved: said
+            log.error("trial agent couldn't answer %s in %s: %s", event.sender, room_id, e)
+            await self.post_safely(room_id, FAILED.format(why="something went wrong on the server"))
 
     async def post_safely(self, room_id: str, text: str) -> None:
         try:
@@ -121,58 +126,71 @@ class Turns:
                 await self.post(room_id, HAS_OWN)
             return
         try:
-            await asyncio.wait_for(self.slot.acquire(), trial_budget.setting_or("TRIAL_QUEUE_WAIT_S", QUEUE_WAIT_S))
+            await asyncio.wait_for(self.slot.acquire(), max(1.0, trial_budget.setting_or("TRIAL_QUEUE_WAIT_S", QUEUE_WAIT_S)))
         except asyncio.TimeoutError:
             await self.post(room_id, BUSY)          # not counted: nothing was asked of the model
             return
         try:
-            reply, read_repo = await self.in_slot(room_id, visitor, text, now)
+            reply, read_repo, turn = await self.in_slot(room_id, visitor, text, now)
         finally:
             self.slot.release()
-        if not reply or not self.still_here(room_id, visitor):
-            return                                    # they left meanwhile: nothing goes to that room
+        if reply and await self.may_post(room_id, visitor, read_repo):
+            await self.post(room_id, reply)
+            if turn:                                  # remembered only once it was really said there
+                turns = self.history.setdefault((room_id, visitor), [])
+                turns += turn
+                del turns[:-HISTORY_TURNS]
+
+    async def may_post(self, room_id: str, visitor: str, read_repo: str | None) -> bool:
+        """The repo first (an await), then membership, so a leave during the lookup still counts."""
         if read_repo and await self.repo(room_id) != read_repo:
             log.warning("not posting a PR answer in %s: its repo changed meanwhile", room_id)
-            return
-        await self.post(room_id, reply)
+            return False
+        return self.still_here(room_id, visitor)    # they left meanwhile: nothing goes to that room
 
     def stop_words(self, stop: str) -> str:
         return f"{STOPPED[stop].format(mins=max(1, math.ceil(self.budget.paused_for() / 60)))} {BRING}"
 
-    async def in_slot(self, room_id: str, visitor: str, text: str, now: float) -> tuple[str | None, str | None]:
-        """Holding the one model slot: the budget, the caps, then the model; (what to post, the repo a PR was read from)."""
+    def notice(self, visitor: str, stop: str, words: str) -> tuple[str | None, None, None]:
+        return (words if self.usage.first_notice(visitor, stop) else None), None, None
+
+    async def in_slot(self, room_id: str, visitor: str, text: str, now: float) -> tuple:
+        """Holding the one model slot: the budget, the caps, then the model;
+        (what to post, the repo a PR was read from, the turn to remember once posted)."""
         if stop := await self.budget.stopped():
-            return (self.stop_words(stop) if self.usage.first_notice(visitor, stop) else None), None
+            return self.notice(visitor, stop, self.stop_words(stop))
         if cap := self.usage.take(visitor):
-            return (cap_words(cap, now) if self.usage.first_notice(visitor, cap) else None), None
+            return self.notice(visitor, cap, cap_words(cap, now))
         await self.typing(room_id, True)
         try:
             return await self.think(room_id, visitor, text)
         except trial_model.TrialLimited as e:
             self.budget.pause(e.retry_after or trial_budget.setting("TRIAL_PAUSE_S"), f"Ollama answered {e.status}")
-            return self.stop_words(trial_budget.PAUSED), None
+            return self.stop_words(trial_budget.PAUSED), None, None
         except trial_model.TrialModelError as e:
-            return FAILED.format(why=e), None
+            return FAILED.format(why=e), None, None
         finally:
             await self.typing(room_id, False)
 
-    async def think(self, room_id: str, visitor: str, text: str) -> tuple[str | None, str | None]:
+    async def think(self, room_id: str, visitor: str, text: str) -> tuple:
         """The model's answer to `text`, with this visitor's recent turns here and a PR's diff if asked."""
         repo = await self.repo(room_id)
         n = trial_reads.pr_number(text, repo)
         diff = await trial_reads.pr_diff(repo, n) if n and repo and self.still_here(room_id, visitor) else None
-        turns = self.history.setdefault((room_id, visitor), [])
-        chat = trial_model.messages(turns, text, diff)
+        if diff and not await self.may_post(room_id, visitor, repo):   # left, or rebound, while GitHub answered
+            self.usage.give_back(visitor)
+            return None, None, None
+        chat = trial_model.messages(self.history.get((room_id, visitor), []), text, diff)
         model = trial_models.chosen((self.visitors.get(visitor) or {}).get("model"))
         weight = trial_models.weight(model)       # a bigger model's tokens count more against the month
-        reserved = (trial_model.chars(chat) // 4 + trial_limits.number("TRIAL_MAX_TOKENS")) * weight
+        reserved = trial_model.high_estimate(chat, trial_limits.number("TRIAL_MAX_TOKENS")) * weight
         if not self.budget.reserve(reserved):     # this answer could pass the month's token cap: not asked
-            return (self.stop_words(trial_budget.TOKENS) if self.usage.first_notice(visitor, trial_budget.TOKENS) else None), None
+            self.usage.give_back(visitor)         # nor counted against their day (GPT review)
+            return self.notice(visitor, trial_budget.TOKENS, self.stop_words(trial_budget.TOKENS))
         reply = await (self.ask_model or trial_model.ask)(
             chat, count=lambda used: self.budget.settle(reserved, used * weight), model=model)
-        turns += [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
-        del turns[:-HISTORY_TURNS]
-        return f"{reply}\n\n— Trial agent · {model}", (repo if diff else None)   # which model answered, on every reply
+        turn = [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
+        return f"{reply}\n\n— Trial agent · {model}", (repo if diff else None), turn   # every reply names its model
 
     async def repo(self, room_id: str) -> str | None:
         try:

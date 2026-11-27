@@ -70,6 +70,17 @@ def used_share(data: object) -> float | None:
     return (100 - min(shown)) / 100 if shown else None
 
 
+def valid(data: object) -> bool:
+    """A budget file as this module writes it (GPT review: a well-formed JSON object isn't enough)."""
+    if not isinstance(data, dict):
+        return False
+    if not data:
+        return True                           # nothing counted yet
+    numbers = [data.get(k, 0) for k in ("paused_until", "checked")] + ([data["share"]] if "share" in data else [])
+    return (isinstance(data.get("month"), str) and isinstance(data.get("tokens"), int) and data["tokens"] >= 0
+            and all(isinstance(v, (int, float)) and math.isfinite(v) for v in numbers))
+
+
 class Budget:
     def __init__(self, path: Path | None = None, clock=time.time, fetch=None) -> None:
         self.path, self.clock, self.fetch = path or BUDGET_FILE, clock, fetch or fetch_balance
@@ -81,7 +92,7 @@ class Budget:
         except (OSError, ValueError):
             self.data = {}
             self.damaged = True               # GPT review: fail closed, never a fresh month by a broken file
-        if not isinstance(self.data, dict):
+        if not valid(self.data):
             self.data, self.damaged = {}, True
         if self.damaged:
             log.error("the trial budget file %s is unreadable: trials stay stopped until it is fixed or removed", self.path)
@@ -103,7 +114,8 @@ class Budget:
         return self.data
 
     def add_tokens(self, n: float) -> None:
-        self._month()["tokens"] = max(0, int(self.data.get("tokens", 0)) + round(n))   # a settle after a new month: never below 0
+        data = self._month()                  # first: a settle after midnight on the 1st counts in the new month
+        data["tokens"] = max(0, int(data.get("tokens", 0)) + round(n))
         self._save()
 
     def reserve(self, n: float) -> bool:
@@ -120,7 +132,7 @@ class Budget:
 
     def pause(self, seconds: float, why: str) -> None:
         seconds = min(max(MIN_PAUSE_S, seconds), MAX_PAUSE_S) if math.isfinite(seconds) else setting("TRIAL_PAUSE_S")
-        self.data["paused_until"] = self.clock() + seconds
+        self._month()["paused_until"] = self.clock() + seconds
         self._save()
         log.error("trial agent paused for %.0f min: %s (operator: check the Ollama plan's usage)", seconds / 60, why)
 

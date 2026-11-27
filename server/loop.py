@@ -258,7 +258,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
                      self.client.add_event_callback(self.on_welcome_member, RoomMemberEvent)),
             lambda ms: setattr(self, "started_ms", ms))
         log.info("pm online (one repo per room; poll %ss)", POLL_S)
-        self.trial = await trial_agent.start(self.trial_eligible)   # ADR 0025: only with OLLAMA_API_KEY (pm_trial.py offers it)
+        trial_agent.start_later(self)        # ADR 0025: only with OLLAMA_API_KEY; sets self.trial (pm_trial.py offers it)
         await self.ensure_welcome_room()     # pm_welcome.py: where every new account starts
         await panel.start(self)              # the side panel (panel.py); never fatal
         await lifecycle.serve(self.client, github.PM_BOT, self.sync_point, self.busy, side=self.poll_forever())

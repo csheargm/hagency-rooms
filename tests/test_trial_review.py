@@ -51,12 +51,17 @@ class StaleRooms(Base):
 
     def test_a_pr_answer_isnt_posted_once_the_rooms_repo_changed(self):
         self.enrol()
-        repos = iter(["acme/app", "other/repo"])
-        with mock.patch.object(trial_turn.room_state, "repo_of", mock.AsyncMock(side_effect=lambda *a: next(repos))), \
-                mock.patch.object(trial_reads, "pr_diff", mock.AsyncMock(return_value="diff")):
-            self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "PR #3?")))
-        self.assertEqual(len(self.asked), 1)
-        self.assertFalse(any(s.startswith("An answer") for s in self.said()))
+        for repos, asked in ((["acme/app", "other/repo"], 0),                  # rebound while GitHub answered
+                             (["acme/app", "acme/app", "other/repo"], 1)):     # rebound while the model answered
+            seq = iter(repos)
+            self.asked.clear()
+            with mock.patch.object(trial_turn.room_state, "repo_of", mock.AsyncMock(side_effect=lambda *a: next(seq))), \
+                    mock.patch.object(trial_reads, "pr_diff", mock.AsyncMock(return_value="diff")):
+                self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "PR #3?")))
+            self.assertEqual(len(self.asked), asked)
+            self.assertFalse(any(s.startswith("An answer") for s in self.said()))
+            self.assertEqual(self.agent.history.get(("!trialdm", NEW)), None)  # never remembered either
+        self.assertEqual(self.agent.usage.used(NEW), 1)                        # the first never reached the model
 
     def test_at_start_rooms_its_visitors_left_are_left(self):
         self.enrol()

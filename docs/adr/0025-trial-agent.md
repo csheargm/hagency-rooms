@@ -57,7 +57,8 @@ Step 1 only: talk. (0024 is left for the agent auto-update work.)
 ## Consequences
 - The balance is read between calls and other users of the key spend too, so `TRIAL_MAX_SHARE` is a soft line
   (read every minute once within 10 points of it). For a hard stop, the owner sets a pay-as-you-go spending limit
-  in the Ollama account. A token estimate is reserved before each call so the token cap is never passed.
+  in the Ollama account. A high token estimate (1 token per 2 characters, plus the longest reply allowed) is reserved before each call and
+  replaced by Ollama's count after; a call whose estimate doesn't fit isn't made.
 - Answers run as their own tasks (at most 6 waiting), so Matrix sync never waits on the model; the visitor's
   membership (and the room's repo, for a PR) is checked again before a PR is read and before posting.
 - The operator sets `OLLAMA_API_KEY` in `deploy/.env` to turn it on (the other settings have defaults).
