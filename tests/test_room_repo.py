@@ -259,7 +259,8 @@ class ConsoleRepo(unittest.TestCase):
             q.start()
             self.addCleanup(q.stop)
         self.solo = False
-        q = mock.patch.object(solo_review, "enabled", lambda c, rid: asyncio.sleep(0, self.solo))
+        q = mock.patch.object(solo_review, "read", lambda c, rid: asyncio.sleep(0, {
+            **solo_review.content(self.solo, repo=HELLO, ok=True), "bound": HELLO}))
         q.start()
         self.addCleanup(q.stop)
 
@@ -275,7 +276,7 @@ class ConsoleRepo(unittest.TestCase):
         self.solo = True
         with mock.patch.object(github_setup, "readiness", found):
             text = self.act(ANNA, "check")
-        found.assert_awaited_once_with(HELLO, ["anna-agent"], detail=False, solo=True)   # no raw CLI errors here
+        found.assert_awaited_once_with(HELLO, ["anna-agent"], detail=False, solo=True, bypass=True)   # no raw CLI errors here
         self.assertIn("✗ no 'agent-ok' label", text)
         self.assertNotIn("github_setup.py", text)            # GUI only: each problem says its own fix
         with mock.patch.object(github_setup, "readiness", mock.AsyncMock(return_value=({}, [], ["the label"]))):

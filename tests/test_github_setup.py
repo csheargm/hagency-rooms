@@ -46,18 +46,39 @@ class Evaluate(unittest.TestCase):
         self.assertIn("anna-agent and betty-agent share the GitHub account @a", p[0])
         self.assertIn(github_setup.SOLO_FIX, p[0])
         self.assertEqual(evaluate(shared, []), [])        # without it: one account works (ADR 0016)
-        self.assertEqual(evaluate(shared, GATED, solo=True), [])   # Solo review on: it merges past the rule (ADR 0023)
         mixed = {**shared, "betty-agent": {"login": "A", "push": True}}   # GitHub's names ignore case
         self.assertEqual(len(evaluate(mixed, GATED)), 1)
 
+    def test_solo_review_needs_an_admin_and_the_rules_bypass(self):
+        """GPT review: Solo on alone isn't enough; GitHub lets only a repo admin past, once the rule allows it."""
+        admin = {"login": "a", "push": True, "admin": True}
+        shared = {"anna-agent": admin, "betty-agent": admin}
+        self.assertEqual(evaluate(shared, GATED, solo=True, bypass=True), [])
+        self.assertIn("Bypass list", evaluate(shared, GATED, solo=True, bypass=False)[0])
+        self.assertNotIn("**", evaluate(shared, GATED, solo=True, bypass=False)[0])     # plain text in the panel
+        writer = {a: {**admin, "admin": False} for a in shared}
+        self.assertIn("@a isn't an admin of", evaluate(writer, GATED, solo=True, bypass=True)[0])
+        unknown = {"anna-agent": {**admin, "admin": None}}
+        self.assertIn("couldn't be checked", evaluate(unknown, GATED, solo=True, bypass=True)[0])
+
+    def test_enough_other_accounts_for_the_approvals(self):
+        """GPT review: one agent alone, or two accounts for a rule needing two approvals, can't meet the rule."""
+        alone = {"anna-agent": {"login": "a", "push": True}}
+        self.assertIn("only 1 GitHub account is here", evaluate(alone, GATED)[0])
+        two = [{"type": "pull_request", "parameters": {"required_approving_review_count": 2}}]
+        self.assertIn("2 approving reviews", evaluate(OK, two)[0])
+        self.assertEqual(github_setup.approvals(two + GATED), 2)
+        self.assertEqual(github_setup.approvals([{"type": "deletion"}]), 0)
+
     def test_verified_lists_what_was_checked(self):
-        shared = {"anna-agent": {"login": "a", "push": True}, "betty-agent": {"login": "a", "push": True}}
-        seen = github_setup.verified(shared, GATED, "o/r", "main", solo=True)
-        self.assertEqual(seen[0], "anna-agent and betty-agent: signed in to GitHub as @a, and @a can write to o/r")
+        admin = {"login": "a", "push": True, "admin": True}
+        seen = github_setup.verified({"anna-agent": admin, "betty-agent": admin}, GATED, "o/r", "main")
+        self.assertEqual(seen[0], "anna-agent and betty-agent: signed in to GitHub as @a (as each reports), "
+                                  "and GitHub says @a can write to o/r")
         self.assertIn("'agent-ok' label is on o/r", seen[1])
         self.assertIn("Solo review is on", seen[2])
-        self.assertIn("each agent has its own GitHub account", github_setup.verified(OK, GATED, "o/r", "main", False)[-1])
-        self.assertIn("no review rule", github_setup.verified(OK, [], "o/r", "main", False)[-1])
+        self.assertIn("2 different GitHub accounts", github_setup.verified(OK, GATED, "o/r", "main")[-1])
+        self.assertIn("no review rule", github_setup.verified(OK, [], "o/r", "main")[-1])
 
 
 class Readiness(unittest.TestCase):
@@ -72,15 +93,15 @@ class Readiness(unittest.TestCase):
                 return {"default_branch": "trunk"}
             return [{"name": "agent-ok"}] if args[0] == "label" else GATED
         with mock.patch.object(github_setup, "run_json", run_json), \
-                mock.patch.object(github_setup, "identity", mock.AsyncMock(return_value={"login": "a", "push": True})):
-            _, problems, seen = asyncio.run(github_setup.readiness("o/r", ["anna-agent"]))
+                mock.patch.object(github_setup, "identity", lambda a, r: asyncio.sleep(0, {"login": a, "push": True})):
+            _, problems, seen = asyncio.run(github_setup.readiness("o/r", ["anna-agent", "betty-agent"]))
         self.assertEqual(problems, [])
         self.assertIn("the 'agent-ok' label is on o/r", seen)
         self.assertIn("repos/o/r/rules/branches/trunk", calls)
 
     def test_a_missing_label_says_githubs_own_steps(self):
         async def run_json(args, agent=None):
-            return {"default_branch": "main"} if args[1] == "repos/o/r" else [] if args[0] == "label" else GATED
+            return {"default_branch": "main"} if args[1] == "repos/o/r" else []    # no labels, no review rule
         with mock.patch.object(github_setup, "run_json", run_json), \
                 mock.patch.object(github_setup, "identity", mock.AsyncMock(return_value={"login": "a", "push": True})):
             _, problems, seen = asyncio.run(github_setup.readiness("o/r", ["anna-agent"]))
@@ -112,7 +133,7 @@ class ReportedIdentity(unittest.TestCase):
         self.assertEqual(self.reported({"state": "no_gh", "login": None})[0], say(readiness_identity.NO_GH))
         self.assertEqual(self.reported({"state": "signed_in", "login": None})[0], say(readiness_identity.NO_LOGIN))
         ident, perm = self.reported({"state": "signed_in", "login": "csheargm"})
-        self.assertEqual(ident, {"login": "csheargm", "push": True, "reported": True})
+        self.assertEqual(ident, {"login": "csheargm", "push": True, "admin": False, "reported": True})
         perm.assert_awaited_once_with("o/r", "csheargm")       # read as the server's App
 
     def test_hermes_without_a_report_is_unknown(self):
@@ -121,8 +142,10 @@ class ReportedIdentity(unittest.TestCase):
 
     def test_write_access(self):
         for level, push in (("admin", True), ("maintain", True), ("write", True), ("read", False), ("none", False)):
-            self.assertEqual(self.reported({"state": "signed_in", "login": "a"}, level=level)[0]["push"], push, level)
-        self.assertIsNone(self.reported({"state": "signed_in", "login": "a"}, level=GitHubError("502"))[0]["push"])
+            ident = self.reported({"state": "signed_in", "login": "a"}, level=level)[0]
+            self.assertEqual((ident["push"], ident["admin"]), (push, level == "admin"), level)
+        unknown = self.reported({"state": "signed_in", "login": "a"}, level=GitHubError("502"))[0]
+        self.assertEqual((unknown["push"], unknown["admin"]), (None, None))
 
     def test_without_the_app_the_hosts_gh_reads_it(self):
         read = mock.AsyncMock(return_value={"permission": "write"})

@@ -30,8 +30,8 @@ def entry_of(agent: str) -> dict | None:
     return found if found and found["localpart"] == agent else None
 
 
-async def can_write(repo: str, login: str) -> bool | None:
-    """`login` may push to `repo` (True/False), or None when GitHub couldn't be asked."""
+async def access(repo: str, login: str) -> str | None:
+    """`login`'s role on `repo` (admin, write, read, none...), or None when GitHub couldn't be asked."""
     try:
         if github_app.configured():
             level = await github_app.permission(repo, login)
@@ -39,11 +39,13 @@ async def can_write(repo: str, login: str) -> bool | None:
             level = (await github.run_json(["api", f"repos/{repo}/collaborators/{login}/permission"])).get("permission")
     except (GitHubError, AttributeError):     # unknown, said as "couldn't check" (evaluate), never as "can't write"
         return None
-    return level in WRITERS
+    return level if isinstance(level, str) else None
 
 
 async def reported(agent: str, found: dict, repo: str) -> dict:
-    """{"login", "push", "reported": True}, or {"problem": what to do} from the agent's own report."""
+    """{"login", "push", "admin", "reported": True} (push/admin None: GitHub couldn't be asked), or {"problem": what
+    to do}, from the agent's own report. The login is as it says (its owner's own code reports it); the access is
+    GitHub's answer for that login."""
     said = found.get(registry.GITHUB)
     if said is None:
         return {"problem": (HERMES if console_update.is_hermes(found) else NO_REPORT).format(agent=agent)}
@@ -51,4 +53,6 @@ async def reported(agent: str, found: dict, repo: str) -> dict:
         return {"problem": (NO_GH if said["state"] == "no_gh" else SIGNED_OUT).format(agent=agent)}
     if not said.get("login"):
         return {"problem": NO_LOGIN.format(agent=agent)}
-    return {"login": said["login"], "push": await can_write(repo, said["login"]), "reported": True}
+    level = await access(repo, said["login"])
+    return {"login": said["login"], "push": None if level is None else level in WRITERS,
+            "admin": None if level is None else level == "admin", "reported": True}

@@ -18,6 +18,7 @@ import urllib.parse
 from common import github
 from common import github_app
 from common import registry
+from common import solo_review
 from common.github import LABEL, REPO, GitHubError, run, run_json
 from server import readiness_identity
 
@@ -29,12 +30,6 @@ RULESET_NAME = json.loads(RULESET_FILE.read_text())["name"]
 LABEL_STEPS = ("no '{label}' label on {repo} yet. On GitHub open {repo} → Issues → Labels → New label, name it "
                "{label}, then click Create label")
 SOLO_FIX = "switch on Solo review below"
-
-
-def review_rule(main_rules: list[dict]) -> bool:
-    """The branch needs an approving review (ADR 0016: a rule is optional; with one, it must be meetable)."""
-    return any(r.get("type") == "pull_request" and r.get("parameters", {}).get("required_approving_review_count", 0) >= 1
-               for r in main_rules)
 
 
 def _names(items) -> str:
@@ -64,33 +59,64 @@ def _identity_problem(agent: str, ident: dict, repo: str, detail: bool) -> str |
     return None
 
 
+def approvals(main_rules: list[dict]) -> int:
+    """How many approving reviews the branch's rules need (0: no review rule; ADR 0016: optional, but meetable)."""
+    return max([r.get("parameters", {}).get("required_approving_review_count", 0) or 0
+                for r in main_rules if r.get("type") == "pull_request"] or [0])
+
+
+def _reviewers_short(identities: dict[str, dict], need: int) -> bool:
+    """Too few other GitHub accounts here to give the approvals (an account never approves its own PR)."""
+    return need > 0 and len(_by_login(identities)) - 1 < need
+
+
+def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: str, solo: bool, bypass: bool) -> str | None:
+    """Why the review rule can't be met here, or None. With Solo review on (ADR 0023) a repo admin merges past it,
+    once the rule lets admins past (bypass: solo_review's "ok")."""
+    if not _reviewers_short(identities, need):
+        return None
+    shared = [(login, agents) for login, agents in _by_login(identities).items() if len(agents) > 1]
+    why = (f"{_names(shared[0][1])} share the GitHub account @{shared[0][0]}" if shared
+           else f"only {len(_by_login(identities))} GitHub account is here")
+    if not solo:
+        return (f"{why}, so {branch}'s review rule ({need} approving review{'s' * (need > 1)}) can't be met (GitHub "
+                f"never lets an account approve its own PR): {SOLO_FIX}")
+    not_admin = [login for login, agents in _by_login(identities).items() if identities[agents[0]].get("admin") is not True]
+    if not_admin:
+        return (f"Solo review is on, but only a repo admin may merge past {branch}'s review rule, and "
+                f"{_names('@' + x for x in not_admin)} isn't an admin of {repo} (or that couldn't be checked)")
+    if not bypass:
+        return ("Solo review is on, but GitHub's review rule doesn't let repo admins merge past it yet. "
+                + solo_review.BYPASS_STEPS.format(repo=repo).replace("**", ""))
+    return None
+
+
 def evaluate(identities: dict[str, dict], main_rules: list[dict], repo: str = REPO, branch: str = "main",
-             detail: bool = True, solo: bool = False) -> list[str]:
-    """identities: agent -> {"login", "push"} (push None: unknown), {"error"} (gh here) or {"problem"} (its own
-    report); main_rules: GET rules/branches/<branch>; solo: Solo review is on for this repo (ADR 0023), so one
-    shared account may merge past the review rule. detail=False leaves out raw GitHub CLI errors (the console
-    shows this to room moderators)."""
+             detail: bool = True, solo: bool = False, bypass: bool = False) -> list[str]:
+    """identities: agent -> {"login", "push", "admin"?} (None: unknown), {"error"} (gh here) or {"problem"} (its own
+    report); main_rules: GET rules/branches/<branch>; solo: Solo review is on for this repo (ADR 0023); bypass:
+    its rule lets repo admins merge past. detail=False leaves out raw GitHub CLI errors (the console shows this to
+    room moderators)."""
     problems = [p for a, i in identities.items() if (p := _identity_problem(a, i, repo, detail))]
-    if review_rule(main_rules) and not solo:
-        for login, agents in _by_login(identities).items():
-            if len(agents) > 1:
-                problems.append(f"{_names(agents)} share the GitHub account @{login}, so {branch}'s review rule can't "
-                                f"be met (GitHub never lets an account approve its own PR): {SOLO_FIX}")
+    if not problems and (p := _review_problem(identities, approvals(main_rules), repo, branch, solo, bypass)):
+        problems.append(p)
     return problems
 
 
-def verified(identities: dict[str, dict], main_rules: list[dict], repo: str, branch: str, solo: bool) -> list[str]:
+def verified(identities: dict[str, dict], main_rules: list[dict], repo: str, branch: str) -> list[str]:
     """What a passing check saw working, one line each."""
-    lines = [f"{_names(agents)}: signed in to GitHub as @{login}, and @{login} can write to {repo}"
-             for login, agents in _by_login(identities).items()]
+    lines = [f"{_names(agents)}: signed in to GitHub as @{login} (as {'each' if len(agents) > 1 else 'it'} reports), "
+             f"and GitHub says @{login} can write to {repo}" for login, agents in _by_login(identities).items()]
     lines.append(f"the '{LABEL}' label is on {repo}")
-    if not review_rule(main_rules):
+    need = approvals(main_rules)
+    if not need:
         lines.append(f"{branch} has no review rule, so the loop's own reviewer decides")
-    elif solo and any(len(a) > 1 for a in _by_login(identities).values()):
-        lines.append(f"{branch}'s review rule: Solo review is on, so the shared account merges past it after the "
-                     "loop's own review")
+    elif _reviewers_short(identities, need):
+        lines.append(f"{branch}'s review rule: Solo review is on, and GitHub lets the repo admin account merge past "
+                     "it after the loop's own review")
     else:
-        lines.append(f"{branch}'s review rule can be met: each agent has its own GitHub account")
+        lines.append(f"{branch}'s review rule ({need} approving review{'s' * (need > 1)}) can be met: "
+                     f"{len(_by_login(identities))} different GitHub accounts are here")
     return lines
 
 
@@ -99,7 +125,7 @@ async def identity(agent: str, repo: str = REPO) -> dict:
     try:
         login = (await run_json(["api", "user"], agent))["login"]
         perms = (await run_json(["api", f"repos/{repo}"], agent)).get("permissions", {})
-        return {"login": login, "push": bool(perms.get("push"))}
+        return {"login": login, "push": bool(perms.get("push")), "admin": bool(perms.get("admin"))}
     except GitHubError as e:
         return {"error": str(e)[:200]}   # reported as a problem by evaluate()
 
@@ -113,9 +139,9 @@ async def agent_identity(agent: str, repo: str) -> dict:
 
 
 async def readiness(repo: str, agents: list[str], detail: bool = True,
-                    solo: bool = False) -> tuple[dict, list[str], list[str]]:
+                    solo: bool = False, bypass: bool = False) -> tuple[dict, list[str], list[str]]:
     """(identities, problems, what was verified: only when there are no problems) for the loop on `repo` (its
-    default branch): read-only, nothing changes."""
+    default branch): read-only, nothing changes. solo/bypass: as evaluate()."""
     identities = {a: await agent_identity(a, repo) for a in agents}
     try:
         branch = (await run_json(["api", f"repos/{repo}"])).get("default_branch") or "main"
@@ -127,10 +153,10 @@ async def readiness(repo: str, agents: list[str], detail: bool = True,
     except GitHubError as e:
         return identities, [f"can't read {repo}" + (f": {str(e)[:160]}" if detail else "")], []
     rules = rules if isinstance(rules, list) else []
-    problems = evaluate(identities, rules, repo, branch, detail, solo)
+    problems = evaluate(identities, rules, repo, branch, detail, solo, bypass)
     if LABEL not in labels:                   # the App is read-only: its owner adds it on GitHub's own pages
         problems.append(LABEL_STEPS.format(label=LABEL, repo=repo))
-    return identities, problems, [] if problems else verified(identities, rules, repo, branch, solo)
+    return identities, problems, [] if problems else verified(identities, rules, repo, branch)
 
 
 async def check(agents: list[str], repo: str = REPO) -> int:

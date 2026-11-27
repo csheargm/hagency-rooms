@@ -36,8 +36,9 @@ class FakeClient:
     def event(kind: str, content: dict) -> dict:
         return {"type": kind, "state_key": "", "sender": PM, "content": content}
 
-    def solo(self, on: bool) -> None:
-        self.events[solo_review.SOLO_EVENT] = self.event(solo_review.SOLO_EVENT, solo_review.content(on, repo=REPO))
+    def solo(self, on: bool, ok: bool = True, repo: str = REPO) -> None:
+        """ok: the owner's agent let repo admins past the review rule (pm_solo_rules)."""
+        self.events[solo_review.SOLO_EVENT] = self.event(solo_review.SOLO_EVENT, solo_review.content(on, repo=repo, ok=ok))
 
     async def room_get_state(self, rid):
         return RoomGetStateResponse(list(self.events.values()), rid)
@@ -94,7 +95,8 @@ class Flow(unittest.TestCase):
         self.report(CX2)
         said = self.check()
         self.assertTrue(said.startswith(f"✓ {REPO} is ready. Checked:"), said)
-        self.assertIn(f"cx-agent and cx-codex2-agent: signed in to GitHub as @{LOGIN}, and @{LOGIN} can write", said)
+        self.assertIn(f"cx-agent and cx-codex2-agent: signed in to GitHub as @{LOGIN} (as each reports), "
+                      f"and GitHub says @{LOGIN} can write to {REPO}", said)
         self.assertIn("'agent-ok' label is on", said)
         self.assertIn("Solo review is on", said)
         self.assertNotIn("not signed in", said)
@@ -118,6 +120,26 @@ class Flow(unittest.TestCase):
         self.assertIn(f"share the GitHub account @{LOGIN}", said)
         self.assertIn(github_setup.SOLO_FIX, said)
         self.assertNotIn("its own account", said)
+
+    def test_solo_on_but_the_rule_not_yet_letting_admins_past(self):
+        self.report(CXA)
+        self.report(CX2)
+        self.lp.client.solo(True, ok=False)
+        said = self.check()
+        self.assertIn("doesn't let repo admins merge past it yet", said)
+        self.assertNotIn("is ready", said)
+
+    def test_solo_on_with_a_write_only_account(self):
+        self.report(CXA)
+        self.report(CX2)
+        self.github["permission"] = (200, {"permission": "write"})
+        self.assertIn(f"@{LOGIN} isn't an admin of {REPO}", self.check())
+
+    def test_solo_for_another_repo_never_counts(self):
+        self.report(CXA)
+        self.report(CX2)
+        self.lp.client.solo(True, repo="csheargm/elsewhere")
+        self.assertIn(github_setup.SOLO_FIX, self.check())
 
     def test_missing_label_gives_github_steps_only_then(self):
         self.report(CXA)
