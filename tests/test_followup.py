@@ -148,6 +148,7 @@ class FollowUp(unittest.TestCase):
         """GPT review (server agent for everyone): "Server agent, what is a rebase?" is for it, not this one."""
         self.ask()
         self.deliver(msg(ANNA, "Server agent, what is a rebase?", "$a1"))
+        self.deliver(msg(ANNA, "> <@anna-agent:x> Which city?\n\nServer agent, what is a rebase?", "$a2"))   # a reply
         self.assertEqual(self.prompts[1:], [])
 
     def test_a_queued_candidate_never_answers_a_newer_question(self):

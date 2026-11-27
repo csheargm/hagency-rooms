@@ -27,6 +27,8 @@ HOUSE, BRING = "🏠", "🔌"   # 🏠: only on old offers; now the server agent
 USING_RE = re.compile(r"\bbring (my|your) own\b(\s+agent)?\s+(using|with|running)\s+(?P<how>.+?)\W*$", re.I)
 SERVER_REPLY = ("This server doesn't run a server agent. You can bring "
                 f"your own: type \"bring my own\" ({agent_kinds.IN_WORDS} on your computer).")
+SERVER_ON = ("The server agent (free, limited) is a shared AI this server runs for everyone, for talking only. "
+             "To start it, click 🧪 or type \"try the server agent\"; it's also in My agents.")
 # Under the first agent's Connect message until it connects (pm_agents.send_code).
 CHOOSE_HINT = ("\n\n{now} For another AI, type for example \"bring my own using hermes\", \"... using ollama "
                "llama3.2\" or \"... using remote https://openrouter.ai/api/v1 openai/gpt-4o\", or choose it in "
@@ -53,11 +55,11 @@ class FirstAgent(TrialOffer):   # pm_trial.py: 🧪, the shared trial agent (ADR
         """🔌 (or "bring my own"): set up their first agent and send its Connect message; picked: the AI
         it runs (pm_kinds.choice; {}: the one found on their computer), only while it has never
         connected; None: keep what it has."""
-        if key == TRIAL or key == HOUSE and trial_limits.enabled():   # 🏠 / "server agent": it exists now (pm_trial.py)
+        if key == TRIAL:
             await self.start_trial(dm, person)
             return
-        if key == HOUSE:
-            await self.say(dm, SERVER_REPLY)
+        if key == HOUSE:   # 🏠 / "server agent" in passing: what it is and how to start it, never enrolled (GPT review)
+            await self.say(dm, SERVER_ON if trial_limits.enabled() else SERVER_REPLY)
             return
         busy = self.__dict__.setdefault("_provisioning", set())
         if person in busy or not self.may_have_agent(person):

@@ -22,7 +22,7 @@ SET_REPO_RE = re.compile(
     r"\b(?:(?:this |the )?room (?:now )?works? on\s+|(?:set |change |switch )?(?:the |this room'?s? )?repo(?:sitory)?"
     r"(?: is| to|:)\s+|use\s+(?:the repo\s+)?(?=https?://))(?:https?://github\.com/)?"
     r"(?P<repo>[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100})/?(?=$|[\s,;!?)])", re.I)
-NEGATED = re.compile(r"\b(don'?t|do not|never|not|no longer|stop using)\b", re.I)
+NEGATED = re.compile(r"\b(don['’]?t|do not|never|not|no longer|stop using)\b", re.I)   # ’: phones type it
 BRING_OWN_RE = re.compile(r"\bbring (my|your) own\b", re.I)   # @pm: their own agent (pm_welcome, pm_trial)
 
 _RULES = [   # checked in order; the first match wins, so the safest meanings come first

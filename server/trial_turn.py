@@ -70,6 +70,12 @@ def is_agent_or_bot(user: str) -> bool:
     return identity.split(user)[0].endswith(("-agent", "-bot"))
 
 
+def is_edit(event: RoomMessageText) -> bool:
+    content = event.source.get("content", {}) if isinstance(event.source, dict) else {}
+    rel = content.get("m.relates_to")
+    return isinstance(rel, dict) and rel.get("rel_type") == "m.replace"
+
+
 def mentions(event: RoomMessageText, me: str) -> bool:
     content = event.source.get("content", {}) if isinstance(event.source, dict) else {}
     named = (content.get("m.mentions") or {}).get("user_ids") if isinstance(content.get("m.mentions"), dict) else None
@@ -88,7 +94,7 @@ class Turns:
         """Who and where (see the module docstring); the visitor's eligibility is checked by the caller."""
         sender = event.sender
         if (sender == self.me() or is_agent_or_bot(sender) or lifecycle.is_stale(event, self.started_ms)
-                or sender not in self.visitors):
+                or sender not in self.visitors or is_edit(event)):   # GPT review: an edit ("* Server agent, …") isn't new
             return False
         if (self.visitors.get(sender) or {}).get("dm") == room.room_id:
             return self.still_here(room.room_id, sender)   # our private chat: every message is for me
@@ -216,8 +222,9 @@ class Turns:
         """The model's answer to `text`, with this visitor's recent turns here and a PR's diff if asked."""
         repo = await self.repo(room_id)
         n = trial_reads.pr_number(text, repo)
-        # GPT review: a used-up day never reads GitHub (it would spend the App's quota while holding the slot)
-        diff = await trial_reads.pr_diff(repo, n) if n and repo and self.still_here(room_id, visitor) and self.fits(visitor) else None
+        # GPT review: never read GitHub (the App's quota, while holding the slot) for a question that can't fit anyway
+        bare = trial_model.messages(self.history.get((room_id, visitor), []), text, None)
+        diff = await trial_reads.pr_diff(repo, n) if n and repo and self.still_here(room_id, visitor) and self.fits(visitor, bare) else None
         if diff and not await self.may_post(room_id, visitor, repo):   # left, or rebound, while GitHub answered
             self.usage.give_back(visitor)
             return None, None, None
@@ -256,15 +263,16 @@ class Turns:
         self.budget.settle(reserved, used, in_month)
         self.usage.settle_tokens(visitor, reserved, used, on_day)
 
-    def fits(self, visitor: str) -> bool:
-        """The shortest possible request still fits what's left of their day's tokens."""
+    def fits(self, visitor: str, chat: list | None = None) -> bool:
+        """`chat` (default: the shortest possible request) still fits what's left of their day's tokens."""
         remote = identity.split(visitor)[1] != SERVER_NAME
-        return self.usage.tokens_used(visitor) + self.smallest(visitor) <= self.usage.allowance(visitor, remote)
+        return self.usage.tokens_used(visitor) + self.smallest(visitor, chat) <= self.usage.allowance(visitor, remote)
 
-    def smallest(self, visitor: str) -> float:
-        """What the shortest possible request reserves on their model: below it, the day is used up."""
+    def smallest(self, visitor: str, chat: list | None = None) -> float:
+        """What `chat` (default the shortest possible request) reserves on their model: below it, the day is used up."""
         weight = trial_models.weight(trial_models.chosen((self.visitors.get(visitor) or {}).get("model")))
-        return trial_model.high_estimate(trial_model.messages([], "?"), trial_limits.number("TRIAL_MAX_TOKENS")) * weight
+        chat = chat or trial_model.messages([], "?")
+        return trial_model.high_estimate(chat, trial_limits.number("TRIAL_MAX_TOKENS")) * weight
 
     async def repo(self, room_id: str) -> str | None:
         try:

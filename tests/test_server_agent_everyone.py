@@ -19,6 +19,7 @@ from server import trial_turn
 from tests.test_trial_agent import hear, message
 from tests.test_trial_flow import ME, TrialBase, said_to
 from tests.test_welcome import DM, NEW, S, reaction, text
+from server import pm_first   # after pm_welcome (via test_welcome), the order the app loads them in
 
 OWN_AGENT = f"@newbie1-agent:{S}"
 UPGRADE = "More usage is coming with paid plans."
@@ -50,11 +51,15 @@ class OwnerWithAgents(TrialBase):
         self.run_(hear(self.lp.trial, self.accept(), message(NEW, "What is a pull request?")))
         self.assertEqual(self.trial_posts[-1][1], "A pull request is a proposed change.\n\n— Server agent · glm-5.3")
 
-    def test_typing_server_agent_or_its_old_button_starts_it(self):
+    def test_typing_try_the_server_agent_starts_it_and_a_mention_in_passing_explains_it(self):
         self.lp._welcomes[NEW] = {"dm": "!dm", "offer": "$offer", "done": []}
-        self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, "try the server agent"))))
-        self.assertTrue(said_to(self, "!dm")[-1].startswith("🧪 Your server agent is ready"))
+        for words in ("What is the server agent?", "house agent"):     # GPT review: never enrolled in passing
+            self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, words))))
+            self.assertEqual(said_to(self, "!dm")[-1], pm_first.SERVER_ON)
         self.run_(self.lp.on_welcome_reaction(DM, reaction(NEW, "🏠")))   # an old offer's 🏠: no more "not here yet"
+        self.assertEqual(said_to(self, "!dm")[-1], pm_first.SERVER_ON)
+        self.trial_client.room_create.assert_not_awaited()
+        self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, "try the server agent"))))
         self.assertTrue(said_to(self, "!dm")[-1].startswith("🧪 Your server agent is ready"))
 
     def test_declining_it_or_bringing_their_own_never_starts_it(self):
@@ -62,6 +67,7 @@ class OwnerWithAgents(TrialBase):
         self.lp._welcomes[NEW] = {"dm": "!dm", "offer": "$offer", "done": []}
         self.lp.choose = mock.AsyncMock()
         self.assertFalse(self.run_(self.lp.on_welcome_text(DM, text(NEW, "I don't want to use the server agent"))))
+        self.assertFalse(self.run_(self.lp.on_welcome_text(DM, text(NEW, "I don’t want the server agent"))))   # a phone's ’
         self.run_(self.lp.on_welcome_text(DM, text(NEW, "bring my own so I can use the server agent")))
         self.assertEqual(self.lp.choose.await_args.args[2], "🔌")
         self.trial_client.room_create.assert_not_awaited()
@@ -103,6 +109,29 @@ class OwnerWithAgents(TrialBase):
         project.users[stranger] = None
         self.run_(hear(self.lp.trial, project, message(stranger, "Server agent, hi")))
         self.assertEqual((self.lp.trial.sponsors("!proj"), len(self.asked)), ([other], 1))
+
+    def test_an_edit_naming_it_is_never_answered_nor_makes_a_sponsor(self):
+        other = f"@newbie2:{S}"
+        self.run_(self.lp.start_trial("!dm", NEW))
+        self.lp.trial.visitors[other] = {"dm": "!otherdm", "since": 0, "greeted": True}
+        project = SimpleNamespace(room_id="!proj", users={ME: None, NEW: None, other: None}, invited_users={})
+        self.lp.trial.add_sponsor("!proj", NEW)
+        edit = message(other, "* Server agent, hi")
+        edit.source["content"]["m.relates_to"] = {"rel_type": "m.replace", "event_id": "$old"}
+        self.run_(hear(self.lp.trial, project, edit))
+        self.assertEqual((self.lp.trial.sponsors("!proj"), self.asked), ([NEW], []))
+
+    def test_a_question_too_big_for_whats_left_never_reads_a_pull_request(self):
+        self.run_(self.lp.start_trial("!dm", NEW))
+        dm = self.accept()
+        left = 3000                                                    # enough for a short question, not this one
+        self.lp.trial.usage.reserve_tokens(NEW, trial_limits.number("TRIAL_VISITOR_TOKENS") - left, False)
+        read = mock.AsyncMock(return_value="diff")
+        with mock.patch.object(trial_turn.room_state, "repo_of", mock.AsyncMock(return_value="acme/app")), \
+                mock.patch.object(trial_turn.trial_reads, "pr_diff", read):
+            self.run_(hear(self.lp.trial, dm, message(NEW, "what does PR #3 change? " + "x" * 3900)))
+        read.assert_not_awaited()
+        self.assertEqual(self.trial_posts[-1][1], trial_turn.TOO_BIG)
 
     def test_a_used_up_day_never_reads_a_pull_request(self):
         """GPT review: the diff was fetched (GitHub quota, the one slot) before the token allowance refused."""

@@ -73,7 +73,8 @@ Amended 2026-11-27 (owner): **anyone** may use it, now called the **Server agent
 - **A used-up day never reads GitHub**: a PR diff is only fetched while the shortest request still fits their tokens.
 - **Wording**: shown as "Server agent (free, limited)" (display name, its chat "Server agent", every reply ends
   "— Server agent · <model>", @pm's offer, the My agents card, the privacy page). "server agent" / "house agent"
-  typed to @pm, and 🏠 on old offers, now start it while it is set up (before, "not here yet").
+  typed to @pm, and 🏠 on old offers, now say what it is and how to start it (before, "not here yet"); only
+  🧪, "try the server agent" or the card start it, never a decline ("I don’t want …") or "bring my own …". Edits are ignored.
 - **Offered to everyone**: the welcome adds it as "Or right away: 🧪 Server agent", not "No agent yet?"; the
   My agents card (start / open its chat, model picker, today's usage as "12/50 messages") shows for everyone.
 - **Tiers** (`server/trial_tiers.py`, the one place for tier limits, R3): a per-person record

@@ -66,7 +66,8 @@ class BridgeFollowUp:
         if q["left"] <= 0:
             self.open_questions.pop(room.room_id, None)
             return None
-        if identity.SERVER_AGENT_NAME_RE.search(event.body or ""):
+        own = "\n".join(ln for ln in (event.body or "").splitlines() if not ln.startswith(">"))   # not the reply's quote
+        if identity.SERVER_AGENT_NAME_RE.search(own.lstrip()):
             return None                       # "Server agent, …": for the shared server agent, not me
         names = {n.lower() for n in AGENT_NAME_RE.findall(event.body or "")}
         if names - {self.user_id.lstrip("@").partition(":")[0].lower()}:
