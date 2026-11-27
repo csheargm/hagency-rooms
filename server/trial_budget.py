@@ -21,6 +21,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 from pathlib import Path
 
@@ -33,6 +34,8 @@ log = logging.getLogger("trial")
 BALANCE_URL = "https://ollama.com/api/balance"
 DEFAULTS = {"TRIAL_MAX_SHARE": 0.5, "TRIAL_MONTHLY_TOKENS": 5_000_000, "TRIAL_BUDGET_CHECK_S": 300, "TRIAL_PAUSE_S": 900}
 BALANCE_TIMEOUT_S = 10
+MONTH_RE = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])")
+MAX_NUMBER = 10**15                    # far above any count or time here; a bigger one is a damaged file
 NEAR_SHARE, NEAR_CHECK_S = 0.1, 60    # within 10 points of the limit: the balance is read every minute
 MIN_PAUSE_S, MAX_PAUSE_S = 60, 24 * 3600   # a Retry-After is kept within these
 BUDGET_FILE = ROOT / "data" / "trial-budget.json"
@@ -77,8 +80,10 @@ def valid(data: object) -> bool:
     if not data:
         return True                           # nothing counted yet
     numbers = [data.get(k, 0) for k in ("paused_until", "checked")] + ([data["share"]] if "share" in data else [])
-    return (isinstance(data.get("month"), str) and isinstance(data.get("tokens"), int) and data["tokens"] >= 0
-            and all(isinstance(v, (int, float)) and math.isfinite(v) for v in numbers))
+    return (isinstance(data.get("month"), str) and bool(MONTH_RE.fullmatch(data["month"]))
+            and isinstance(data.get("tokens"), int) and 0 <= data["tokens"] < MAX_NUMBER
+            and all(isinstance(v, (int, float)) and -MAX_NUMBER < v < MAX_NUMBER for v in numbers)   # no overflow, NaN or inf
+            and 0 <= float(data.get("share", 0)) <= 1)
 
 
 class Budget:

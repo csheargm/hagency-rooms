@@ -60,7 +60,8 @@ def hello(per_day: int) -> str:
 
 
 class TrialAgent(Turns):
-    def __init__(self, client: AsyncClient, eligible, ask=None, usage=None, data_dir=None, budget=None, busy=None) -> None:
+    def __init__(self, client: AsyncClient, eligible, ask=None, usage=None, data_dir=None, budget=None, busy=None,
+                 stopping: asyncio.Event | None = None) -> None:
         folder = data_dir or ROOT / "data"
         self.client, self.eligible, self.started_ms = client, eligible, int(time.time() * 1000)
         self.visitors = SavedDict(folder / "trial.json")          # visitor → {"dm", "since"}
@@ -74,6 +75,7 @@ class TrialAgent(Turns):
         self.enrolling: dict = {}                                  # visitor → one enrolment at a time
         self.waiting: set = set()                                  # answers underway (trial_turn.on_message)
         self.busy = busy if busy is not None else set()            # @pm's: a restart lets them finish (lifecycle.serve)
+        self.stopping = stopping or asyncio.Event()                # @pm's SIGTERM: no new answers start
 
     def me(self) -> str:
         return self.client.user_id
@@ -228,11 +230,11 @@ def start_later(loop) -> None:
         return
 
     async def online() -> None:
-        loop.trial = await start(loop.trial_eligible, loop.busy)
+        loop.trial = await start(loop.trial_eligible, loop.busy, loop.sync_point.stop)
     loop.trial_starting = asyncio.create_task(online())
 
 
-async def start(eligible, busy=None) -> TrialAgent | None:
+async def start(eligible, busy=None, stopping=None) -> TrialAgent | None:
     """The trial agent, running, or None (no key: off; a failure is logged and the offer stays hidden,
     since @pm only offers it while this returned an agent)."""
     if not trial_limits.enabled():
@@ -242,7 +244,7 @@ async def start(eligible, busy=None) -> TrialAgent | None:
     except (setup_accounts.AccountError, OSError, ClientError, asyncio.TimeoutError, AttributeError) as e:
         log.warning("trial agent not started: %s", e)    # optional feature: off, and never offered (see docstring)
         return None
-    agent = TrialAgent(client, eligible, busy=busy)
+    agent = TrialAgent(client, eligible, busy=busy, stopping=stopping)
     agent.task = asyncio.create_task(run(agent))
     # A crash ends the task: running() turns False, so @pm stops offering it and says it's unavailable.
     agent.task.add_done_callback(lambda t: t.cancelled() or not t.exception() or log.error("trial agent stopped: %s", t.exception()))

@@ -86,8 +86,8 @@ class Turns:
 
     async def on_message(self, room: MatrixRoom, event: RoomMessageText) -> None:
         """Quick: the answer is its own task, so sync (invites, leaves, others' messages) never waits."""
-        if not self.for_me(room, event):
-            return
+        if self.stopping.is_set() or not self.for_me(room, event):
+            return                             # @pm is restarting: nothing new starts (it would be cut off)
         if event.sender in self.answering:     # one at a time per visitor: never a queue of theirs (GPT review)
             await self.post_safely(room.room_id, STILL)
             return

@@ -35,6 +35,21 @@ class SecondPass(Base):
             with self.assertLogs("trial", "ERROR"):
                 self.assertEqual(asyncio.run(trial_budget.Budget(path, fetch=self.fetch_balance).stopped()), trial_budget.TOKENS)
 
+    def test_more_damaged_budget_files(self):
+        for bad in ('{"month": "2026-13", "tokens": 5}', '{"month": "2026-11", "tokens": 1, "paused_until": 1e309}',
+                    '{"month": "2026-11", "tokens": 1, "paused_until": ' + "9" * 400 + '}',
+                    '{"month": "2026-11", "tokens": 1, "share": 7}'):
+            path = self.dir / "bad2.json"
+            path.write_text(bad)
+            with self.assertLogs("trial", "ERROR"):
+                self.assertTrue(trial_budget.Budget(path, fetch=self.fetch_balance).damaged, bad)
+
+    def test_nothing_new_starts_while_pm_restarts(self):
+        self.enrol()
+        self.agent.stopping.set()
+        self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi")))
+        self.assertEqual(self.asked, [])
+
     def test_one_visitor_never_queues_more_than_one(self):
         self.enrol()
         release = None
@@ -90,10 +105,11 @@ class Starting(unittest.TestCase):
         async def go():
             gate = asyncio.Event()
 
-            async def slow_start(eligible, busy=None):
+            async def slow_start(eligible, busy=None, stopping=None):
                 await gate.wait()
                 return "agent"
-            loop = SimpleNamespace(trial=None, trial_eligible=lambda who: True, busy=set())
+            loop = SimpleNamespace(trial=None, trial_eligible=lambda who: True, busy=set(),
+                                   sync_point=SimpleNamespace(stop=asyncio.Event()))
             with mock.patch.dict(os.environ, {"OLLAMA_API_KEY": "k" * 20}), mock.patch.object(trial_agent, "start", slow_start):
                 trial_agent.start_later(loop)                     # returns at once
                 self.assertIsNone(loop.trial)
