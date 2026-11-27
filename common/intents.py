@@ -100,6 +100,16 @@ def repo_named(text: str) -> str | None:
     return repo.removesuffix(".git") or None
 
 
+QUESTION_RE = re.compile(r"\?\s*$|^\W*(@?pm\b[\s:,]*)?(what|how|why|when|which|who|does|do|did|is|are|was|can|"
+                         r"could|would|will|should|shall|may|might)\b", re.I)
+
+
+def is_question(text: str) -> bool:
+    """Asked, not told ("what does autonomous mode do?", "can you go all the way"): never changes the mode
+    by itself (GPT review); @pm says what the mode does and asks a 👍."""
+    return QUESTION_RE.search(text.strip()) is not None
+
+
 def is_yes(text: str) -> bool:
     """A bare OK ("yes", "ok", 👍): safe to read as consent even when it isn't addressed to @pm."""
     return YES_RE.match(text) is not None

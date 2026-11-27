@@ -15,7 +15,7 @@ from nio import MatrixRoom, RoomGetEventResponse
 from common.pm_actions import INTENT_OF as BRAIN_ACTIONS
 from server import pm_brain
 from common import room_state
-from server.pm_chat import CONFIRM_S, ONLY_MODERATORS, without_quote
+from server.pm_chat import CONFIRM_S, LEVEL_WORDS, ONLY_MODERATORS, without_quote
 from server.pm_implicit import MAYBE, TO_CONFIRM, Implicit, mode_question
 from server.pm_owner_brain import SIMPLE, OwnerBrain
 
@@ -165,7 +165,8 @@ class Understanding(OwnerBrain, Implicit):
         if not self.still(room_id, gen, waiting):
             self.note_outcome(event_id, "dropped: things changed before it could be answered")
             return False
-        self.pending[room_id] = {**entry, "event_id": event_id, "until": time.time() + CONFIRM_S, "by": sender}
+        self.pending[room_id] = {**entry, "event_id": event_id, "until": time.time() + CONFIRM_S, "by": sender,
+                                 "unnamed": not named}   # pm_implicit.unnamed_ask: no bare "yes" for those
         await self.offer_thumb(room_id, event_id)
         return True
 
@@ -177,9 +178,9 @@ class Understanding(OwnerBrain, Implicit):
                             {"kind": "setting", "intent": BRAIN_ACTIONS[action]}, named)
 
     async def ask_mode(self, room: MatrixRoom, sender: str, action: str, gen: int | None = None) -> None:
-        """A mode change their own words don't plainly say (a voice message): ask first."""
+        """A mode change their own words don't plainly say (a voice message, a question): ask first."""
         gen = self.generation.get(room.room_id, 0) if gen is None else gen
         if not await room_state.is_moderator(self.client, room, sender):
-            await self.say(room.room_id, ONLY_MODERATORS)
+            await self.say(room.room_id, f"**{LEVEL_WORDS[action]}**. {ONLY_MODERATORS}")   # what it does, anyway
             return
         await self.ask_once(room.room_id, sender, gen, mode_question(action), {"kind": "mode", "level": action})

@@ -39,6 +39,8 @@ PLAN_FAILED = ("⚠️ {agent} couldn't turn the discussion into a plan ({why}).
 # Review 2026-11-26: after a failed filing (no GitHub sign-in, say), "@pm retry" said "Nothing is paused
 # here"; the plan is kept (last_plans), so showing it again gives its 👍 back. Only when filing failed before
 # any issue was made (no sign-in): after a partial filing, approving again would open duplicates (GPT re-check).
+PLAN_ABOVE = "To open these issues, click 👍 on my plan question above."
+PLAN_TO_APPROVE = 'To open these issues, say "@pm show the plan" and click 👍 on it.'
 FILE_AGAIN = ' The plan is kept: once that\'s fixed, say "@pm show the plan" and approve it again.'
 
 class Planner:
@@ -132,20 +134,27 @@ class Planner:
         self.last_plans[rid] = {"items": items, "agent": plan["agent"], "by": plan["by"], "repo": plan.get("repo")}
         await self.show_plan(rid)
 
-    async def show_plan(self, rid: str) -> None:
-        """Post the room's current plan with its ✅ (also for "@pm show the plan")."""
+    async def show_plan(self, rid: str, approve: bool = True) -> None:
+        """Post the room's current plan with its ✅ (also for "@pm show the plan"). approve=False: only shown,
+        nothing to approve installed (a request @pm only inferred: pm_implicit.act_implicit, GPT review)."""
         last = self.last_plans.get(rid)
         if not last:
             await self.say(rid, "There's no plan yet. Say \"let's build it\" and I'll draft one from the discussion.")
             return
-        items = last["items"]
-        older = self.pending.get(rid, {})
-        if older.get("kind") == "plan":
+        items, gen, older = last["items"], self.generation.get(rid, 0), self.pending.get(rid)
+        if not approve:
+            await self.say(rid, f"Here's the plan:\n\n{planning.show(items)}\n\n" + (
+                PLAN_ABOVE if (older or {}).get("kind") == "plan" else PLAN_TO_APPROVE))
+            return
+        if (older or {}).get("kind") == "plan":
             self.note_outcome(older.get("event_id"), "replaced by a newer plan, shown below it")
         after = AFTER_APPROVAL.get(await self.level(rid), AFTER_APPROVAL["off"])
         event_id = await self.say(rid, f"Here's the plan from your discussion:\n\n{planning.show(items)}\n\n"
                                        f"**Click 👍 below** (or reply \"ok\") to open "
                                        f"{'this issue' if len(items) == 1 else f'these {len(items)} issues'}. {after} To change it, tell me what to change.")
+        if not self.still(rid, gen, older):   # pm_understand.py: a stop, or another question, while I posted it
+            self.note_outcome(event_id, "dropped: things changed before it could be approved")
+            return
         self.pending[rid] = {"kind": "plan", "event_id": event_id, "until": time.time() + CONFIRM_S,
                              "items": items, "agent": last["agent"], "by": last["by"], "repo": last.get("repo")}
         await self.offer_thumb(rid, event_id)

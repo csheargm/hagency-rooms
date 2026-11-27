@@ -108,8 +108,8 @@ class Chat(Addressing):
         if intent in intents.SETTINGS and (voice or not intents.plainly_says(text, intent)):
             await self.ask_setting(room, sender, intent)            # pm_understand.py: one 👍 to be sure
             return
-        if voice and intent in (intents.ASSIST, intents.AUTONOMOUS):
-            await self.ask_mode(room, sender, intent)
+        if intent in (intents.ASSIST, intents.AUTONOMOUS) and (voice or intents.is_question(text)):
+            await self.ask_mode(room, sender, intent)      # a transcript or a question: a 👍, never a switch
             return
         if intent == intents.SET_REPO:        # a repo name is exact: never left to a model
             await self.set_repo(room, sender, intents.repo_named(text) or "")
@@ -194,10 +194,8 @@ class Chat(Addressing):
             await self.say(rid, await self.status_text(rid))
         elif intent == intents.PLAN and not await room_state.is_moderator(self.client, room, sender):
             who = sender.split(":")[0].lstrip("@")         # a contributor asks; the owner decides
-            event_id = await self.say(rid, f"{who} would like to turn this discussion into work. Room owner or "
-                                           "a maintainer: click 👍 below and I'll plan it with your agent.")
-            self.pending[rid] = {"kind": "plan_request", "event_id": event_id, "until": time.time() + CONFIRM_S}
-            await self.offer_thumb(rid, event_id)
+            await self.ask_once(rid, sender, gen, f"{who} would like to turn this discussion into work. Room owner "
+                                "or a maintainer: click 👍 below and I'll plan it with your agent.", {"kind": "plan_request"})
         elif intent == intents.PLAN:
             await self.start_plan(room, sender)
         elif intent == intents.HELP:

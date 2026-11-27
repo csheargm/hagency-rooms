@@ -87,11 +87,13 @@ class Follow:
             if found["follow"] == "ask":
                 if not found["first"] and room.room_id in self.pending:
                     continue                  # one question at a time in a room; they can invite it themselves
+                gen, before = self.generation.get(room.room_id, 0), self.pending.get(room.room_id)
                 event_id = await self.say(room.room_id, f"Welcome {local}! Bring your agent ({name}) "
                                                         "into this room? Click 👍 below to bring it.")
-                self.pending[room.room_id] = {"kind": "bring", "agent": agent, "event_id": event_id,
-                                              "until": time.time() + CONFIRM_S, "by": person}
-                await self.offer_thumb(room.room_id, event_id)
+                if self.still(room.room_id, gen, before):   # pm_understand.py: no stop or other question meanwhile
+                    self.pending[room.room_id] = {"kind": "bring", "agent": agent, "event_id": event_id,
+                                                  "until": time.time() + CONFIRM_S, "by": person}
+                    await self.offer_thumb(room.room_id, event_id)
                 continue
             await self.invite_agent(room.room_id, agent, await self.came_along(local, found))
 

@@ -57,6 +57,12 @@ def mode_question(level: str) -> str:
     return f"Do you want me to switch to **{level}** ({LEVEL_WORDS[level].split(': ', 1)[1]})?" + TO_CONFIRM
 
 
+def unnamed_ask(waiting: dict) -> bool:
+    """A question of mine that a message without "@pm" led to (any kind: a stop, a mode, a setting, ...):
+    a bare "yes" never confirms it, only a 👍, a reply to it or "@pm yes"."""
+    return waiting.get("kind") == "implicit" or waiting.get("unnamed") is True
+
+
 class Implicit:
     def note_talk(self, room_id: str, person: str) -> None:
         """@pm is answering this person here (an addressed message): their next words may be for me too."""
@@ -65,9 +71,9 @@ class Implicit:
     def yes_counts(self, room_id: str, reply_to: str | None, named: bool) -> bool:
         """A typed OK confirms my question when it replies to it, or replies to nothing; for a question I
         asked without being named, only if it names me too ("@pm yes"): a stray "yes" said to someone
-        else mustn't switch a room to autonomous (GPT review)."""
+        else mustn't switch a room to autonomous, nor change a setting (GPT review)."""
         waiting = self.pending.get(room_id) or {}
-        return reply_to == waiting.get("event_id") or (reply_to is None and (named or waiting.get("kind") != "implicit"))
+        return reply_to == waiting.get("event_id") or (reply_to is None and (named or not unnamed_ask(waiting)))
 
     async def heard(self, room: MatrixRoom, event: RoomMessageText, text: str | None, reply_to: str | None,
                     voice: bool = False) -> bool:
@@ -130,7 +136,7 @@ class Implicit:
     def asked_them(self, room_id: str, sender: str) -> bool:
         """A question I asked without being named waits for this very person."""
         waiting = self.pending.get(room_id) or {}
-        return waiting.get("kind") == "implicit" and waiting.get("by") == sender and time.time() < waiting.get("until", 0)
+        return unnamed_ask(waiting) and waiting.get("by") == sender and time.time() < waiting.get("until", 0)
 
     async def on_unaddressed(self, room: MatrixRoom, event: RoomMessageText, body: str, reply_to: str | None,
                              voice: bool = False, gen: int = 0) -> None:
@@ -188,6 +194,8 @@ class Implicit:
             await self.ask_redraft(room, sender, gen)
         elif intent in ASKED_FIRST:
             await self.ask_implicit(room, sender, intent, text, gen, named)
+        elif intent == intents.SHOW_PLAN:
+            await self.show_plan(room.room_id, approve=False)  # shown only: an approval is asked by "@pm show the plan"
         elif intent in LOW_IMPACT:
             await self.act(room, sender, intent)
 

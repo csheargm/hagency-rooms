@@ -44,6 +44,12 @@ OWNER's agent, not the speaker's).
   plan question is never replaced: a change to it is asked on the side (`ask_redraft`), on every
   unaddressed path, the phrase-rule fallback included. A confirmed mode change carries its generation
   to the write: under the binding lock, right before saving, a stop since then wins.
+- A question never changes the mode ("@pm what does autonomous mode do?", `intents.is_question`): @pm
+  says what the mode does and asks a 👍; a plain command from the owner or a maintainer still switches
+  at once, as before. Any question an unnamed message led to (a mode, a stop, a setting, ...) takes a
+  👍, a reply to it or "@pm yes", never a bare "yes". An inferred "show the plan" only shows it, with
+  nothing to approve installed. Every post that installs an approval (plan, plan request, "bring your
+  agent?") does so only if no stop and no other question came while it was sent.
 
 ### Without "@pm" (`server/pm_implicit.py`)
 In a project room a message that doesn't name @pm counts as for @pm when it **replies to @pm**, comes
