@@ -9,10 +9,10 @@ import re
 import urllib.parse
 
 PERMALINK = "https://matrix.to/#/"
-MXID_RE = re.compile(r"@[a-z0-9._=/+-]{1,255}:[A-Za-z0-9.-]{1,255}(?::\d{1,5})?", re.I)
+MXID_RE = re.compile(r"@[a-z0-9._=/+-]{1,255}:(?:[A-Za-z0-9.-]{1,255}|\[[0-9A-Fa-f:.]{2,45}\])(?::\d{1,5})?", re.I)
 MD_LINK_RE = re.compile(r"\s*\[[^\]\n]{0,100}\]\(([^)\s]{1,400})\)")
 BARE_LINK_RE = re.compile(r"\s*(https://matrix\.to/#/[^\s]{1,400})")
-BARE_ID_RE = re.compile(r"\s*(@[^\s:]{1,255}:[^\s.]{0,255}\.[^\s]{1,300})")   # a dot: "@pm:retry #9" is shorthand
+BARE_ID_RE = re.compile(r"\s*(@[^\s:]{1,255}:[^\s]{1,300})")   # "@pm:retry" names a user too (GPT review)
 TAIL_RE = re.compile(r"[:,]?(?:\s+|$)")
 
 

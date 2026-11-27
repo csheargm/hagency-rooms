@@ -24,6 +24,12 @@ def without_quote(body: str) -> str:
     return "\n".join(lines).strip()
 
 
+def same_user(a: str, b: str) -> bool:
+    """Matrix IDs: the localpart ignoring case (clients may capitalize it), the server name exactly."""
+    (la, _, sa), (lb, _, sb) = a.partition(":"), b.partition(":")
+    return la.lower() == lb.lower() and sa == sb
+
+
 def without_pill(text: str, me: str | None) -> tuple[str, bool]:
     """(text, False) with a leading mention pill of `me` turned into "@pm "; (text, True) when the text
     starts with someone else's pill, so it is never read as "@pm …" (GPT review: "@pm.ops:x stop")."""
@@ -31,7 +37,7 @@ def without_pill(text: str, me: str | None) -> tuple[str, bool]:
     if pill is None:
         return text, False
     user, rest = pill
-    return ("@pm " + text[rest:], False) if me and user.lower() == me.lower() else (text, True)
+    return ("@pm " + text[rest:], False) if me and same_user(user, me) else (text, True)
 
 
 def unaddressed(body: str, me: str | None = None) -> str:

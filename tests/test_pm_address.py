@@ -52,12 +52,14 @@ class Pill(unittest.TestCase):
 
     def test_links_and_ids_that_name_more_or_other_than_pm_are_refused(self):
         for body in (f"[Product Manager]({LINK}/extra) stop", f"{LINK}/extra stop", "@pm.ops:example.org stop",
-                     "@pm:matrix.hagencylabs.xyz.evil stop", f"[Product Manager](https://evil.example/#/{PM}) stop"):
+                     "@pm:matrix.hagencylabs.xyz.evil stop",
+                     "https://matrix.to/#/@pm:MATRIX.HAGENCYLABS.XYZ stop", "@pm+ops:x stop", "@pm:[::1] stop",
+                     "@pm:retry #13", f"[Product Manager](https://evil.example/#/{PM}) stop"):
             with self.subTest(body=body):
                 self.assertIsNone(self.said(body, mentions=()))
 
     def test_the_short_forms_still_work(self):
-        for body in ("@pm retry #13", "pm: retry #13", "@pm:retry #13", "Product Manager, retry #13"):
+        for body in ("@pm retry #13", "pm: retry #13", "@pm: retry #13", "Product Manager, retry #13"):
             with self.subTest(body=body):
                 self.assertEqual(self.said(body, mentions=()), "retry #13")
 
