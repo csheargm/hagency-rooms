@@ -158,3 +158,18 @@ async def is_moderator(client: AsyncClient, room: MatrixRoom, sender: str) -> bo
             creators = {ev.get("sender"), *content.get("additional_creators", [])}
             return version.isdigit() and int(version) >= 12 and sender in creators
     return False
+
+
+OWNER_LEVEL = 100
+
+
+async def owners(client: AsyncClient, room: MatrixRoom) -> list[str]:
+    """The room's owners who are people, joined: its creators (room v12+) first, then anyone at power level 100;
+    never @pm, an agent or a bot. Whose agent @pm's understanding step asks (ADR 0022), read the same way on
+    @pm's side and the agent's. An unreadable state counts only the power levels."""
+    state = await client.room_get_state(room.room_id)
+    creators = creators_in(state.events) if isinstance(state, RoomGetStateResponse) else set()
+    people = [u for u in room.users if u not in room.invited_users and u != pm_id(client)
+              and not u.split(":")[0].endswith(("-agent", "-bot"))]
+    top = [u for u in people if u in creators or room.power_levels.get_user_level(u) >= OWNER_LEVEL]
+    return sorted(top, key=lambda u: (u not in creators, u))

@@ -49,6 +49,8 @@ HELP = ("Talk to me in plain words, for example:\n"
         "- **@pm make me a project room**, **@pm find a project**, **@pm ask to join owner/name**\n"
         "- **@pm invite link**: a link that lets one person in, even without an account yet (owner or maintainer)\n"
         "- **@pm make this room listed** (or private, or open): who can find and join it (owner or maintainer)\n"
+        "You can skip \"@pm\" when you reply to one of my messages, or right after I've answered you. For big "
+        "steps (stop, mode, plan) I'll ask for a 👍 first.\n"
         "The pinned **Project status** and the **Hagency** panel show progress live.")
 
 # The answer to "what should we do first?" (intents.START): the path from here, for this room.
@@ -86,12 +88,12 @@ class Chat(Addressing):
             await self.say(room.room_id, "🎙 To confirm, click 👍 on my question above.")   # a click, never a transcript
             return
         if not voice and (intents.is_yes(body) or (said is not None and intents.is_approval(said))):
-            if (reply_to in (None, waiting)) and await self.confirm(room, sender):
+            if self.yes_counts(room.room_id, reply_to, text is not None) and await self.confirm(room, sender):   # pm_implicit.py
                 return                # "yes", "@pm ok go ahead", or "sounds good" in a reply to the question
             if text is not None and (waiting or intents.is_yes(text)):
                 await self.answer_stale_ok(room.room_id, reply_to, sender)   # an OK, but not one that counts
                 return                # (nothing waiting + "let's build it" goes on to start a plan)
-        if text is None:
+        if await self.heard(room, event, text, reply_to, voice):   # pm_implicit.py: not named, may still be for me
             return
         if customize.GO_BACK.search(text) and not voice:   # works even when that person's own version is broken
             local, _, server = sender.lstrip("@").partition(":")
@@ -129,15 +131,16 @@ class Chat(Addressing):
         self.busy.add(job)
         job.add_done_callback(self.busy.discard)
 
-    async def by_rules(self, room: MatrixRoom, sender: str, text: str, intent: str) -> None:
-        """The phrase rules (intents.py): the fast path for "stop", and the fallback for the model."""
+    async def by_rules(self, room: MatrixRoom, sender: str, text: str, intent: str, why: str = "") -> None:
+        """The phrase rules (intents.py): the fast path for "stop", and the fallback for the model (why: it
+        didn't answer, said with "didn't catch that")."""
         if intent == intents.UNKNOWN and await self.revise_plan(room, sender):
             return
         if intent == intents.UNKNOWN and len(text.split()) >= NOTE_WORDS:
             await self.say(room.room_id, "Noted. When you're ready, say \"let's build it\" and I'll turn the "
                                          "discussion into work.")    # it is part of the discussion that gets planned
             return
-        await self.act(room, sender, intent)
+        await self.act(room, sender, intent, why)
 
     async def revise_plan(self, room: MatrixRoom, sender: str) -> bool:
         """A plan waits for ✅ and the owner/maintainer says what to change: plan again with it."""
@@ -163,7 +166,7 @@ class Chat(Addressing):
         if intents.is_confirm_reaction(event.key) and event.reacts_to == wanted:
             await self.confirm(room, event.sender)
 
-    async def act(self, room: MatrixRoom, sender: str, intent: str) -> None:
+    async def act(self, room: MatrixRoom, sender: str, intent: str, why: str = "") -> None:
         rid = room.room_id
         if intent == intents.OFF:                                 # never gated: stopping is always safe
             self.generation[rid] = self.generation.get(rid, 0) + 1    # drop decisions still being thought about
@@ -207,11 +210,9 @@ class Chat(Addressing):
             repo = await room_state.repo_of(self.client, rid)
             await self.say(rid, FIRST_STEPS.format(repo=f"✓ This room works on **{repo}**." if repo else REPO_STEP))
         elif intent == intents.ABOUT:
-            await self.say(rid, "I'm the Product Manager: a coordinator, with no AI model of my own. I turn your "
-                                "discussion into work and keep it moving; the thinking and building are done by "
-                                "your own agents, on their owners' models and accounts.")
+            await self.say(rid, pm_brain.about())
         else:
-            await self.say(rid, "I didn't catch that. You can say: **show the plan** · **let's build it** · "
+            await self.say(rid, f"{why}I didn't catch that. You can say: **show the plan** · **let's build it** · "
                                 "**let us approve each change** · **take it all the way** · **stop** · "
                                 "**where are we?**")
 
@@ -222,8 +223,8 @@ class Chat(Addressing):
             return False
         if p.get("kind") != "plan_request" and sender != p.get("by"):
             return False              # only the person who asked confirms (a stray "yes" from anyone else doesn't)
-        if p.get("kind") not in ("bring", "setting") and not await room_state.is_moderator(self.client, room, sender):
-            return False              # authority re-checked now (bringing your OWN agent needs none)
+        if p.get("kind") not in ("bring", "setting", "implicit") and not await room_state.is_moderator(self.client, room, sender):
+            return False              # authority re-checked now (your OWN agent needs none; implicit: act's own checks)
 
         self.pending.pop(room.room_id)
         self.note_outcome(p.get("event_id"), "approved")
@@ -233,6 +234,8 @@ class Chat(Addressing):
             await self.file_plan(room, p, sender)               # pm_plan.py
         elif p.get("kind") == "setting":                       # your own agent's setting, asked with 👍
             await self.act(room, sender, p["intent"])
+        elif p.get("kind") == "implicit":                       # pm_implicit.py: asked, as I wasn't named
+            await self.do_implicit(room, sender, p)
         elif p.get("kind") == "bring":                          # pm_follow.py: "bring your agent? ✅"
             await self.invite_agent(room.room_id, p["agent"], "Your agent is on its way in.")
         else:                                 # a mode switch asked about with ✅ (ask_mode)

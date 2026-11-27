@@ -89,7 +89,8 @@ class Talk(unittest.TestCase):
             return RoomPutStateResponse("$s", room_id)
         create = RoomGetStateResponse([{"type": "m.room.create", "sender": ANNA, "content": {"room_version": "12"}}], "!r")
         self.lp.say = say
-        self.lp.client = SimpleNamespace(room_put_state=put_state, room_get_state=mock.AsyncMock(return_value=create))
+        self.lp.client = SimpleNamespace(room_put_state=put_state, room_get_state=mock.AsyncMock(return_value=create),
+                                         room_get_event=mock.AsyncMock(return_value=None))   # pm_implicit: not @pm's
         lv = mock.patch.object(Loop, "level", lambda _, rid: asyncio.sleep(0, (self.levels or ["off"])[-1]))
         lv.start()                    # the room's mode as last written (pm_paused re-checks it)
         self.addCleanup(lv.stop)

@@ -257,8 +257,18 @@ short reply.
   something happened.
 - "stop" is matched by plain rules (`intents.py`) and never waits for a model.
 - If the model fails or is slow, @pm uses the rules.
-- The model is the host's agent CLI (`PM_BRAIN=codex|claude|off`), run in the agents'
-  lockdown.
+- The model is the **room owner's own agent** (`PM_BRAIN=owner`, the public server's setting;
+  [ADR 0022](docs/adr/0022-pm-understands-with-owner-ai.md)): @pm sends it the same context in one
+  to-device message (nothing shows in the chat), and it answers from one turn with no tools at all.
+  Offline, older code or slow: the rules, and @pm says the owner's agent is offline when they don't
+  catch it. `PM_BRAIN=codex|claude` uses the host's CLI instead, run in the agents' lockdown;
+  `off`, only the rules.
+- In a project room you don't always need "@pm": a reply to @pm, your next words while @pm is talking
+  with you, or anything when you're the only person there counts. Other requests are read (a few a
+  minute) only to see whether they're for @pm. Unless you named @pm, it asks for a 👍 before stopping,
+  changing the mode, planning, setting the repo or retrying. Not in the Lobby or the Welcome room.
+- Asks of the owner's agent are capped (6 a minute and 30 an hour per person, 15 a minute and 100 an
+  hour per room, named or not); past that, the rules answer.
 
 ## Stop / reset
 

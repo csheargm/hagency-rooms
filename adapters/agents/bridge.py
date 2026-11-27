@@ -27,8 +27,8 @@ from adapters.agents import room_context
 from common.redact import room_safe, secret_safe
 from common import room_state
 from adapters.agents import tasks
+from adapters.agents.understand_task import BridgeUnderstand   # @pm reads with the room owner's agent (ADR 0022)
 from adapters.agents import workdirs
-
 from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME, agent_handle, agent_password
 TYPING_REFRESH_S = 20       # re-send typing before the 30s server timeout lapses
 TYPING_TIMEOUT_MS = 30_000
@@ -41,7 +41,7 @@ ENCRYPTED_NOTE = ("I can't read encrypted rooms yet, so I can't see messages her
                   "Please talk to me in a room without encryption.")
 
 
-class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeStop, BridgeUpdate):   # Stop / Start, Update
+class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeStop, BridgeUnderstand, BridgeUpdate):   # Stop / Start, Update
     def __init__(self, owner: str, backend: str, allow_members: bool = False, buttons_only: bool = False):
         self.backend, self.allow_members, self.buttons_only = backend, allow_members, buttons_only
         self.owner_id = identity.person_id(owner, SERVER_NAME)     # full IDs only: should_ignore compares them
@@ -61,8 +61,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
         self.refused: dict[tuple, float] = {}   # (room, person) → when I last said "only my owner"
         self.open_questions: dict[str, dict] = {}   # room → my open question to my owner (bridge_followup.py)
 
-    # --- trigger rules -------------------------------------------------------------
-    # is_addressed / named_me / refuse: bridge_voice.py
+    # --- trigger rules (is_addressed / named_me / refuse: bridge_voice.py) -------------
 
     def should_ignore(self, room: MatrixRoom, event: RoomMessageText) -> str | None:
         if event.sender == self.user_id:
@@ -265,6 +264,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
             self.client.add_event_callback(self.on_voice, RoomMessageAudio)     # bridge_voice.py
             self.client.add_event_callback(self.on_encrypted, MegolmEvent)
             self.client.add_event_callback(self.on_custom_reaction, ReactionEvent)  # bridge_custom.py
+            self.listen_understand()          # understand_task.py: @pm's to-device asks
         self.listen_to_pm()              # agent_update.py: @pm's clicks, also those the first sync brings
         await lifecycle.first_sync(self.client, f"{self.owner}-agent", self.sync_point, register,
                                    lambda ms: setattr(self, "started_ms", ms))

@@ -52,6 +52,7 @@ class AgentError(RuntimeError):
 # it is switched off.
 CODEX_FEATURES_OFF = ("apps", "plugins", "computer_use", "browser_use", "in_app_browser",
                       "image_generation", "multi_agent")
+CODEX_TOOLS_OFF = ("shell_tool", "unified_exec")   # bare turns: no commands at all (checked live, Codex 0.169)
 BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -182,10 +183,22 @@ def agent_env(workdir: Path) -> dict:
     return {**os.environ, "GIT_CEILING_DIRECTORIES": str(workdir.resolve().parent)}
 
 
+def without_tools(argv: list[str]) -> list[str]:
+    """A locked, fresh turn's argv with no tools at all (@pm's understanding step, ADR 0022): Claude Code
+    gets an empty --tools; Codex (ollama, remote) also loses its shell (read-only, it could still read files)."""
+    if argv[0] == "claude":
+        at = argv.index("--tools") + 1
+        return [*argv[:at], "", *argv[at + 1:]]
+    return [*argv[:2], *(x for f in CODEX_TOOLS_OFF for x in ("-c", f"features.{f}=false")), *argv[2:]]
+
+
 async def run_turn(backend: str, workdir: Path, prompt: str, write: bool = False,
-                   fresh: bool = False, owner: bool = False) -> str:
+                   fresh: bool = False, owner: bool = False, bare: bool = False) -> str:
     """Run one turn in workdir, resuming that room's saved session unless fresh=True. owner=True
-    only for a turn its owner's own message asked for (see the module docstring)."""
+    only for a turn its owner's own message asked for (see the module docstring). bare=True: a fresh,
+    locked turn with no tools at all (without_tools)."""
+    if bare and (write or owner or not fresh):
+        raise AgentError("a turn without tools is always fresh and locked")
     argv_fn, parse_fn = BACKENDS[backend]
     workdir.mkdir(parents=True, exist_ok=True)
     state_file = workdir / SESSION_FILE
@@ -197,7 +210,7 @@ async def run_turn(backend: str, workdir: Path, prompt: str, write: bool = False
     if session_id is not None and not (isinstance(session_id, str) and SESSION_ID_RE.match(session_id)):
         session_id = None   # never pass a malformed id as a CLI positional; start a fresh session
 
-    program, *args = argv_fn(workdir, session_id, write, owner)
+    program, *args = (without_tools if bare else list)(argv_fn(workdir, session_id, write, owner))
     extra = _kind_env(backend)                         # remote: the API key, in the environment only
     proc = await asyncio.create_subprocess_exec(       # Windows: npm's .cmd wrappers too, with no shell
         *cli_path.command(program), *args, cwd=workdir, env={**agent_env(workdir), **extra},

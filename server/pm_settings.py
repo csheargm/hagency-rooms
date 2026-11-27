@@ -267,7 +267,7 @@ class Settings(Projects):
     async def change_level(self, room_id: str, level: str) -> str | None:
         """Write the room's loop level; returns an error line, or None when done. Any explicit mode
         change cancels a confirmation still waiting (it was asked for under the old mode)."""
-        if self.pending.get(room_id, {}).get("kind", "autonomous") in ("autonomous", "mode"):
+        if self.pending.get(room_id, {}).get("kind", "autonomous") in ("autonomous", "mode", "implicit"):   # pm_implicit.py
             self.pending.pop(room_id, None)
         return await self.write_level(room_id, level, unbound_ok=level == "off")   # stopping never binds a room (anyone may stop)
 
