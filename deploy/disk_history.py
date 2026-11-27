@@ -19,7 +19,8 @@ KEEP_DAYS = 90
 GB = 10 ** 9
 DAILY_GROWTH_WARN = 3 * GB
 TOP_CONTRIBUTORS = 3
-DU_TIMEOUT = 120                                          # seconds per area: five areas stay within ~10 min
+DU_TIMEOUT = 120                                          # seconds per folder: six folders, 12 min at worst
+MAX_BYTES = 2 ** 60                                       # a figure no disk here reaches: a damaged row
 AREAS = {                                                 # label in the message -> the folders it adds up
     "sandbox": [HOME / "sandbox"],
     "Docker images": [Path("/var/lib/containerd"), Path("/var/lib/docker")],
@@ -34,11 +35,13 @@ def du(path: Path) -> int:
     if not path.exists():
         return 0
     out = subprocess.run(["du", "-sx", "--block-size=1", str(path)], capture_output=True, text=True,
-                         timeout=DU_TIMEOUT)
+                         errors="replace", timeout=DU_TIMEOUT)          # file names need not be UTF-8
     try:
-        return int(out.stdout.split()[0])                 # a file that vanished mid-walk still gives a total
+        if out.returncode == 0:                           # a partial total would show as false growth tomorrow
+            return int(out.stdout.split()[0])
     except (IndexError, ValueError):
-        raise OSError(f"du {path}: {out.stderr.strip()[:200] or f'exit {out.returncode}'}") from None
+        pass
+    raise OSError(f"du {path}: {out.stderr.strip()[:200] or f'exit {out.returncode}'}")
 
 
 def measure_areas() -> tuple[dict[str, int | None], list[str]]:
@@ -55,10 +58,13 @@ def measure_areas() -> tuple[dict[str, int | None], list[str]]:
 
 def valid(entry: object) -> bool:
     """A whole row: a date, used and total bytes, and each area's bytes (or None)."""
-    try:
-        datetime.date.fromisoformat(entry["date"])
-        return (isinstance(entry["used"], int) and isinstance(entry["total"], int) and entry["total"] > 0
-                and all(v is None or isinstance(v, int) for v in entry["sizes"].values()))
+    def size(v: object) -> bool:
+        return isinstance(v, int) and 0 <= v < MAX_BYTES
+
+    try:                                                  # dates sort as text: only the YYYY-MM-DD spelling
+        return (datetime.date.fromisoformat(entry["date"]).isoformat() == entry["date"]
+                and size(entry["used"]) and size(entry["total"]) and entry["total"] > 0
+                and all(v is None or size(v) for v in entry["sizes"].values()))
     except (TypeError, KeyError, ValueError, AttributeError):
         return False
 
@@ -69,8 +75,8 @@ def load(path: Path | None = None) -> list[dict]:
     path = path or HISTORY                                # looked up at call time (tests point it elsewhere)
     if not path.exists() and not path.is_symlink():
         return []
-    if path.is_symlink() or not path.is_file():
-        raise OSError(f"{path} isn't a regular file")
+    if path.parent.is_symlink() or path.is_symlink() or not path.is_file():
+        raise OSError(f"{path} isn't a regular file in a real folder")
     entries = []
     for line in path.read_text(errors="replace").splitlines():
         try:

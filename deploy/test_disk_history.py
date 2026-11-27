@@ -40,7 +40,10 @@ class History(unittest.TestCase):
             dh.save([entry(MON, 20, sandbox=1)], path)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             with path.open("ab") as f:                                      # GPT review: whole rows, any bytes
-                f.write(b'{not json\n{"date": "never"}\n{"date": "2026-11-22", "sizes": {}}\n\xff\xfe\n')
+                f.write(b'{not json\n{"date": "never"}\n{"date": "2026-11-22", "sizes": {}}\n\xff\xfe\n'
+                        b'{"date": "20261122", "used": 1, "total": 2, "sizes": {}}\n'          # sorts after today
+                        b'{"date": "2026-11-21", "used": 1e400, "total": 2, "sizes": {}}\n'
+                        b'{"date": "2026-11-21", "used": 99999999999999999999999, "total": 2, "sizes": {}}\n')
             self.assertEqual(dh.load(path), [entry(MON, 20, sandbox=1)])
             self.assertEqual(dh.load(Path(d) / "missing"), [])
 
@@ -53,6 +56,11 @@ class History(unittest.TestCase):
             path.symlink_to(victim)
             with self.assertRaises(OSError):
                 dh.load(path)
+            (Path(d) / "real").mkdir()
+            (Path(d) / "real" / "h.jsonl").write_text("")
+            (Path(d) / "via").symlink_to(Path(d) / "real")
+            with self.assertRaises(OSError):
+                dh.load(Path(d) / "via" / "h.jsonl")                        # a linked state folder too
             (Path(d) / "elsewhere").mkdir()
             (Path(d) / "linked").symlink_to(Path(d) / "elsewhere")
             with self.assertRaises(OSError):
@@ -110,14 +118,18 @@ class Measure(unittest.TestCase):
             self.assertEqual(cmd[:3], ["du", "-sx", "--block-size=1"])      # one total, one filesystem
             if cmd[-1].endswith("sandbox"):
                 raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+            self.assertEqual(kw["errors"], "replace")                       # any file name in stderr
             if cmd[-1] == "/usr":
                 return mock.Mock(stdout="", stderr="du: broken", returncode=1)
+            if cmd[-1] == "/var/log":                                       # a partial total is no figure
+                return mock.Mock(stdout=f"{GB}\t/var/log\n", stderr="du: vanished", returncode=1)
             return mock.Mock(stdout=f"{GB}\t{cmd[-1]}\n", returncode=0)
         with mock.patch.object(dh.subprocess, "run", side_effect=run), \
                 mock.patch.object(Path, "exists", return_value=True):
             sizes, failed = dh.measure_areas()
         self.assertEqual((sizes["sandbox"], sizes["system"], sizes["Docker images"]), (None, None, 2 * GB))
-        self.assertEqual(failed, ["sandbox (timed out)", "system (du /usr: du: broken)"])
+        self.assertEqual(failed, ["sandbox (timed out)", "system (du /usr: du: broken)",
+                                  "logs (du /var/log: du: vanished)"])
 
     def test_record_saves_today_and_reports_problems_without_raising(self):
         with tempfile.TemporaryDirectory() as d, mock.patch("builtins.print"), \
