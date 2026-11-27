@@ -217,6 +217,22 @@ class Checks(Flow):
         row = self.row()
         self.assertEqual((row["gh_code"], row["gh_says"]), ("", console_github.SAYS["timeout"]))
 
+    def test_a_stalled_private_chat_never_holds_up_pm(self):
+        """GPT re-check: the code's private-chat copy was awaited inside @pm's to-device callback."""
+        async def stalled(person):
+            await asyncio.sleep(3600)
+        self.start()
+        self.click()
+        self.lp.private_room = stalled
+        ask = self.lp._gh_signins["cx-agent"]["id"]
+
+        async def answer():
+            event = ToDeviceEvent.parse_event({"sender": CXA, "type": github_login.ANSWER_TYPE,
+                                               "content": {"id": ask, "code": "WDJB-MJHT"}})
+            await asyncio.wait_for(self.lp.on_kind_report(event), 1)   # returns at once, the chat copy runs apart
+        asyncio.run(answer())
+        self.assertEqual(self.row()["gh_code"], "WDJB-MJHT")      # the panel shows it anyway
+
     def test_a_code_after_it_said_no_answer_is_never_shown(self):
         """GPT review: a late code started a fresh window and went to the owner's chat."""
         self.start()

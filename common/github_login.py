@@ -34,7 +34,8 @@ STATES = ("signed_in", "none", "no_gh")
 HELP_S = 30                                   # `gh auth login --help`, and gh's exit after the sign-in
 PROBE_S = 15                                  # the agent's check that its saved token still works
 CODE_WAIT_S = 60                              # gh prints its code at once; nothing by then: it failed
-PM_CODE_WAIT_S = PROBE_S + HELP_S + CODE_WAIT_S + 2 * kind_report.SEND_TIMEOUT_S
+STARTUP_REPORTS = 3                           # a click taken at the agent's start waits behind its reports
+PM_CODE_WAIT_S = PROBE_S + HELP_S + CODE_WAIT_S + (2 + STARTUP_REPORTS) * kind_report.SEND_TIMEOUT_S
 
 
 def folder(agent: str) -> Path:

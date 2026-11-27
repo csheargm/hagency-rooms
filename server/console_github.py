@@ -45,6 +45,7 @@ SAYS = {
 }
 DM = ("To sign your agent {agent} in to GitHub, open {url} and enter the code **{code}** (it works for 15 minutes). "
       "Sign in there with the GitHub account {agent} should use. Enter it only if you clicked Sign in to GitHub yourself.")
+DM_SEND_S = 30                        # the private-chat copy of the code: slower, and the panel alone shows it
 log = logging.getLogger("loop")
 
 
@@ -155,7 +156,9 @@ async def answered(loop, agent: str | None, content: object) -> bool:
         if (set(content) == {"id", "code"} and click["code"] is None and not late and isinstance(code, str)
                 and github_login.USER_CODE_RE.fullmatch(code)):
             click["code"], click["code_at"] = code, time.time()
-            await tell_owner(loop, click["owner"], agent, code)
+            job = asyncio.create_task(tell_owner(loop, click["owner"], agent, code))   # never holds up @pm's sync
+            getattr(loop, "busy", set()).add(job)
+            job.add_done_callback(getattr(loop, "busy", set()).discard)
             return True
         return False
     result = content.get("result")
@@ -169,10 +172,11 @@ async def answered(loop, agent: str | None, content: object) -> bool:
 async def tell_owner(loop, owner: str, agent: str, code: str) -> None:
     """The code in the owner's private chat with @pm too: a phone may not have the panel open."""
     try:
-        dm = await loop.private_room(owner)
-        if dm:
-            await loop.say(dm, DM.format(agent=agent, url=github_login.DEVICE_PAGE, code=code))
-            return
+        async with asyncio.timeout(DM_SEND_S):
+            dm = await loop.private_room(owner)
+            if dm:
+                await loop.say(dm, DM.format(agent=agent, url=github_login.DEVICE_PAGE, code=code))
+                return
         log.warning("no private chat with %s for the GitHub code", owner)   # the panel still shows it
-    except (RuntimeError, OSError, ClientError) as e:   # Matrix refused it: the panel still shows the code
+    except (RuntimeError, OSError, ClientError, TimeoutError) as e:   # refused or slow: the panel still shows the code
         log.warning("couldn't send %s the GitHub code: %s", owner, e)
