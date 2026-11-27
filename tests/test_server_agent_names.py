@@ -23,7 +23,8 @@ def event(sender, body, mentions=None):
 class TheName(unittest.TestCase):
     def test_its_words_and_exact_id_match(self):
         for body in ("Server agent, what is a rebase?", "server agent: hi", "Trial agent, hi", "  Server agent (free, "
-                     "limited): hi", "hagency.trial-agent, hi", "@Server agent (free, limited), hi", "@Trial agent, hi"):
+                     "limited): hi", "hagency.trial-agent, hi", "@Server agent (free, limited), hi", "@Trial agent, hi",
+                     "hagency.trial-agent: hi", "@hagency.trial-agent:"):
             self.assertTrue(identity.SERVER_AGENT_NAME_RE.search(body), body)
 
     def test_a_real_persons_server_agent_or_trial_agent_never_matches(self):
@@ -43,6 +44,13 @@ class WhoItHears(unittest.TestCase):
         self.assertTrue(mine(event("@a:" + S, f"{SHARED} hi"), SHARED))
         self.assertFalse(mine(event("@a:" + S, f"{SHARED}.evil hi"), SHARED))
         self.assertFalse(mine(event("@a:" + S, "@hagency.trial-agent:elsewhere.test hi"), SHARED))
+        # GPT review of ff1e0ff: an explicit address wins over a lookalike pill elsewhere; only local lookalikes veto
+        lookalike = [f"@server-agent:{S}"]
+        self.assertTrue(mine(event("@a:" + S, f"{SHARED}, can you review this for Server agent?", lookalike), SHARED))
+        self.assertTrue(mine(event("@a:" + S, "hagency.trial-agent, hi", lookalike), SHARED))
+        self.assertTrue(mine(event("@a:" + S, "Server agent, hi", ["@server-agent:elsewhere.test"]), SHARED))
+        for body in ("hagency.trial-agent: hi", f"{SHARED}: hi"):   # a colon as the delimiter
+            self.assertTrue(mine(event("@a:" + S, body), SHARED), body)
 
 
 class PmLeavesItAlone(unittest.TestCase):
