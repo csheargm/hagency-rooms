@@ -94,7 +94,7 @@ class ChatLink(unittest.TestCase):
         got = self.run_page("refused_trial")             # the link panel_agents.openChat made, clicked
         self.assertEqual(got["nav"], "https://matrix.to/#/!trial%3Aexample")
         self.assertIn('<a href="https://matrix.to/#/!trial%3Aexample" target="_blank"', got["msg"])
-        self.assertIn("open the Trial agent chat</a>", got["msg"])
+        self.assertIn("open the Server agent chat</a>", got["msg"])
         self.assertNotIn("Product Manager", got["msg"])
 
 

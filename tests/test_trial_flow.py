@@ -68,23 +68,23 @@ class TrialFlow(TrialBase):
     def test_visitor_joins_is_offered_accepts_and_the_trial_agent_answers(self):
         self.join_welcome()
         offer = said_to(self, "!dm")[0]
-        self.assertIn("Try the trial agent", offer)
+        self.assertIn("try the server agent", offer)
         self.assertEqual([b[2] for b in self.buttons], ["🔌", "🧪"])
         self.run_(self.lp.on_welcome_reaction(DM, reaction(NEW, "🧪")))
         ready = said_to(self, "!dm")[-1]
-        self.assertTrue(ready.startswith("🧪 Your trial agent is ready"), ready)
+        self.assertTrue(ready.startswith("🧪 Your server agent is ready"), ready)
         self.assertIn("Ollama Cloud", ready)
         self.assertEqual(self.trial_client.room_create.call_args.kwargs["invite"], [NEW])
         # They accept its invite and write to it.
         self.trial_client.rooms["!trialdm"] = SimpleNamespace(room_id="!trialdm", users={ME: None, NEW: None}, invited_users={})
         msg = SimpleNamespace(sender=NEW, body="What is a pull request?", source={"content": {}}, server_timestamp=NOW_MS, event_id="$q")
         self.run_(hear(self.lp.trial, self.trial_client.rooms["!trialdm"], msg))
-        self.assertEqual(self.trial_posts[-1], ("!trialdm", "A pull request is a proposed change.\n\n— Trial agent · glm-5.3"))
+        self.assertEqual(self.trial_posts[-1], ("!trialdm", "A pull request is a proposed change.\n\n— Server agent · glm-5.3"))
 
     def test_typing_it_in_our_chat_works_too(self):
         self.join_welcome()
         self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, "try the trial agent"))))
-        self.assertTrue(said_to(self, "!dm")[-1].startswith("🧪 Your trial agent is ready"))
+        self.assertTrue(said_to(self, "!dm")[-1].startswith("🧪 Your server agent is ready"))
 
     def test_cap_reached_says_when_it_resets_and_how_to_bring_their_own(self):
         self.join_welcome()
@@ -99,19 +99,26 @@ class TrialFlow(TrialBase):
         self.assertIn("bring my own", last)
         self.assertEqual(len(self.asked), 2)
 
-    def test_someone_with_their_own_connected_agent_isnt_offered_it(self):
+    def test_someone_with_their_own_connected_agent_is_offered_it_too(self):
+        """Owner, 2026-11-27: the server agent is for everyone (more: test_server_agent_everyone)."""
         path = Path(tempfile.mkdtemp()) / "agents.json"
         path.write_text(json.dumps({NEW: {"agent": "remote"}}))
         with mock.patch.object(registry, "PATH", path):
             self.lp._seen = {registry.agent_of(NEW): {"online": True, "ever": True}}
-            self.assertFalse(self.lp.trial_eligible(NEW))
-            self.assertIsNone(self.lp.trial_view(NEW))
+            self.assertTrue(self.lp.trial_eligible(NEW))
+            self.assertIsNotNone(self.lp.trial_view(NEW))
             said = self.run_(self.lp.start_trial("!dm", NEW))
-        self.assertEqual(said, pm_trial.ALREADY_OWN)
-        self.trial_client.room_create.assert_not_awaited()
+        self.assertTrue(said.startswith("🧪 Your server agent is ready"), said)
+        self.trial_client.room_create.assert_awaited_once()
+
+    def test_agents_bots_and_pm_are_never_offered_it(self):
+        for who in (f"@newbie1-agent:{S}", f"@admin-bot:{S}", PM):
+            self.assertFalse(self.lp.trial_eligible(who))
+            self.assertIsNone(self.lp.trial_view(who))
+            self.assertEqual(self.run_(self.lp.start_trial("!dm", who)), pm_trial.NOT_FOR_YOU)
 
     def test_the_panel_card_and_its_button(self):
-        self.assertEqual(self.lp.trial_view(NEW), {"on": False, "left": 2, "per_day": 2, "model": "glm-5.3",
+        self.assertEqual(self.lp.trial_view(NEW), {"on": False, "used": 0, "per_day": 2, "tier": "free", "model": "glm-5.3",
                                                        "models": trial_models.names()})
         self.assertEqual(self.run_(self.lp.trial_action(NEW))["result"], "ok")   # with its chat: test_trial_open_chat
         self.assertTrue(self.lp.trial_view(NEW)["on"])

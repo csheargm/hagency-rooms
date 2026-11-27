@@ -1,4 +1,4 @@
-"""The Trial agent card's "Open its chat again" opens the trial chat (GPT whole-batch review: it said "Done" and left
+"""The Trial agent card's "Open its chat" opens the trial chat (GPT whole-batch review: it said "Done" and left
 the visitor where they were): @pm returns the chat's room, and the panel shows its link, opened at once inside Element.
 Run: .venv/bin/python -m unittest tests.test_trial_open_chat"""
 import json
@@ -48,7 +48,7 @@ class PanelOpensIt(unittest.TestCase):
         got = self.run_js("true")
         self.assertIn('href="https://matrix.to/#/!trial%3Aexample"', got["html"])
         self.assertIn("data-pmchat", got["html"])                    # panel.html's navigate handler opens it
-        self.assertIn("Open the Trial agent chat", got["html"])
+        self.assertIn("Open the Server agent chat", got["html"])
         self.assertEqual(got["clicked"], 1)
 
     def test_in_a_browser_tab_it_is_a_link_to_click(self):

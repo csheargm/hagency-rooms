@@ -238,7 +238,8 @@ class Buttons(Base):
 
     def test_the_offer_never_promises_the_server_agent(self):
         """Screen test: the offer listed a 🏠 House agent "with free daily credit", and typing "house
-        agent" said it isn't here yet. Not offered until it exists; typing it still gets an answer."""
+        agent" said it isn't here yet. With no server agent set up (trial off) it isn't offered; typing it still
+        gets an answer (with one: test_server_agent_everyone)."""
         self.run_(self.lp.greet(NEW))
         offer = self.said[0][1]
         self.assertNotIn("🏠", offer)
@@ -246,7 +247,7 @@ class Buttons(Base):
         self.assertNotIn("server agent", offer.lower())
         self.assertNotIn("🏠", [b[2] for b in self.buttons])
         self.run_(self.lp.on_welcome_text(DM, text(NEW, "server agent please")))
-        self.assertIn("isn't here yet", self.said[-1][1])
+        self.assertIn("doesn't run a server agent", self.said[-1][1])
 
     def test_bring_my_own_wins_over_a_mention_of_a_server_agent(self):
         """GPT review: "bring my own ... on my server agent box" is a choice to bring one, not a question."""

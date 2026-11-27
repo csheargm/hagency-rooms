@@ -17,14 +17,15 @@ from common import agent_kinds
 from common import pm_kinds
 from common import registry
 from server import remote_agent
+from server import trial_limits
 from server.pm_trial import TRIAL, TrialOffer
 from common.redact import room_safe
 from common.setup_accounts import AccountError
 
 log = logging.getLogger("loop")
-HOUSE, BRING = "🏠", "🔌"   # 🏠: only on old offers (the server agent, not built yet)
+HOUSE, BRING = "🏠", "🔌"   # 🏠: only on old offers; now the server agent while it is set up (pm_trial.py)
 USING_RE = re.compile(r"\bbring (my|your) own\b(\s+agent)?\s+(using|with|running)\s+(?P<how>.+?)\W*$", re.I)
-SERVER_REPLY = ("A server agent, one that runs on this server for you, isn't here yet. For now you can bring "
+SERVER_REPLY = ("This server doesn't run a server agent. You can bring "
                 f"your own: type \"bring my own\" ({agent_kinds.IN_WORDS} on your computer).")
 # Under the first agent's Connect message until it connects (pm_agents.send_code).
 CHOOSE_HINT = ("\n\n{now} For another AI, type for example \"bring my own using hermes\", \"... using ollama "
@@ -52,11 +53,11 @@ class FirstAgent(TrialOffer):   # pm_trial.py: 🧪, the shared trial agent (ADR
         """🔌 (or "bring my own"): set up their first agent and send its Connect message; picked: the AI
         it runs (pm_kinds.choice; {}: the one found on their computer), only while it has never
         connected; None: keep what it has."""
+        if key == TRIAL or key == HOUSE and trial_limits.enabled():   # 🏠 / "server agent": it exists now (pm_trial.py)
+            await self.start_trial(dm, person)
+            return
         if key == HOUSE:
             await self.say(dm, SERVER_REPLY)
-            return
-        if key == TRIAL:
-            await self.start_trial(dm, person)
             return
         busy = self.__dict__.setdefault("_provisioning", set())
         if person in busy or not self.may_have_agent(person):

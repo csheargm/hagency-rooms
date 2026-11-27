@@ -1,11 +1,14 @@
-"""The trial agent (ADR 0025): ONE shared account this server runs, @hagency.trial-agent, labelled
-"Trial agent (shared, limited)", for visitors who have no agent of their own yet. Talk only
-(trial_turn.py answers; trial_model.py is the model): no code is run, no tools, no GitHub writes.
+"""The server agent (ADR 0025; code names keep "trial"): ONE shared account this server runs,
+@hagency.trial-agent, labelled "Server agent (free, limited)", for anyone signed in here (people from
+other servers too, with a smaller allowance), whether or not they have an agent of their own. Talk
+only (trial_turn.py answers; trial_model.py is the model): no code is run, no tools, no GitHub writes.
 
-Who it talks to: only visitors who chose it (🧪 in their chat with @pm, "try the trial agent", or the
-panel: pm_trial.py), recorded in data/trial.json, and only in rooms such a visitor brought it into
-(its own private chat with them, or a room they invited it to: data/trial-rooms.json). When the last
-visitor who brought it leaves a room, it leaves too. It ignores every agent, bot and @pm.
+Who it talks to: only people who chose it (🧪 in their chat with @pm, "try the server agent", or the
+panel: pm_trial.py), recorded in data/trial.json, and only in rooms such a person brought it into
+(its own private chat with them, or a room they invited it to: data/trial-rooms.json); outside its
+private chat only when mentioned by name, so it never competes with anyone's own agent there. When
+the last person who brought it leaves a room, it leaves too. It ignores every agent, bot and @pm.
+Each person's tier (trial_tiers.py, default FREE) sets their daily limits.
 
 Never part of the loop: it is in nobody's agents.json line, so ownership.agents_in never lists it, so
 @pm never picks it to build, review or merge, and never takes a result from it. Its name has a "."
@@ -13,7 +16,7 @@ that no person's agent name can have (identity.py), and ends in "-agent" so ever
 @pm, already ignore what it says (and it posts notices, which agents don't read either).
 
 It runs inside @pm's process with its own Matrix sign-in; started only when OLLAMA_API_KEY is set.
-Messages sent while @pm restarts are not answered (it starts from "now"; it is a trial).
+Messages sent while @pm restarts are not answered (it starts from "now").
 """
 import asyncio
 import logging
@@ -32,12 +35,13 @@ from common.saved_dict import SavedDict
 from server import trial_budget
 from server import trial_limits
 from server import trial_models
+from server import trial_tiers
 from server.trial_turn import Turns
 
 log = logging.getLogger("trial")
 LOCALPART = "hagency.trial-agent"     # "." : never <name>-agent, <name>-<label>-agent or a hashed one (identity.py)
-DISPLAY_NAME = "Trial agent (shared, limited)"
-CHAT_NAME = "Trial agent"
+DISPLAY_NAME = "Server agent (free, limited)"
+CHAT_NAME = "Server agent"
 INVITE_ONLY_ME = 100                  # only the trial agent adds people to its private chats
 FRESH_CHAT_S = 600                    # a chat made this recently counts as theirs before sync shows it
 HISTORY = {"type": "m.room.history_visibility", "state_key": "", "content": {"history_visibility": "invited"}}
@@ -48,11 +52,12 @@ def user_id() -> str:
 
 
 def hello(per_day: int) -> str:
-    return (f"Hi! I'm the {DISPLAY_NAME}: an AI this server runs so you can try Hagency Rooms before bringing your own. "
+    return (f"Hi! I'm the {DISPLAY_NAME}: an AI this server runs for everyone here, free and limited. "
             "I can only talk: ask me questions, discuss an idea or a plan, or have me read a pull request. I can't "
             "run code, use tools, open issues, build or merge, and what I say about a PR is never an approval.\n\n"
-            "Here, just write. In a project room, invite me (Room info → Invite) and mention me, for example "
-            f"\"Trial agent, what does PR #3 change?\". You have {per_day} messages a day (they reset at 00:00 UTC). "
+            "Here, just write. In a project room, invite me (Room info → Invite) and mention me by name, for example "
+            "\"Server agent, what does PR #3 change?\" (there I only answer when named, so I never get in your own "
+            f"agent's way). You have {per_day} messages a day (they reset at 00:00 UTC). "
             f"I run {trial_models.default()}; to pick another, type \"use <model>\" in your chat with Product Manager "
             f"({', '.join(trial_models.names())}), or choose it in My Hagency. "
             "What you write to me goes to Ollama Cloud to be answered (see the privacy page), so never send secrets.\n\n"
@@ -66,7 +71,8 @@ class TrialAgent(Turns):
         self.client, self.eligible, self.started_ms = client, eligible, int(time.time() * 1000)
         self.visitors = SavedDict(folder / "trial.json")          # visitor → {"dm", "since"}
         self.rooms = SavedDict(folder / "trial-rooms.json")      # room → [visitors who brought me there]
-        self.usage = usage or trial_limits.Usage(folder / "trial-usage.json")
+        self.usage = usage or trial_limits.Usage(folder / "trial-usage.json", tiers=trial_tiers.Tiers(folder / "trial-tiers.json"))
+        self.tiers = self.usage.tiers                              # person → tier (default FREE): their limits
         self.budget = budget or trial_budget.Budget(folder / "trial-budget.json")   # the plan's month: never into pay-as-you-go
         self.slot = asyncio.Semaphore(1)  # one model call at a time: the key's plan allows 3, shared with others
         self.ask_model = ask
@@ -106,7 +112,7 @@ class TrialAgent(Turns):
         async with self.enrolling.setdefault(visitor, asyncio.Lock()):
             dm = self.dm_of(visitor) or await self.open_chat(visitor)
             if dm and not (self.visitors.get(visitor) or {}).get("greeted"):   # a hello that failed is sent again
-                await self.post(dm, hello(trial_limits.number("TRIAL_PER_VISITOR")))
+                await self.post(dm, hello(self.usage.per_day(visitor)))
                 self.visitors[visitor] = {**self.visitors[visitor], "greeted": True}
             return dm
 

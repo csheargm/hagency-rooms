@@ -58,14 +58,14 @@ class Picking(TrialBase):
         self.assertEqual(said_to(self, "!dm")[-1], pm_trial.MODEL_SET.format(name="kimi-k3.1-pro"))
         self.ask_trial()
         self.assertEqual(self.models, ["kimi-k3.1-pro"])
-        self.assertTrue(self.trial_posts[-1][1].endswith("— Trial agent · kimi-k3.1-pro"))
+        self.assertTrue(self.trial_posts[-1][1].endswith("— Server agent · kimi-k3.1-pro"))
         self.assertEqual(self.lp.trial.budget.data["tokens"], 200)                # weighted: it counts double
         self.assertEqual(self.lp.trial_view(NEW)["model"], "kimi-k3.1-pro")      # the panel row shows it
 
     def test_a_name_off_the_list_is_refused(self):
         self.start()
         self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, "@pm use the model llama3-70b"))))
-        self.assertIn("isn't one of the trial agent's models", said_to(self, "!dm")[-1])
+        self.assertIn("isn't one of the server agent's models", said_to(self, "!dm")[-1])
         self.ask_trial()
         self.assertEqual(self.models, ["glm-5.3"])
 

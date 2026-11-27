@@ -236,16 +236,16 @@ class TabsInABrowser(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             out = chrome(page_file(TRIAL_VIEW, folder, TRIAL_FLOW), str(Path(folder) / "profile"))
         self.assertEqual((out["bar"], out["agents"], out["room"]), (False, True, False))   # one tab: no bar
-        self.assertEqual(out["h2"], ["My agents · 0", "Trial agent (shared, limited)", "GitHub"])
-        self.assertEqual(out["button"], "Try it")
-        self.assertEqual(out["sent"], [["/console/action", "trial", "start"]])      # Try it reaches @pm
+        self.assertEqual(out["h2"], ["My agents · 0", "Server agent (free, limited)", "GitHub"])
+        self.assertEqual(out["button"], "Start it")
+        self.assertEqual(out["sent"], [["/console/action", "trial", "start"]])      # Start it reaches @pm
 
     def test_a_running_trial_offers_its_chat_and_the_model_picker(self):
-        """GPT review: the running card too: "Open its chat again", and Use sends the model chosen."""
+        """GPT review: the running card too: "Open its chat", and Use sends the model chosen."""
         on = {**TRIAL_VIEW, "trial": {**TRIAL_VIEW["trial"], "on": True, "left": 7, "models": ["glm-5.3", "gpt-oss:120b"]}}
         with tempfile.TemporaryDirectory() as folder:
             out = chrome(page_file(on, folder, TRIAL_FLOW), str(Path(folder) / "profile"))
-        self.assertEqual(out["button"], "Open its chat again")
+        self.assertEqual(out["button"], "Open its chat")
         self.assertEqual(out["sent"], [["/console/action", "trial_model", "gpt-oss:120b"]])
 
 

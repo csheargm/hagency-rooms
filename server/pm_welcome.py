@@ -2,9 +2,9 @@
 created and owned by @pm: deploy/configure_synapse.py, local_signup.py). When a person without an
 agent joins it, @pm opens a private chat with them, once, and offers 🔌 (and 🧪 while the trial agent runs: pm_trial.py):
   🔌 Bring your own: an AI on their own computer (agent_kinds.IN_WORDS; remote_agent.py, connect.py).
-The server agent (one run by this server) isn't built yet, so it is not offered; anyone who types
-"server agent" (or its old name, "house agent") is told so (old offers still carry a 🏠 button: its
-click gets that answer too).
+🧪 is the server agent (pm_trial.py), offered to everyone; typing "server agent" (or its old name,
+"house agent") or 🏠 on an old offer starts it too, or, when this server runs none, is told so
+(pm_first.SERVER_REPLY).
 Only that person's click on that message counts, each button once. Typing "bring my own" in that
 chat works too, and "@pm I want an agent" anywhere offers it again. People from
 other servers (remote_people.py) start by opening a private chat with @pm, or with that sentence.

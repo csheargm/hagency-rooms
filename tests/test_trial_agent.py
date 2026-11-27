@@ -89,10 +89,10 @@ class Enrolling(Base):
     def test_enrolling_opens_a_private_labelled_chat_with_a_plain_hello(self):
         self.enrol()
         kw = self.client.room_create.call_args.kwargs
-        self.assertEqual((kw["is_direct"], kw["invite"], kw["name"]), (True, [NEW], "Trial agent"))
+        self.assertEqual((kw["is_direct"], kw["invite"], kw["name"]), (True, [NEW], "Server agent"))
         self.assertEqual(kw["power_level_override"], {"invite": 100})    # only it adds people
         hello = self.said()[0]
-        for words in ("shared, limited", "can only talk", "Ollama Cloud", "bring my own", "2 messages a day"):
+        for words in ("free, limited", "only answer when named", "can only talk", "Ollama Cloud", "bring my own", "2 messages a day"):
             self.assertIn(words, hello)
         self.assertEqual(self.posts[0][1]["msgtype"], "m.notice")        # agents don't read notices
         self.assertNotIn("formatted_body", self.posts[0][1])
@@ -108,7 +108,7 @@ class Answering(Base):
     def test_its_visitor_gets_an_answer_in_their_private_chat(self):
         self.enrol()
         self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "What's a good first issue?")))
-        self.assertEqual(self.said()[-1], "An answer.\n\n— Trial agent · glm-5.3")   # every reply names its model
+        self.assertEqual(self.said()[-1], "An answer.\n\n— Server agent · glm-5.3")   # every reply names its model
         self.assertEqual(self.asked[0][-1], {"role": "user", "content": "What's a good first issue?"})
 
     def test_it_never_answers_agents_bots_pm_itself_or_strangers(self):
@@ -163,7 +163,7 @@ class Answering(Base):
         self.eligible.discard(NEW)
         for _ in range(2):
             self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "hi")))
-        self.assertEqual(self.said()[1:], [trial_turn.HAS_OWN])
+        self.assertEqual(self.said()[1:], [trial_turn.NOT_FOR_YOU])
         self.assertEqual(self.asked, [])
 
 
@@ -176,7 +176,7 @@ class Capped(Base):
         self.assertEqual(len(self.asked), 2)
         capped = self.said()[3:]
         self.assertEqual(len(capped), 1)                                   # then quiet until the reset
-        for words in ("today's 2 trial messages", "00:00 UTC", "bring my own"):
+        for words in ("today's 2 free messages", "00:00 UTC", "bring my own"):
             self.assertIn(words, capped[0])
 
     def test_the_server_cap(self):
@@ -188,7 +188,7 @@ class Capped(Base):
             self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "one")))
             self.run_(hear(self.agent, self.client.rooms["!dm2"], message(OTHER, "two")))
         self.assertEqual(len(self.asked), 1)
-        self.assertIn("all of this server's trial messages", self.said()[-1])
+        self.assertIn("all of this server's free messages", self.said()[-1])
 
     def test_counts_are_kept_on_disk(self):
         self.enrol()
