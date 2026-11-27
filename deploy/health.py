@@ -81,6 +81,10 @@ def checks(rooms: str, matrix: str, console: str, domain: str, server: str, publ
             ("Element links Hagency's style fixes",
              lambda: 'href="/hagency/element-fixes.css"' in fetch(f"{rooms}/")[1]
              and ".mx_SSOButton_mini" in fetch(f"{rooms}/hagency/element-fixes.css")[1]),
+            ("Element loads the Hagency panel button (ADR 0026)",
+             lambda: 'src="/hagency/panel-dock.js"' in fetch(f"{rooms}/")[1]
+             and (r := fetch(f"{rooms}/hagency/panel-dock.js"))[0] == 200 and "moveToContainer" in r[1]
+             and "__PM_ID__" not in r[1]),                     # filled in (element_home.dock_script)
             ("the privacy policy served at /privacy", lambda: (r := fetch(f"{rooms}/privacy"))[0] == 200 and "<h1>Privacy</h1>" in r[1]),
         ]
     return items
