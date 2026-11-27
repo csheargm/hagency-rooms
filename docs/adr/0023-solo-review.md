@@ -121,5 +121,11 @@ anyone can switch it off at once; the GitHub consent stays tied to the room's re
   (`pm_solo_code.record_on`; an off is never written as on). An agent whose reported code predates solo review
   itself (`code_report.TASK_SINCE["solo_step"]`) gets no solo check or admin merge: the room is told it needs
   an update first, it is asked to update through the auto-update scheduler, and `@pm retry #N` goes on.
+  Accepted (GPT whole-batch review): the gate compares the reported commit's *time*, so a fork commit made
+  after `TASK_SINCE` on top of older code passes it. Gating on ancestry would not close this: the report is
+  the agent's own (a fork can report any commit and time), so it is a compatibility guard for honest older
+  official code, never a boundary against the owner's own code. The worst case is the owner's own fork, with
+  two of the owner's own GitHub accounts, posting a real approval instead of a comment: an approval by the
+  owner's own account, on a PR in a room where the owner consented to solo review.
 - Readiness ("Check readiness"), the panel's Mode card and the pinned status read the same state, so a room
   that never set it shows solo review on; the readiness check counts a bypass only for the repo it checks.
