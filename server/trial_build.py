@@ -69,6 +69,7 @@ class Deps:
     ask_review: object = None
     clock: object = time.monotonic
     pool_seen: tuple | None = None        # (when, the pool's status for the heartbeat): trial_worker.pool_status
+    last_caps: dict | None = None         # the last full heartbeat, beaten again during a build
 
 
 def pick(issues: list[dict], job_id: str) -> dict:
@@ -224,13 +225,17 @@ async def finish_pr(d: Deps, token: str, repo: str, number: int, review: str) ->
 
 async def read_repo(d: Deps, job_id: str, github_id: int) -> tuple[str, tuple, dict, dict]:
     repo = await d.pool.lease(d.gh, github_id)
-    token = await d.gh.token(repo)
     try:
-        base = await d.gh.base(token, repo)
-        issue = pick(await d.gh.seeded_issues(token, repo), job_id)
-        pristine = await d.gh.tarball(token, repo, base[1])
-    finally:
-        await d.gh.revoke(token)
+        token = await d.gh.token(repo)
+        try:
+            base = await d.gh.base(token, repo)
+            issue = pick(await d.gh.seeded_issues(token, repo), job_id)
+            pristine = await d.gh.tarball(token, repo, base[1])
+        finally:
+            await d.gh.revoke(token)
+    except trial_github.github.GitHubError:
+        d.pool.release(repo)                      # a repo GitHub refuses isn't theirs to keep: the next try
+        raise                                     # leases another (GPT review)
     return repo, base, issue, pristine
 
 

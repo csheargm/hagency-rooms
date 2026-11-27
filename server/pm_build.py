@@ -138,15 +138,18 @@ class BuildOffer:
         return None
 
     def queue_build(self, room_id: str, person: str, link: dict, caps: dict) -> str:
-        state, _, n = self.build_jobs().enqueue(person, link["id"], room_id, int(caps["TRIAL_BUILD_QUEUE"]))
+        usage = self.build_usage()
+        state, said, n = self.build_jobs().enqueue(person, link["id"], room_id, int(caps["TRIAL_BUILD_QUEUE"]),
+                                                   admit=lambda now: self.unavailable(now, link), charge=lambda: usage.take(link["id"]))
+        if state == trial_jobs.REFUSED:              # paused, or no repo, by the latest heartbeat (GPT review)
+            return said
         if state == trial_jobs.OFF:                  # the worker stopped while the gate was checked (GPT review)
             return OFF
         if state == trial_jobs.BUSY:
             return BUSY.format(n=caps["TRIAL_BUILD_QUEUE"])
         if state == trial_jobs.ALREADY:
             return ALREADY.format(where="running now" if n == 0 else f"queued (#{n})")
-        self.build_usage().take(link["id"])          # counted once queued; given back if the server fails it
-        return QUEUED.format(n=n)
+        return QUEUED.format(n=n)                     # counted as queued (charge); given back if the server fails it
 
     async def on_build_text(self, room, event) -> bool:
         """"try a build" in our private chat (the caller checked it is): True when answered."""
@@ -187,17 +190,22 @@ class BuildOffer:
             link = github_link.link_of(job.get("visitor") or "")
             allowance = self.build_allowance(job.get("visitor") or "")
             left = trial_gate.left_today(self.build_usage(), link["id"] if link else job.get("github_id"), allowance)
-            refund = event == trial_jobs.FAILED and (job.get("outcome") or {}).get("why") in trial_build.REFUNDED
+            if event == trial_jobs.FAILED and (job.get("outcome") or {}).get("why") in trial_build.REFUNDED:
+                self.refund(jobs, job_id, job)       # the server's failure, not theirs: given back, once, first
+                left = trial_gate.left_today(self.build_usage(), link["id"] if link else job.get("github_id"), allowance)
             try:
-                await self.say(job["dm"], news_words(job, event, left + refund))
+                await self.say(job["dm"], news_words(job, event, left))
             except RuntimeError as e:    # Matrix refused: said again next round (the job keeps it unsaid)
                 log.error("trial build %s news to %s: %s", job_id, job.get("dm"), room_safe(e))
                 continue
-            if refund and job.get("github_id") is not None:   # the server's failure, not theirs: given back, once
-                self.build_usage().give_back(int(job["github_id"]))
             jobs.told(job_id, event)
             said += 1
         return said
+
+    def refund(self, jobs: trial_jobs.Jobs, job_id: str, job: dict) -> None:
+        """Give the build back on the day it was charged (marked on the job first: never twice)."""
+        if (day := jobs.mark_refunded(job_id)) and job.get("github_id") is not None:
+            self.build_usage().give_back(int(job["github_id"]), day)
 
     async def relay_builds(self) -> None:
         while True:

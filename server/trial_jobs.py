@@ -20,7 +20,7 @@ from pathlib import Path
 QUEUED, RUNNING, DONE, FAILED = "queued", "running", "done", "failed"
 HEARTBEAT_S = 90                     # older: the worker is down (or off), and builds aren't offered
 KEEP_S = 7 * 24 * 3600               # finished jobs are kept this long (the visitor's history)
-BUSY, ALREADY, OFF = "busy", "already", "off"
+BUSY, ALREADY, OFF, REFUSED = "busy", "already", "off", "refused"
 
 
 class Jobs:
@@ -71,12 +71,18 @@ class Jobs:
         ahead = any(v.get("state") == RUNNING for v in jobs.values())
         return Jobs._queued(jobs).index(job_id) + 1 + ahead
 
-    def enqueue(self, visitor: str, github_id: int, dm: str, limit: int) -> tuple[str, str | None, int]:
-        """(QUEUED | ALREADY | BUSY | OFF, job id, position): one job at a time per visitor; at most `limit`
-        waiting; OFF when the worker's heartbeat went meanwhile (checked under the lock shut() takes)."""
+    def enqueue(self, visitor: str, github_id: int, dm: str, limit: int, admit=None,
+                charge=None) -> tuple[str, str | None, int]:
+        """(QUEUED | ALREADY | BUSY | OFF | REFUSED, job id or REFUSED's reason, position): one job at a time per
+        visitor; at most `limit` waiting. All under the lock the worker's shut() takes, against the latest
+        heartbeat: OFF when it went; `admit(caps)` → a reason refuses (paused, no repo); `charge()` → what it
+        was charged as (kept with the job, so a refund is exact), only for a job really queued (GPT review)."""
         with self._locked() as jobs:
-            if self.alive() is None:
+            caps = self.alive()
+            if caps is None:
                 return OFF, None, 0
+            if admit is not None and (why := admit(caps)):
+                return REFUSED, why, 0
             mine = next((j for j, v in jobs.items() if v.get("visitor") == visitor and v.get("state") in (QUEUED, RUNNING)), None)
             if mine:
                 return ALREADY, mine, 0 if jobs[mine]["state"] == RUNNING else self._position(jobs, mine)
@@ -84,7 +90,7 @@ class Jobs:
                 return BUSY, None, 0
             job_id = secrets.token_hex(4)
             jobs[job_id] = {"visitor": visitor, "github_id": github_id, "dm": dm, "state": QUEUED,
-                            "created": self.clock(), "told": [QUEUED]}
+                            "created": self.clock(), "told": [QUEUED], "charged": charge() if charge else None}
             return QUEUED, job_id, self._position(jobs, job_id)
 
     def claim(self) -> tuple[str, dict] | None:
@@ -123,6 +129,15 @@ class Jobs:
             if job.get("state") in (DONE, FAILED) and job["state"] not in told:
                 out.append((job_id, job, job["state"]))
         return out
+
+    def mark_refunded(self, job_id: str) -> str | None:
+        """Once only: the day it was charged on, if it was charged and not refunded yet, else None."""
+        with self._locked() as jobs:
+            job = jobs.get(job_id) or {}
+            if not job.get("charged") or job.get("refunded"):
+                return None
+            job["refunded"] = True
+            return job["charged"]
 
     def told(self, job_id: str, event: str) -> None:
         with self._locked() as jobs:

@@ -96,9 +96,14 @@ def template() -> str:
     return env("TRIAL_E2B_TEMPLATE", DEFAULT_TEMPLATE)
 
 
+# Defaults an older trial.env.example spelled out: they read the repo's pytest config, so they mean today's default
+LEGACY_TEST_CMDS = {"python -m pytest -q", "python -P -m pytest -q -p no:cacheprovider -o pythonpath=."}
+
+
 def test_command() -> str:
-    """The template's fixed test command: never one taken from the repo (ADR 0027)."""
-    return env("TRIAL_TEST_CMD", DEFAULT_TEST_CMD)
+    """The template's fixed test command: never one taken from the repo (ADR 0027); an old default is upgraded."""
+    cmd = env("TRIAL_TEST_CMD", DEFAULT_TEST_CMD)
+    return DEFAULT_TEST_CMD if cmd in LEGACY_TEST_CMDS else cmd
 
 
 def demo_users() -> list[str]:

@@ -85,23 +85,27 @@ class Usage:
             d, key = self._today(), str(github_id)
             return int(d["today"].get(key, 0)), int(d["total"].get(key, 0)), int(d.get("server", 0))
 
-    def give_back(self, github_id: int) -> None:
-        """A build the server failed (trial_build.REFUNDED) doesn't count, today or ever."""
+    def give_back(self, github_id: int, charged_on: str) -> None:
+        """A build the server failed (trial_build.REFUNDED) doesn't count: always against the total, and against
+        the day only if it was charged today (a refund never lowers a later day's count)."""
         with self.lock:
             d, key = self._today(), str(github_id)
-            for where in (d["today"], d["total"]):
+            for where in (d["total"], *((d["today"],) if charged_on == d["day"] else ())):
                 if int(where.get(key, 0)) > 0:
                     where[key] = int(where[key]) - 1
-            d["server"] = max(0, int(d.get("server", 0)) - 1)
+            if charged_on == d["day"]:
+                d["server"] = max(0, int(d.get("server", 0)) - 1)
             self._save(d)
 
-    def take(self, github_id: int) -> None:
+    def take(self, github_id: int) -> str:
+        """Count one build; the day it was counted on (kept with the job, for an exact refund)."""
         with self.lock:
             d, key = self._today(), str(github_id)
             d["today"][key] = int(d["today"].get(key, 0)) + 1
             d["total"][key] = int(d["total"].get(key, 0)) + 1
             d["server"] = int(d.get("server", 0)) + 1
             self._save(d)
+            return d["day"]
 
     def _save(self, d: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

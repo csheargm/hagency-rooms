@@ -114,6 +114,12 @@ class Pool:
         finally:
             await gh.revoke(token)
 
+    def release(self, repo: str) -> None:
+        """Their lease ends now (the repo failed them); a later lease recycles it as usual."""
+        e = self.entry(repo)
+        if e.get("github_id") is not None:
+            self.state[repo] = {**e, "since": 0.0}
+
     def opened(self, repo: str, number: int) -> None:
         e = self.entry(repo)
         self.state[repo] = {**e, "prs": [*(e.get("prs") or []), number]}

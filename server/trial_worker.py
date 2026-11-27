@@ -39,14 +39,15 @@ def day_start(now: float) -> float:
     return t.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
 
-async def beating(jobs: trial_jobs.Jobs) -> None:
+async def beating(d: trial_build.Deps) -> None:
+    """During a build: the last full heartbeat (paused, pool) again, never a bare one (GPT review)."""
     while True:
-        jobs.beat(config.caps())
+        d.jobs.beat(d.last_caps or config.caps())
         await asyncio.sleep(BEAT_S)
 
 
 async def run_one(d: trial_build.Deps, job_id: str, job: dict) -> str:
-    beat = asyncio.create_task(beating(d.jobs))     # a long build keeps the offer (and the queue) alive
+    beat = asyncio.create_task(beating(d))     # a long build keeps the offer (and the queue) alive
     try:
         state, outcome = await trial_build.build(d, job_id, job)
     except Exception as e:   # noqa: BLE001 — a bug must fail this one build plainly, never stop the worker
@@ -86,7 +87,8 @@ async def tick(d: trial_build.Deps) -> str | None:
     """One round: heartbeat (with why builds are paused, and the pool), reaper, tidy, and at most one build;
     the build's end state, if one ran. While paused nothing starts, and what waits is failed and given back."""
     stop = await paused(d)
-    d.jobs.beat({**config.caps(), "paused": stop, **(await pool_status(d))})
+    d.last_caps = {**config.caps(), "paused": stop, **(await pool_status(d))}
+    d.jobs.beat(d.last_caps)
     try:
         await d.sandboxes.reap()
     except Exception as e:   # noqa: BLE001 — E2B unreachable: retried next round, and E2B's own timeout
@@ -153,8 +155,12 @@ async def main() -> int:
                                if config.env("E2B_API_KEY") else None)
         return 0 if done else 1           # refused: non-zero, so Compose tries it again (GPT review)
     if gone := config.missing():
-        for job_id in jobs.shut("off"):       # nothing waits for a worker that won't come (independent review)
-            log.warning("trial build %s: builds are off (not configured)", job_id)
+        with jobs.one_worker() as alone:      # never under a live worker (GPT review): retried once it's gone
+            if not alone:
+                log.error("a trial-worker is still running: recreate it")
+                return 1
+            for job_id in jobs.shut("off"):   # nothing waits for a worker that won't come (independent review)
+                log.warning("trial build %s: builds are off (not configured)", job_id)
         log.info("trial builds are off (not configured: %s)", ", ".join(gone))
         return 0
     log.info("trial builds on: %d demo repo(s) in %s", len(config.repos()), config.org())

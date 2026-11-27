@@ -8,6 +8,7 @@ from unittest import mock
 from server import pm_build
 from server import trial_build
 from server import trial_build_config
+from server import trial_gate
 from server import trial_github as tg
 from server import trial_jobs
 from server import trial_patch
@@ -169,6 +170,74 @@ class Reviewer(BuildBase):
             with self.assertRaises(trial_build.trial_model.TrialLimited):
                 run(trial_build.review_ask(d)([{"role": "user", "content": "x"}]))
         pause.assert_called_once()
+
+
+class GPTOnTheFixes(BuildBase):
+    """The GPT review of these fixes: exact, single refunds; admission against the latest heartbeat; the
+    heartbeat kept during a build; a broken own lease released; old test commands upgraded."""
+    def jobs(self):
+        jobs = trial_jobs.Jobs(self.folder)
+        jobs.beat(kit.CAPS)
+        return jobs
+
+    def test_a_refund_is_once_and_only_for_a_charged_job(self):
+        jobs = self.jobs()
+        _, charged, _ = jobs.enqueue("@a:s", 1, "!a", 5, charge=lambda: "2026-11-27")
+        _, free, _ = jobs.enqueue("@b:s", 2, "!b", 5)
+        self.assertEqual(jobs.mark_refunded(charged), "2026-11-27")
+        self.assertIsNone(jobs.mark_refunded(charged))
+        self.assertIsNone(jobs.mark_refunded(free))
+
+    def test_a_refund_never_lowers_a_later_days_count(self):
+        now = [86400 * 100.0]
+        usage = trial_gate.Usage(self.folder / "u.json", clock=lambda: now[0])
+        day = usage.take(7)
+        now[0] += 86400
+        usage.take(7)
+        usage.give_back(7, day)
+        self.assertEqual(usage.counts(7), (1, 1, 1))
+
+    def test_admission_uses_the_heartbeat_under_the_queue_lock(self):
+        jobs = self.jobs()
+        jobs.beat({**kit.CAPS, "paused": "budget"})
+        charged = []
+        state, why, _ = jobs.enqueue("@a:s", 1, "!a", 5, admit=lambda caps: pm_build.BuildOffer.unavailable(caps, {"id": 1}),
+                                     charge=lambda: charged.append(1))
+        self.assertEqual((state, why, charged), (trial_jobs.REFUSED, pm_build.PAUSED, []))
+
+    def test_the_heartbeat_keeps_its_pause_and_pool_during_a_build(self):
+        d = kit.deps(self.folder)
+        d.last_caps = {**kit.CAPS, "free_repos": 1, "lease_holders": [3], "paused": None}
+
+        async def one_beat():
+            task = asyncio.create_task(trial_worker.beating(d))
+            await asyncio.sleep(0)
+            task.cancel()
+        run(one_beat())
+        self.assertEqual(d.jobs.alive()["lease_holders"], [3])
+
+    def test_a_broken_own_lease_is_released(self):
+        d = kit.deps(self.folder)
+        run(d.pool.lease(d.gh, 777))
+
+        async def broken(token, repo):
+            raise tg.TrialGitHubError("gone")
+        d.gh.base = broken
+        with self.assertRaises(tg.TrialGitHubError):
+            run(trial_build.read_repo(d, "ab12cd34", 777))
+        self.assertIsNone(d.pool.mine(777))
+
+    def test_old_default_test_commands_are_upgraded(self):
+        for old in trial_build_config.LEGACY_TEST_CMDS:
+            with mock.patch.dict("os.environ", {"TRIAL_TEST_CMD": old}):
+                self.assertEqual(trial_build_config.test_command(), trial_build_config.DEFAULT_TEST_CMD)
+
+    def test_an_unconfigured_start_waits_for_a_live_worker(self):
+        jobs = self.jobs()
+        _, job_id, _ = jobs.enqueue("@a:s", 1, "!a", 5)
+        with kit.configured_env(self.folder, TRIAL_ORG=""), jobs.one_worker():
+            self.assertEqual(run(trial_worker.main()), 1)
+        self.assertEqual(jobs.all()[job_id]["state"], trial_jobs.QUEUED)
 
 
 if __name__ == "__main__":
