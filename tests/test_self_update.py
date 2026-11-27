@@ -109,6 +109,16 @@ class Install(unittest.TestCase):
             self.assertEqual(self_update.apply(self.new, False, app=self.app, code=self.app, run=self.run_), "failed")
         self.assertEqual(self.apply(self.new), "updated")    # held far longer than an update takes: "failed", asked again
 
+    def test_its_git_calls_fit_the_budget_pm_waits_for(self):
+        """GPT re-check: code_report.UPDATE_MAX_S counted 4 git calls; an update makes up to GIT_CALLS."""
+        calls = []
+
+        def counted(args, **kw):
+            calls.append(args) if args[0] == "git" else None
+            return self.run_(args, **kw)
+        self.assertEqual(self_update.apply(self.new, False, app=self.app, code=self.app, run=counted), "updated")
+        self.assertLessEqual(len(calls), self_update.GIT_CALLS)
+
     def test_another_agents_update_half_done_is_never_taken_for_an_edit(self):
         """GPT review: the clean-tree check ran before the lock, so a second agent could see the first's half-done
         checkout and answer "edited" (which stops automatic updates)."""

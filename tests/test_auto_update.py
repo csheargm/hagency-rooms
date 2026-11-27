@@ -75,7 +75,7 @@ class Reports(unittest.TestCase):
     def test_the_servers_wait_covers_the_agents_whole_update(self):
         """GPT review: the lock wait alone (960 s) was longer than the 300 s @pm waited for an answer."""
         self.assertGreaterEqual(code_report.UPDATE_MAX_S,
-                                self_update.LOCK_WAIT_S + self_update.PIP_TIMEOUT_S + 4 * self_update.GIT_TIMEOUT_S)
+                                self_update.LOCK_WAIT_S + self_update.WORK_S)   # another's whole update, then its own
         click = {"at": 0, "result": None, "auto": True}
         self.assertGreaterEqual(console_update.budget(click), code_report.IDLE_WAIT_S + code_report.UPDATE_MAX_S)
         click.update(result="updated", answered=10_000)                  # its drain counts from its answer
@@ -153,7 +153,8 @@ class AgentWaits(unittest.TestCase):
                 await b.update_to("a" * 40, "k1", auto=True)
                 order.append("restart" if b.sync_point.stop.is_set() else "no restart")
         loop = None
-        asyncio.run(go())
+        with mock.patch.object(code_report, "IDLE_WAIT_S", 0.05):    # longer than one wait: still never cut off
+            asyncio.run(go())
         self.assertEqual(order, ["turn done", "restart"])
 
     def test_a_github_sign_in_counts_as_work(self):

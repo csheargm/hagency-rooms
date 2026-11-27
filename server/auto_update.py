@@ -89,7 +89,7 @@ def failed(loop, agent: str, word: str, now: float) -> None:
     log.info("%s: automatic update %s (%d so far)", agent, word, st["fails"])
 
 
-def _due(loop, a: dict, now: float, online: bool | None, any_time: bool = False) -> bool:
+def due(loop, a: dict, now: float, online: bool | None, any_time: bool = False) -> bool:
     """`a` should be asked now (any_time: will be, once its back-off and its owner's stagger allow)."""
     code = a.get(registry.CODE)
     if (a["agent"] != registry.REMOTE or not code or not code.get(code_report.WAITS) or code["own"]
@@ -115,7 +115,7 @@ async def ask_next(loop, person: str, now: float, online: dict | None = None) ->
                                                       for a in agents):
         return                            # a closed click (a refusal, an old one) never blocks the rest (GPT review)
     for a in agents:
-        if _due(loop, a, now, (online or {}).get(a["localpart"])):
+        if due(loop, a, now, (online or {}).get(a["localpart"])):
             asked[person] = now
             if not await console_update.ask(loop, a, auto=True):
                 failed(loop, a["localpart"], "unreachable", now)   # counted too: never asked without end (GPT review)
@@ -141,6 +141,8 @@ async def reported(loop, agent: str | None) -> None:
         console_update.clicks(loop).pop(agent, None)
         state(loop).pop(agent, None)
         finished(loop, owner, registry.name_of(found))
+    elif code and version.current(code, console_update.SERVER):
+        state(loop).pop(agent, None)          # up to date after all (a restart that outlasted @pm's wait): no failure left
     elif (state(loop).get(agent) or {}).get("reason") == "busy":
         state(loop)[agent]["next"] = 0       # it restarted: asked again now ("busy" waits for the next report)
     await ask_next(loop, owner, time.time(), {agent: True})   # it just reported: it's online
@@ -177,7 +179,7 @@ async def tell(loop, owner: str, now: float) -> None:
         return
     agents = [a for a in registry.agents_of(owner) if registry.owns(owner, a["localpart"])]
     if now - batch["since"] < BATCH_S and is_on(owner) and any(console_update.is_open(console_update.clicks(loop).get(a["localpart"]), now)
-                                                               or _due(loop, a, now, None, any_time=True) for a in agents):
+                                                               or due(loop, a, now, None, any_time=True) for a in agents):
         return                                # another of theirs is on its way: one line for both
     batch["said"] = True
     try:

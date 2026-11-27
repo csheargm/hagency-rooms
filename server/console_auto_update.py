@@ -71,12 +71,11 @@ async def toggle(loop, user: str, value: str) -> str:
 async def update_for_task(loop, owner: str, agent: str) -> bool:
     """A task needs newer code than `agent` (a localpart) runs (code_report.runs_task): ask it to update to the
     server's now, as an automatic update. Only with its owner's Auto-update on and code that waits for its work
-    (GPT review: a room action never overrides the owner's switch, nor updates under a running turn); else False,
-    and the room is told how to update it by hand."""
+    (GPT review: a room action never overrides the owner's switch, nor updates under a running turn), and through
+    auto_update's scheduler. True when it is asked or will be; else False, and the room is told how by hand."""
     found = registry.find(owner, agent) if owner and agent else None
-    if found is None or not registry.owns(owner, agent) or not auto_update.is_on(owner) or loop.agent_online(agent) is not True:
+    if found is None or not registry.owns(owner, agent) or not auto_update.is_on(owner):
         return False
-    if (console_update.status(loop, found)["code"] != "behind" or not found[registry.CODE].get(code_report.WAITS)
-            or console_update.is_open(console_update.clicks(loop).get(agent))):
-        return False                          # no report, its own version, older code, or already asked
-    return await console_update.ask(loop, found, auto=True)
+    now = time.time()                         # through the scheduler: its back-off, cap and stagger (GPT re-check)
+    await auto_update.ask_next(loop, registry.person_id(owner), now)
+    return console_update.is_open(console_update.clicks(loop).get(agent), now) or auto_update.due(loop, found, now, None, any_time=True)

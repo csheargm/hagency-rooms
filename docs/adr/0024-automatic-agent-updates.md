@@ -37,8 +37,10 @@ Accepted, 2026-11-27. Builds on ADR 0020 (versions and one-click updates).
 - It waits at most `code_report.IDLE_WAIT_S` (30 minutes), then answers the new result word `busy` and
   keeps working. @pm asks again after `BUSY_AGAIN_S`, or at its next code report.
 - After that, everything is ADR 0020's update, with the same checks.
-- Before it restarts, it waits again for no task running. Work that came in while git and pip ran then
-  finishes first: a GitHub sign-in is never killed by the restart (review).
+- Before it restarts, it waits again for no task running, for as long as that takes. Work that came in
+  while git and pip ran then finishes first: a GitHub sign-in is never killed by the restart (review).
+- If that outlasts @pm's wait, @pm counts one failure. The agent's next report shows it up to date and
+  clears the failure.
 
 ### One install, several agents
 - `self_update._Lock` now waits for another agent's update, up to `LOCK_WAIT_S` (pip's and git's timeouts
@@ -53,7 +55,8 @@ Accepted, 2026-11-27. Builds on ADR 0020 (versions and one-click updates).
 
 ### How long @pm waits
 - A click or ask stays open (`console_update.is_open`) for the agent's whole update:
-  - `code_report.UPDATE_MAX_S`: the lock wait, pip and git at their timeouts. A test checks the sum.
+  - `code_report.UPDATE_MAX_S`: another agent's whole update (the lock wait), then its own: pip and up
+    to `self_update.GIT_CALLS` git calls at their timeouts. Tests check the sum and count the calls.
   - Plus `IDLE_WAIT_S` for an automatic ask.
   - After "updated", the drain, counted from that answer.
 - An open ask is never replaced, because its answer would be lost. A closed one (a refusal, an old click)
@@ -96,10 +99,10 @@ Accepted, 2026-11-27. Builds on ADR 0020 (versions and one-click updates).
 - `pm_solo_rules.ruleset_agent` picks an owner's agent that runs the task.
 - If the only owner agents here are older, @pm says "<agent> needs an update first" and says how to finish.
   When Solo review is being switched off, it also says how to take the bypass out by hand.
-- It asks the agent to update (`console_auto_update.update_for_task`) only as an automatic update:
-  - its owner's Auto-update is on, and its code waits for its work;
-  - otherwise it says to update it in My agents.
-  - A room action never overrides the owner's switch (review).
+- It asks the agent to update (`console_auto_update.update_for_task`) only through the automatic
+  scheduler: its owner's switch, code that waits, back-off, cap and stagger all apply. Otherwise it says
+  to update it in My agents. A room action never overrides the owner's switch (review).
+- Its words follow the Solo review switch as it is now, not as the late ask had it (re-check).
 - An "unknown task kind" answer (`code_report.UNKNOWN_KIND`, one string for tasks.py, pm_cards and
   pm_solo_rules) gets the same words, never the raw error.
 

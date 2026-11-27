@@ -26,7 +26,7 @@ RESULTS = ("updated", "current", "own", "not_official", "edited", "not_newer", "
 WAITS = "waits"                       # its code waits until no task runs before an automatic update (ADR 0024)
 KEYS = {"commit", "time", "own", version.NUMBER_KEY, WAITS}
 IDLE_WAIT_S = 30 * 60                 # an automatic update waits this long for no task running, then says "busy"
-UPDATE_MAX_S = 35 * 60                # self_update.apply at most: its lock wait, pip and git at their timeouts (a test checks)
+UPDATE_MAX_S = 80 * 60                # self_update.apply at most: its lock wait, then pip and git at their timeouts (a test checks)
 UNKNOWN_KIND = "unknown task kind"    # an agent's answer to a task its code predates (tasks.py; pm_cards, pm_solo_rules read it)
 # A task kind newer than some agents: the commit time from which master's agents run it (live test 2026-11-27:
 # an agent on older code got solo_ruleset and posted "unknown task kind"). 1795804541: 0afcfbb, solo review merged.

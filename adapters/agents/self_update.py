@@ -30,7 +30,9 @@ GIT = ["git", "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never
 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": "", "GIT_CONFIG_NOSYSTEM": "1",
            "GIT_CONFIG_GLOBAL": os.devnull, "GIT_NO_REPLACE_OBJECTS": "1"}
 LOCK_NAME = "hagency-update.lock"             # in .git: several agents of one computer share the install
-LOCK_WAIT_S = PIP_TIMEOUT_S + 3 * GIT_TIMEOUT_S   # another agent's whole update: waited for, never "failed" (live test)
+GIT_CALLS = 15                                # apply's git calls at most: two install checks (4 each), the target (5), 2 more
+WORK_S = PIP_TIMEOUT_S + GIT_CALLS * GIT_TIMEOUT_S   # one update at its timeouts (code_report.UPDATE_MAX_S covers two)
+LOCK_WAIT_S = WORK_S                          # another agent's whole update: waited for, never "failed" (live test)
 LOCK_POLL_S = 1
 
 

@@ -12,15 +12,19 @@ from unittest import mock
 from nio import ToDeviceEvent, ToDeviceResponse
 
 from common import code_report
+from common import intents
 from common import registry
+from common import solo_review
 from server import auto_update
 from server import console
 from server import console_update
+from server import pm_solo_rules
 from tests import test_more_agents_flows as flows
 from tests import test_solo_review
 from tests.test_auto_update import Panel, report
 from tests.test_kind_report import FakeClient
 from tests.test_more_agents_flows import CX, CXA, CXC
+from tests.test_solo_review import BETTY
 from tests.test_versions import NEW, OLD
 
 
@@ -229,9 +233,17 @@ class Flows(flows.Base):
         self.lp._updates.clear()
         asyncio.run(self.lp.needs_update("!r", CX, CXA))
         self.assertEqual(self.said[-1], ("!r", needs + ASKED.format(again=AGAIN_ON)))
+        self.assertEqual(len(self.asks()), 1)                           # the owner's stagger holds: asked soon, not twice
+        self.lp._auto_asked[CX] = 0
+        asyncio.run(self.lp.needs_update("!r", CX, CXA, on=False, bypass=True))   # switching off: the bypass too
+        self.assertEqual(self.said[-1], ("!r", needs + ASKED.format(again=AGAIN_OFF) + " " + NOT_WANTED))
         self.assertEqual((len(self.asks()), self.asks()[-1].recipient, self.asks()[-1].content["auto"]), (2, CXA, True))
-        asyncio.run(self.lp.needs_update("!r", CX, CXA, on=False))      # asked already: by hand; switching off: the bypass
-        self.assertEqual(self.said[-1], ("!r", needs + BY_HAND.format(again=AGAIN_OFF) + " " + NOT_WANTED))
+        for _ in range(auto_update.MAX_FAILURES):
+            auto_update.failed(self.lp, "cx-agent", "failed", time.time())
+        self.lp._updates.clear()
+        asyncio.run(self.lp.needs_update("!r", CX, CXA))                 # its back-off's cap holds too: by hand
+        self.assertEqual(self.said[-1], ("!r", needs + BY_HAND.format(again=AGAIN_ON)))
+        self.assertEqual(len(self.asks()), 2)
 
     def test_a_task_never_overrides_the_owners_switch_nor_updates_code_that_wont_wait(self):
         """GPT review: a room action (Solo review) must not update an agent whose owner turned Auto-update off,
@@ -267,6 +279,17 @@ class SoloTask(test_solo_review.Base):
         ask.assert_awaited_once()
         self.assertIn("needs an update first", self.said[-1][0])
         self.assertNotIn("unknown task kind", self.said[-1][0])
+
+    def test_a_late_unknown_task_kind_follows_the_switch_as_it_is_now(self):
+        """GPT re-check: an "on" ask answered after Solo review was switched off told them to switch it on again."""
+        self.enable()
+        job = self.job()
+        self.run_(self.lp.act(self.room, BETTY, intents.SOLO_OFF))
+        with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=True)):
+            self.answer(job, error="unknown task kind 'solo_ruleset'")
+        self.assertIn(pm_solo_rules.AGAIN_OFF, self.said[-1][0])
+        self.assertNotIn(pm_solo_rules.NOT_WANTED, self.said[-1][0])         # nothing was added: nothing to take out
+        self.assertEqual(self.tasks(solo_review.TASK_KIND)[-1]["task_id"], job["task_id"])   # no follow-up to it again
 
 
 if __name__ == "__main__":
