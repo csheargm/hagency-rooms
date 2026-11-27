@@ -39,6 +39,18 @@ class OwnerPairing(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertIn("cx-agent and betty-agent share the GitHub account @cx", problems[0])
 
+    def test_two_approvals_with_another_person_here_is_never_met_even_with_solo(self):
+        """GPT review round 3: routing gives another person's agent the review, so the solo bypass never runs."""
+        two = [{"type": "pull_request", "parameters": {"required_approving_review_count": 2}}]
+        admins = {"cx-agent": {"login": "cx", "push": True, "admin": True},
+                  "betty-agent": {"login": "b", "push": True, "admin": True}}
+        problems = evaluate(admins, two, solo=True, bypass=True)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("can't be met (the loop has one checker", problems[0])
+        self.assertNotIn(github_setup.SOLO_FIX, problems[0])
+        self.assertEqual(evaluate({"cx-agent": admins["cx-agent"], "cx-codex-agent": admins["cx-agent"]}, two,
+                                  solo=True, bypass=True), [])   # one person's agents: the admin merge covers it
+
     def test_solo_review_never_covers_another_persons_agent_on_the_builders_account(self):
         """GPT review round 2: with solo on, admins and the bypass, readiness passed, but betty-agent (not a sibling)
         gets cx-agent's PR as a regular review GitHub can't count."""

@@ -96,8 +96,9 @@ def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: s
     if need == 1 and (mixed := _cross_shared(identities)):   # solo review never applies: another person's agent checks
         return (f"{_names(mixed[0][1])} share the GitHub account @{mixed[0][0]}, so {rule} can't be met when one "
                 f"checks the other's PR (GitHub never lets an account approve its own PR): {OWN_ACCOUNT}")
-    if not solo and need > 1:
-        return f"{rule} can't be met (the loop has one checker approve each PR): {SOLO_FIX}"
+    several = len({_owner(a) for a, ident in identities.items() if "login" in ident}) > 1
+    if need > 1 and (not solo or several):    # GPT review: with another person's agent here, solo never applies
+        return f"{rule} can't be met (the loop has one checker approve each PR)" + ("" if several else f": {SOLO_FIX}")
     if not solo:
         why = (f"{_names(shared[0][1])} share the GitHub account @{shared[0][0]}" if shared
                else "only 1 GitHub account is here" if len(_by_login(identities)) < 2
