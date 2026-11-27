@@ -1,11 +1,14 @@
 """Daily check against Oracle's Always Free limits (the hagency-guard systemd timer, from bootstrap.sh).
 
-  python3 guard.py        # in ~/hagency/app/deploy, as root
+  python3 guard.py                  # in ~/hagency/app/deploy, as root
+  python3 guard.py unit timer       # the systemd unit files bootstrap.sh installs (timer, service)
 
 Disk over 80%, or this month's outbound traffic over 1 TB: @pm warns the operator (OPERATOR in .env)
 in a private chat. Over 5 TB (half of the free 10 TB): media downloads are paused for the rest of the
 month (flags/media-paused, which Caddy checks on every request) and resume by themselves next month.
 Traffic comes from vnstat, which counts across reboots. Every finding also goes to the journal.
+The disk's history (disk_history.py) adds the week's growth and what grew: with the 80% warning, every
+Monday, and at once when the disk grew more than 3 GB in a day. It runs at 05:00 Pacific time.
 """
 import datetime
 import json
@@ -14,12 +17,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import disk_history
+
 HERE = Path(__file__).resolve().parent
 FLAG = HERE / "flags" / "media-paused"
 DISK_WARN = 0.80
 TB = 10 ** 12
 TRAFFIC_WARN = 1 * TB
 TRAFFIC_PAUSE = 5 * TB
+SCHEDULE = "*-*-* 05:00:00 America/Los_Angeles"
 ALERT = ["docker", "compose", "--env-file", ".env", "exec", "-T", "pm", ".venv/bin/python", "deploy/pm_alert.py"]
 
 
@@ -67,6 +73,17 @@ def decide(disk_used: float, tx: int) -> tuple[list[str], bool]:
     return warnings, pause
 
 
+def unit_file(kind: str) -> str:
+    """The systemd unit files: one source, so the tests read exactly what bootstrap.sh installs."""
+    if kind == "service":
+        return ("[Unit]\nDescription=Hagency Rooms: disk and traffic within Oracle's free limits\n"
+                f"[Service]\nType=oneshot\nWorkingDirectory={HERE}\nExecStart=/usr/bin/python3 {HERE / 'guard.py'}\n")
+    if kind == "timer":
+        return ("[Unit]\nDescription=Hagency Rooms: daily free-tier check\n"
+                f"[Timer]\nOnCalendar={SCHEDULE}\nPersistent=true\n[Install]\nWantedBy=timers.target\n")
+    raise SystemExit(f"✗ no unit {kind!r}: service or timer")
+
+
 def measure() -> tuple[float, int | None]:
     usage = shutil.disk_usage("/")
     iface = default_iface(Path("/proc/net/route").read_text())
@@ -94,13 +111,19 @@ def main(today: datetime.date | None = None) -> int:
     else:
         FLAG.unlink(missing_ok=True)
     print(f"disk {disk_used:.0%}, sent this month {tx / TB:.3f} TB, media {'paused' if pause else 'on'}")
-    if not warnings:
+    disk_notes, problems = disk_history.record(today, over=disk_used > DISK_WARN)
+    for problem in problems:
+        print(f"⚠ {problem}")
+    if not warnings and not disk_notes:
         return 0
-    text = "\n".join(warnings)
+    text = "\n".join(warnings + disk_notes + problems)
     print(text)
     sent = subprocess.run(ALERT, cwd=HERE, input=text, text=True, timeout=120)
     return 0 if sent.returncode == 0 else 1          # a warning nobody got: the timer's run shows failed
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["unit"] and len(sys.argv) == 3:
+        print(unit_file(sys.argv[2]), end="")
+        sys.exit(0)
     sys.exit(main())

@@ -72,7 +72,10 @@ Then sign in at https://admin.hagencylabs.xyz as `owner`. Run it again whenever 
   `deploy/.env`) when the disk is over 80% or this month's outbound traffic is over 1 TB (vnstat).
   Over 5 TB, media downloads are paused for the rest of the month (`deploy/flags/media-paused`,
   which Caddy checks) and come back by themselves next month. `journalctl -u hagency-guard` shows
-  every run.
+  every run. It runs at 05:00 Pacific time and keeps 90 days of disk sizes (sandbox, Docker images,
+  /usr, ~/hagency, logs) in `deploy/state/disk-history.jsonl`: the operator gets the week's growth and
+  what grew every Monday, with the 80% warning, and at once if the disk grew more than 3 GB in a day.
+  It only measures; it never deletes anything.
 - Nothing creates Oracle resources; the boot disk stays as it is.
 
 ## Once: the VM and DNS (the owner)

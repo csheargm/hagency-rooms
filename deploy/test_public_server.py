@@ -24,6 +24,7 @@ NOV = datetime.date(2026, 11, 20)
 class Guard(unittest.TestCase):
     def setUp(self):
         mock.patch("builtins.print").start()          # main() reports to the journal
+        mock.patch.object(guard.disk_history, "record", return_value=([], [])).start()   # test_disk_history.py
         self.addCleanup(mock.patch.stopall)
 
     def test_only_this_months_traffic_out_of_the_internet_facing_interface(self):

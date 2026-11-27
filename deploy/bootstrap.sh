@@ -95,25 +95,13 @@ else
   dc exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 fi
 
-# 7. The daily free-tier check (guard.py): a systemd timer, as root.
-unit="[Unit]
-Description=Hagency Rooms: disk and traffic within Oracle's free limits
-[Service]
-Type=oneshot
-WorkingDirectory=$PWD
-ExecStart=/usr/bin/python3 $PWD/guard.py"
-timer="[Unit]
-Description=Hagency Rooms: daily free-tier check
-[Timer]
-OnCalendar=daily
-RandomizedDelaySec=1h
-Persistent=true
-[Install]
-WantedBy=timers.target"
-printf '%s\n' "$unit" | sudo tee /etc/systemd/system/hagency-guard.service >/dev/null
-printf '%s\n' "$timer" | sudo tee /etc/systemd/system/hagency-guard.timer >/dev/null
+# 7. The daily free-tier check (guard.py, 05:00 Pacific): a systemd timer, as root. The units come from
+# guard.py; the restart applies a changed schedule to a timer that is already running.
+python3 guard.py unit service | sudo tee /etc/systemd/system/hagency-guard.service >/dev/null
+python3 guard.py unit timer | sudo tee /etc/systemd/system/hagency-guard.timer >/dev/null
 sudo systemctl daemon-reload
-sudo systemctl enable --now hagency-guard.timer >/dev/null 2>&1
+sudo systemctl enable hagency-guard.timer >/dev/null 2>&1
+sudo systemctl restart hagency-guard.timer
 
 # 8. Done only when everything answers inside (deploy.sh then checks HTTPS from outside).
 SIGNUP=$(python3 signup.py mode)                         # open or token: the mode configured above, no value
