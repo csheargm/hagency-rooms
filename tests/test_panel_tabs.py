@@ -165,12 +165,34 @@ VIEW = {"room": "Demo", "repo": "a/b", "user": "anna", "moderator": True, "mode"
         "cards": {"items": [], "max": 3, "data": {}, "agent_here": True}}
 
 
-def page_file(view: dict, folder: str) -> str:
+# My Hagency for someone with no agent of their own: the shared Trial agent card (pm_trial.trial_view) sits in My agents.
+TRIAL_FLOW = r"""
+<script>
+const VIEW = __VIEW__, sent = [];
+window.fetch = async (url, o) => { if (o && o.body) sent.push(JSON.parse(o.body).action);
+  return {status: 200, json: async () => String(url).startsWith("console/state") ? VIEW : {result: "ok"}}; };
+try { sessionStorage.setItem("hagency-session", "s"); } catch (e) { /* the page then signs in: the test fails */ }
+const shown = el => !!el && !el.closest("[hidden]");
+window.addEventListener("load", () => setTimeout(async () => {
+  const pane = document.getElementById("agents"), h2 = [...pane.querySelectorAll("h2")].map(h => h.textContent);
+  const out = {bar: shown(document.getElementById("tabs")), agents: shown(pane), room: shown(document.getElementById("controls")), h2};
+  const go = [...pane.querySelectorAll('button[data-a="trial"]')].find(b => b.textContent === "Try it");
+  out.tryIt = shown(go); if (go) go.click(); await new Promise(r => setTimeout(r, 300));
+  out.sent = sent;
+  document.getElementById("result").textContent = JSON.stringify(out);
+}, 500));
+</script><pre id="result"></pre>"""
+TRIAL_VIEW = {"room": "My Hagency", "personal": True, "user": "newbie", "html": "", "agents": [], "can_add": False,
+              "first_pick": True, "kinds": [], "github": {"login": None, "code": None},
+              "trial": {"on": False, "left": 20, "per_day": 20, "model": "glm-5.3", "models": ["glm-5.3"]}}
+
+
+def page_file(view: dict, folder: str, flow: str = FLOW) -> str:
     """The real panel page with its scripts inlined, a fake server (fetch) and the person's clicks (FLOW)."""
     html = panel.PAGE.replace("__EMBEDDERS__", "[]").replace('<script src="/auth/signin.js"></script>', "")
     for name, path in panel.SCRIPTS.items():
         html = html.replace(f'<script src="{name}"></script>', f"<script>{path.read_text()}</script>")
-    html = html.replace("<title>", FLOW.replace("__VIEW__", json.dumps(view)) + "<title>", 1)
+    html = html.replace("<title>", flow.replace("__VIEW__", json.dumps(view)) + "<title>", 1)
     path = Path(folder) / "panel.html"
     path.write_text(html)
     return path.as_uri() + "?room=%21r"
@@ -205,6 +227,15 @@ class TabsInABrowser(unittest.TestCase):
             self.assertEqual(out["arrow"], [["Cards"], "cards", True])
             self.assertEqual(out["home"], ["Room"])
             self.assertEqual(chrome(url, profile)["first"], ["My agents"])          # the next visit opens it again
+
+    def test_my_hagency_without_an_agent_shows_the_trial_card_in_my_agents(self):
+        """Merge with the trial agent (PR #73): its card is in My agents, after the agent picker, before GitHub."""
+        with tempfile.TemporaryDirectory() as folder:
+            out = chrome(page_file(TRIAL_VIEW, folder, TRIAL_FLOW), str(Path(folder) / "profile"))
+        self.assertEqual((out["bar"], out["agents"], out["room"]), (False, True, False))   # one tab: no bar
+        self.assertEqual(out["h2"], ["My agents · 0", "Trial agent (shared, limited)", "GitHub"])
+        self.assertTrue(out["tryIt"])
+        self.assertEqual(out["sent"], ["trial"])                                   # Try it reaches @pm
 
 
 if __name__ == "__main__":

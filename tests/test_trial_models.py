@@ -99,7 +99,8 @@ class Picking(TrialBase):
 class Panel(unittest.TestCase):
     def test_the_trial_card_has_the_model_picker(self):
         from pathlib import Path
-        page = (Path(__file__).resolve().parent.parent / "static" / "panel.html").read_text()
+        static = Path(__file__).resolve().parent.parent / "static"     # the card: panel_agents.js (My agents tab)
+        page = (static / "panel.html").read_text() + (static / "panel_agents.js").read_text()
         self.assertIn('data-a="trial_model"', page)
         self.assertIn('"trialmodel"]', page)          # kept while it's open, not redrawn under the person
         self.assertIn('trialCard(s.trial)', page)

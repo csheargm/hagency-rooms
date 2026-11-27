@@ -48,7 +48,7 @@ background:transparent;color:var(--muted);padding:6px 12px;border-bottom:2px sol
 <div id="pane-room" data-tab="room" class="stack"><div id="controls" class="stack"></div><div id="p" class="stack"></div></div>
 <div id="pane-agents" data-tab="agents" class="stack"><div id="agents" class="stack"></div></div>
 <div id="pane-cards" data-tab="cards"><div id="cards" class="stack"></div></div>
-<footer>Change anything here or by telling @pm in the chat.<br>Minimised it? In Element: Room info (ⓘ) → Extensions → 📌 next to Hagency.__VERSION__</footer></div>
+<footer>Change anything here or by telling @pm in the chat.<br>Minimised it? Click <b>▾ Hagency panel</b> under the room's name, or in Element: Room info (ⓘ) → Extensions → 📌 next to Hagency.__VERSION__</footer></div>
 __SCRIPTS__
 <script src="/auth/signin.js"></script>
 <script>
@@ -288,20 +288,10 @@ async function show() {
   if (typeof showCards === "function") showCards(s);           // Your cards (panel_cards.js): kept, not redrawn
   if (typeof tabsFor === "function") tabsFor(s);               // panel_tabs.js: Room · My agents · Cards
 }
-// The shared trial agent (pm_trial.py, ADR 0025): only while it runs and you have no agent of your own.
-function trialCard(t) {
-  if (!t) return "";
-  const what = t.on ? `Its chat is <b>Trial agent</b> (accept the invite under Invites if you haven't). ${esc(t.left)} of ${esc(t.per_day)} messages left today.`
-    : `No agent yet? Talk to a shared, limited AI (${esc(t.per_day)} messages a day): questions, ideas, reading a pull request. It can't run code, build or merge.`;
-  const pick = t.on ? `<div class="set"><div>Model: <b>${esc(t.model)}</b></div><span class="field"><select id="trialmodel">${
-    (t.models || []).map(m => `<option ${m === t.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
-    <button data-a="trial_model">Use</button></span></div>` : "";
-  return `<section class="card"><h2>Trial agent (shared, limited)</h2><div class="set"><div>${what}<div class="hint">What you write to it goes to Ollama Cloud.</div></div>
-    <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat again" : "Try it"}</button></div>${pick}</section>`; }
 function personal(s) {
   $("sub").innerHTML = '<span class="chip">Your agents and GitHub, the same in every room</span>';
   $("who").innerHTML = `<span class="chip">${esc(s.user)}</span>`;
-  $("agents").innerHTML = card("agentCards", s) + trialCard(s.trial) + card("githubCard", s);
+  $("agents").innerHTML = card("agentCards", s) + (typeof trialCard === "function" ? trialCard(s.trial) : "") + card("githubCard", s);
   $("controls").innerHTML = $("waiting").innerHTML = "";
   if (typeof showCards === "function") showCards(null);
   $("p").innerHTML = "";

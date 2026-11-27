@@ -218,6 +218,18 @@ function agentCards(s) {
   return `<section class="card"><h2>My agents · ${s.agents.length}</h2><div class="hint">The same in every room. Click an agent for its settings.</div>
     <ul class="agents">${s.agents.map(a => agentRow(a, s.version, s.agents.length > 1, s.personal)).join("")}</ul>${autoSwitch(s)}${add}</section>`;
 }
+// The shared trial agent (pm_trial.py, ADR 0025): only while it runs and you have no agent of your own (the server
+// sends s.trial only then, in My Hagency). Shown in My agents, under your agents (panel.html: personal).
+function trialCard(t) {
+  if (!t) return "";
+  const what = t.on ? `Its chat is <b>Trial agent</b> (accept the invite under Invites if you haven't). ${esc(t.left)} of ${esc(t.per_day)} messages left today.`
+    : `No agent yet? Talk to a shared, limited AI (${esc(t.per_day)} messages a day): questions, ideas, reading a pull request. It can't run code, build or merge.`;
+  const pick = t.on ? `<div class="set"><div>Model: <b>${esc(t.model)}</b></div><span class="field"><select id="trialmodel">${
+    (t.models || []).map(m => `<option ${m === t.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
+    <button data-a="trial_model">Use</button></span></div>` : "";
+  return `<section class="card"><h2>Trial agent (shared, limited)</h2><div class="set"><div>${what}<div class="hint">What you write to it goes to Ollama Cloud.</div></div>
+    <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat again" : "Try it"}</button></div>${pick}</section>`;
+}
 // Auto-update (console_auto_update.py, ADR 0024): one switch for all of a person's agents on their computers, on by
 // default. Small (owner request); what it does is in its tooltip.
 function autoSwitch(s) {
