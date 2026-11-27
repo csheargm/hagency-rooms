@@ -90,7 +90,7 @@ class Version(unittest.TestCase):
 
     def test_deploy_writes_revision_and_each_release_clears_it(self):
         script = (ROOT / "deploy" / "deploy.sh").read_text()
-        self.assertIn("""git -C "$app" log -1 --format='%H%n%ct' "$sha" > "$pm/REVISION\"""", script)
+        self.assertIn("""git -C "$app" log -1 --format='%H%n%ct%n%s%n%b' "$sha" > "$pm/REVISION\"""", script)
         self.assertLess(script.index("archive"), script.index("REVISION"))   # after the files: release.py cleared the old one
         d = Path(tempfile.mkdtemp())
         (d / "REVISION").write_text("old")
@@ -110,6 +110,7 @@ class Reports(flows.Base):
         p = mock.patch.object(console_update, "SERVER", NEW)
         p.start()
         self.addCleanup(p.stop)
+        registry.update(CX, None, auto_update=False)   # ADR 0020's Update button: Auto-update off (test_auto_update: on)
 
     def start(self, runs, own=False, sender=CXA):
         """The agent's start on its computer (code_report.send), then @pm receiving it."""
@@ -205,7 +206,7 @@ class Reports(flows.Base):
     def test_no_answer_is_said_after_a_while_and_update_comes_back(self):
         self.start(OLD)
         self.click()
-        self.lp._updates["cx-agent"]["at"] -= console_update.WAIT_S + 1
+        self.lp._updates["cx-agent"]["at"] -= console_update.budget(self.lp._updates["cx-agent"]) + 1
         row = self.row()
         self.assertEqual((row["code_says"], row["code_updating"], row["code_fallback"]), (console_update.NO_ANSWER, False, True))
         self.assertEqual(self.click(), "ok")          # past the gap: asked again

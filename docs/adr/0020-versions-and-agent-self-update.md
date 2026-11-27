@@ -99,7 +99,7 @@ their access, triggered from a web page.
   - **Installs at a folder the person chose** (`HAGENCY_APP=…`), which the panel reports as not
     updatable here.
   - **A Windows agent run in a window (`--foreground`).** It ends after updating; its next start runs the new code.
-- **No automatic update when idle yet.** That is a follow-up; it would reuse the same checks.
+- **Automatic updates when idle:** ADR 0024 (on by default, the same checks).
 - **The restart waits for running turns** (up to 20 minutes, lifecycle.py). The panel says "once it finishes
   what it's doing".
 - **An agent can claim any commit.** It only changes what its own owner sees.

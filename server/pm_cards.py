@@ -12,6 +12,7 @@ import time
 import uuid
 
 from common import cards
+from common import code_report
 from common import registry
 from common import test_limits
 from common.bridge_config import ROOT
@@ -63,7 +64,7 @@ def local(user_id: object) -> str | None:
 def why(error: object) -> str:
     """A failed card in the panel's words (an old agent adapter doesn't know the task at all)."""
     text = str(error)
-    if "unknown task kind" in text or "wrong repo" in text:
+    if code_report.UNKNOWN_KIND in text or "wrong repo" in text:
         return OLD_CODE
     return f"Your agent couldn't make it: {text[:200]}"
 

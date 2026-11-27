@@ -12,15 +12,20 @@ import uuid
 
 from nio import MatrixRoom
 
-from common import room_state, solo_review
+from common import code_report, registry, room_state, solo_review
 from common.redact import room_safe
 from common.saved_dict import SavedDict
+from server import console_auto_update
 from server import ownership
 from server.pm_cards import cannot, local
 
 KEEP_JOBS_S = 7 * 24 * 3600   # an unanswered ask is forgotten after this
 NO_OWNER_AGENT = "No agent of the room owner's is here to update GitHub's review rule on {repo}. "
 NOT_WANTED = "If you don't want it anymore, take **Repository admin** out of the rule's Bypass list on GitHub."
+NEEDS_UPDATE = "{agent} needs an update first: it runs code from before solo review. "   # live test 2026-11-27
+ASKED = "I've asked it to update. Once My agents shows it Up to date, switch Solo review {again}."
+BY_HAND = "Update it in My agents (in your chat with Product Manager), then switch Solo review {again}."
+AGAIN_ON, AGAIN_OFF = "off and on again", "on and off again"   # off: the bypass stays until then (review)
 AGAIN = (" Or bring the room owner's agent into the room and switch Solo review off and on again: it adds it for you "
          "when its GitHub account is the repo's admin.")
 
@@ -33,17 +38,27 @@ class SoloRules:
             self._solo_jobs = SavedDict(path.with_name(path.stem + "-solo-jobs.json")) if path else {}
         return self._solo_jobs
 
-    async def ruleset_agent(self, room: MatrixRoom, sender: str) -> str | None:
-        """The room owner's agent that can run the ruleset task (the asker's first, when they are an owner)."""
+    async def ruleset_agent(self, room: MatrixRoom, sender: str) -> tuple[str | None, tuple | None]:
+        """The room owner's agent that can run the ruleset task (the asker's first, when they are an owner), and
+        else (owner, agent) of the first one whose code is too old for it (code_report.runs_task), or None."""
         owners = await room_state.owners(self.client, room)
-        here = self.agents_in(room)
+        here, old = self.agents_in(room), None
         for owner in sorted(owners, key=lambda o: o != sender):
             mine = [a for a in here if ownership.owner_id(a) == owner]
             main = ownership.own_agent_id(owner)
             for agent in sorted(mine, key=lambda a: a != main):
                 if cannot(owner, agent) is None and self.agent_online(local(agent)) is not False:
-                    return agent
-        return None
+                    if code_report.runs_task((registry.find(owner, local(agent)) or {}).get(registry.CODE), solo_review.TASK_KIND):
+                        return agent, None
+                    old = old or (owner, agent)
+        return None, old
+
+    async def needs_update(self, rid: str, owner: str, agent: str, on: bool = True, bypass: bool = False) -> None:
+        """Said plainly (never "unknown task kind"), and the agent asked to update (console_auto_update). `on`: the
+        switch as it is now (GPT re-check: never a late job's); off with a bypass recorded, how to take it out by hand."""
+        asked = await console_auto_update.update_for_task(self, owner, local(agent))
+        then = (ASKED if asked else BY_HAND).format(again=AGAIN_ON if on else AGAIN_OFF)
+        await self.say(rid, NEEDS_UPDATE.format(agent=local(agent)) + then + (" " + NOT_WANTED if not on and bypass else ""))
 
     async def ask_ruleset(self, room: MatrixRoom, sender: str, on: bool, ids: list[int]) -> None:
         """Ask the room owner's agent to let admins merge past the review rule (on), or to take the entries
@@ -52,7 +67,10 @@ class SoloRules:
         repo = await room_state.repo_of(self.client, rid)
         if not repo:                          # solo is only switched on with a repo; its removal says what's left
             return
-        agent = await self.ruleset_agent(room, sender)
+        agent, old = await self.ruleset_agent(room, sender)
+        if agent is None and old:             # an owner's agent is here, on code from before the task
+            await self.needs_update(rid, *old, on, bool(ids))
+            return
         if agent is None:
             await self.say(rid, NO_OWNER_AGENT.format(repo=repo)
                            + (solo_review.BYPASS_STEPS.format(repo=repo) + AGAIN if on else NOT_WANTED))
@@ -134,11 +152,14 @@ class SoloRules:
             return
         self.solo_jobs().pop(task_id, None)
         recorded = sorted(set(now["bypass_added"]) | changed if job["on"] else set(now["bypass_added"]) - gone)
+        if code_report.UNKNOWN_KIND in str(result.get("error")):   # older code after all: plain words, an update, no follow-up
+            await self.needs_update(rid, ownership.owner_id(sender), sender, now["on"], bool(recorded))   # (it'd go to it again)
+            return
         if job["on"] and not now["on"] and recorded:   # switched off while it was added: take it out again
             await self.ask_ruleset(room, job.get("by", sender), False, recorded)
         elif not job["on"] and now["on"]:             # switched on again while it was taken out: put it back
             await self.ask_ruleset(room, job.get("by", sender), True, [])
-        if result.get("error"):               # the follow-up first (GPT review): a failed announcement can't skip it
+        if result.get("error"):             # the follow-up first (GPT review): a failed announcement can't skip it
             await self.say(rid, f"⚠️ {local(sender)} couldn't update GitHub's review rule on {repo}: "
                                 f"{room_safe(result['error'])}\n\n"
                                 + (solo_review.BYPASS_STEPS.format(repo=repo) if job["on"] else NOT_WANTED))

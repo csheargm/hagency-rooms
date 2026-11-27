@@ -8,11 +8,16 @@ The outcome goes back to @pm (RESULT_TYPE, one word of code_report.RESULTS). Aft
 finishes what it started, hands off its sync position and starts again on the new code: in place
 (exec) on macOS and Linux, so a terminal run restarts too (GPT review); on Windows it exits
 EXIT_UPDATED, which the Windows keeper restarts.
+
+An automatic update (@pm's request says "auto": its owner keeps Auto-update on, ADR 0024) first waits until
+this agent has no task running: no turn, build, review or merge, no GitHub sign-in. It waits at most
+code_report.IDLE_WAIT_S, then answers "busy" and @pm asks again later; work is never cut off.
 """
 import asyncio
 import logging
 import os
 import sys
+import time
 import uuid
 
 from aiohttp import ClientError
@@ -32,6 +37,7 @@ from common.bridge_config import CREDENTIALS, SERVER_NAME
 UPDATE_TYPE, RESULT_TYPE = code_report.UPDATE_TYPE, code_report.RESULT_TYPE
 EXIT_UPDATED = 75                             # EX_TEMPFAIL: not 0, which the services read as "stay stopped"
 PM_ID = f"@{github.PM_BOT}:{SERVER_NAME}"
+IDLE_POLL_S = 10                              # an automatic update looks this often for no task running
 log = logging.getLogger("bridge")
 STARTED = version.of(paths.ROOT)              # the code this process loaded, read as it starts (GPT re-check:
                                               # after sign-in, another agent may have updated the install already)
@@ -65,13 +71,14 @@ class BridgeUpdate(BridgeGitHub):
         self._updating = True
         content = event.source.get("content") or {}
         ask = content.get("id") if isinstance(content.get("id"), str) else ""   # echoed: @pm matches the answer to its click
-        job = asyncio.create_task(self.update_to(content.get("commit"), ask[:64]))   # git and pip take a while: never in the sync loop
+        job = asyncio.create_task(self.update_to(content.get("commit"), ask[:64], content.get("auto") is True))   # git and pip take a while: never in the sync loop
         self.tasks.add(job)
         job.add_done_callback(self.tasks.discard)
 
-    async def update_to(self, target: object, ask: str = "") -> None:
+    async def update_to(self, target: object, ask: str = "", auto: bool = False) -> None:
         try:
             result = ("not_official" if self.buttons_only     # Hermes: its gateways wouldn't restart (ADR 0020)
+                      else "busy" if auto and not await self.wait_idle()
                       else await asyncio.to_thread(self_update.apply, target, runs_own(self.owner)))
             if result == "current" and self.stale():
                 result = "updated"            # another agent of this computer updated the install: restart onto it
@@ -79,9 +86,26 @@ class BridgeUpdate(BridgeGitHub):
             await self.tell_pm(result, ask)
             if result == "updated":
                 self.updated = True
+                while auto and not await self.wait_idle() and not self.sync_point.stop.is_set():
+                    pass                      # work that came in while it updated finishes first, however long (GPT
+                                              # review): a sign-in never killed, a turn never drained short
                 self.sync_point.stop.set()    # serve() hands off and drains, then serve_until_updated exits
         finally:
             self._updating = self.updated
+
+    def idle(self) -> bool:
+        """No task running but this update: no turn, build, review or merge, no GitHub sign-in (agent_github.py)."""
+        me, gh = asyncio.current_task(), self.__dict__.get("_gh_job")
+        return not any(t is not me and not t.done() for t in self.tasks) and not (gh is not None and not gh.done())
+
+    async def wait_idle(self) -> bool:
+        """True once idle; False after code_report.IDLE_WAIT_S still busy, or when the agent is stopping anyway."""
+        until = time.monotonic() + code_report.IDLE_WAIT_S
+        while not self.idle():
+            if time.monotonic() >= until or self.sync_point.stop.is_set():
+                return False
+            await asyncio.sleep(IDLE_POLL_S)
+        return True
 
     def stale(self) -> bool:
         """The install on disk is not the code this process loaded."""

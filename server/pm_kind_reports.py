@@ -19,6 +19,7 @@ from common import kind_report
 from common import pm_kinds
 from common import registry
 from common.bridge_config import SERVER_NAME
+from server import auto_update
 from server import console_github
 from server import console_update
 
@@ -104,6 +105,8 @@ class KindReports:
             return
         try:
             store(event.sender, content)
+            if event.type == code_report.EVENT_TYPE and code_report.valid(content) is not None:   # ADR 0024: done, or may update now
+                await auto_update.reported(self, own_agent(event.sender))
             if event.type == github_login.STATE_TYPE and github_login.state(content) is not None:
                 console_github.restarted(self, own_agent(event.sender), content)   # a click its old process never finished
         except OSError as e:                  # agents.json unwritable: only the badge waits (the next start reports

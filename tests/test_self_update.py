@@ -7,6 +7,8 @@ Run: .venv/bin/python -m unittest tests.test_self_update"""
 import asyncio
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -103,9 +105,50 @@ class Install(unittest.TestCase):
         self.assertEqual(self.head(), self.old)
 
     def test_one_update_of_the_install_at_a_time(self):
-        with self_update._Lock(self.app):          # another agent of this computer is updating it
-            self.assertEqual(self.apply(self.new), "failed")
+        with self_update._Lock(self.app), mock.patch.object(self_update, "LOCK_WAIT_S", 0.3):
+            self.assertEqual(self_update.apply(self.new, False, app=self.app, code=self.app, run=self.run_), "failed")
+        self.assertEqual(self.apply(self.new), "updated")    # held far longer than an update takes: "failed", asked again
+
+    def test_its_git_calls_fit_the_budget_pm_waits_for(self):
+        """GPT re-check: code_report.UPDATE_MAX_S counted 4 git calls; an update makes up to GIT_CALLS."""
+        calls = []
+
+        def counted(args, **kw):
+            calls.append(args) if args[0] == "git" else None
+            return self.run_(args, **kw)
+        self.assertEqual(self_update.apply(self.new, False, app=self.app, code=self.app, run=counted), "updated")
+        self.assertLessEqual(len(calls), self_update.GIT_CALLS)
+
+    def test_another_agents_update_half_done_is_never_taken_for_an_edit(self):
+        """GPT review: the clean-tree check ran before the lock, so a second agent could see the first's half-done
+        checkout and answer "edited" (which stops automatic updates)."""
+        lock = self_update._Lock(self.app)
+        lock.__enter__()
+        (self.app / "requirements.txt").write_text("half written\n")   # the first agent's checkout in progress
+        timer = threading.Timer(0.5, lambda: (git(self.app, "checkout", "--", "requirements.txt"), lock.__exit__()))
+        timer.start()
         self.assertEqual(self.apply(self.new), "updated")
+        timer.join()
+
+    def test_two_agents_of_one_install_asked_together_both_end_on_the_new_code(self):
+        """Live test 2026-11-27: cx-agent updated the shared install while cx-codex2-agent's update said
+        "failed" and kept running old code. Now the second waits for the first, finds the install at the
+        target ("current"), and agent_update.stale() restarts it onto that code (AgentSide's test)."""
+        real, started = self.run_, threading.Event()
+
+        def slow_pip(args, **kw):
+            if args[1:3] == ["-m", "pip"]:
+                started.set()
+                time.sleep(1.5)               # the first agent's pip, while the second is asked
+            return real(args, **kw)
+        first = {}
+        worker = threading.Thread(target=lambda: first.update(r=self_update.apply(self.new, False, app=self.app,
+                                                                                    code=self.app, run=slow_pip)))
+        worker.start()
+        self.assertTrue(started.wait(30))
+        second = self.apply(self.new)
+        worker.join(30)
+        self.assertEqual((first["r"], second, self.head()), ("updated", "current", self.new))
 
     def test_only_a_clone_of_the_official_repo_on_master(self):
         git(self.app, "remote", "set-url", "origin", "https://github.com/someone/hagency-rooms")
