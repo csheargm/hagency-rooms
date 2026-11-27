@@ -204,6 +204,9 @@ class Turns:
         if diff and not await self.may_post(room_id, visitor, repo):   # left, or rebound, while GitHub answered
             self.usage.give_back(visitor)
             return None, None, None
+        if not (self.eligible(visitor) and self.still_here(room_id, visitor)):   # GPT review: left, or connected an
+            self.usage.give_back(visitor)          # agent of their own, while it waited for the slot: never sent
+            return None, None, None
         chat = trial_model.messages(self.history.get((room_id, visitor), []), text, diff)
         model = trial_models.chosen((self.visitors.get(visitor) or {}).get("model"))
         weight = trial_models.weight(model)       # a bigger model's tokens count more against the month
