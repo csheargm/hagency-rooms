@@ -13,6 +13,7 @@ import logging
 import re
 import time
 
+from common import intents
 from common.redact import inert, room_safe
 from server import github_link
 from server import trial_build
@@ -23,7 +24,14 @@ from server import trial_tiers
 from server.pm_address import unaddressed
 
 log = logging.getLogger("loop")
-BUILD_RE = re.compile(r"\b(try|start|run|do|want|give me)\b.{0,20}\bbuild\b", re.I)
+# "try a build", "start a server agent build", "can I do a build": a request for one, never a refusal (GPT review)
+BUILD_RE = re.compile(r"\b(try|start|run|do|want|give me)\s+(?:a|the|one|another|my)?\s*(?:server[- ]agent\s+|trial\s+)?build\b", re.I)
+
+
+def wants_build(text: str) -> bool:
+    """Asks for a build; never "don't start a build" or "bring my own … build" (as pm_trial.wants_trial)."""
+    m = BUILD_RE.search(text)
+    return bool(m) and not (intents.NEGATED.search(text[:m.end()]) or intents.BRING_OWN_RE.search(text))
 RELAY_S = 5
 EXCERPT_CHARS = 400
 PRIVACY = ("It works on a private Hagency demo repo (not yours): the issue and the code go to E2B (a sandbox "
@@ -119,7 +127,7 @@ class BuildOffer:
 
     async def on_build_text(self, room, event) -> bool:
         """"try a build" in our private chat (the caller checked it is): True when answered."""
-        if not BUILD_RE.search(unaddressed(event.body, self.user_id)) or self.build_caps() is None:
+        if not wants_build(unaddressed(event.body, self.user_id)) or self.build_caps() is None:
             return False
         await self.start_build(room.room_id, event.sender)
         return True

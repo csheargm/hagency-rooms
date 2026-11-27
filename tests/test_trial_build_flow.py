@@ -85,6 +85,13 @@ class TheFlow(BuildFlowBase):
         self.assertTrue(self.run_(self.lp.on_trial_text(room, text(NEW, "can I try a build?"))))
         self.assertIn("queued", self.dm()[-1])
 
+    def test_a_refusal_or_other_talk_of_builds_never_queues_one(self):
+        self.join_welcome()
+        room = SimpleNamespace(room_id="!dm", users={NEW: None})
+        for words in ("don't start a server agent build", "I want to build a house", "bring my own agent to try a build"):
+            self.run_(self.lp.on_build_text(room, text(NEW, words)))
+        self.assertFalse(self.worker.jobs.all())               # GPT review of the rebase: nothing queued
+
     def test_a_refused_patch_is_said_plainly_and_nothing_opens(self):
         self.worker.ask_build = kit.scripted(kit.tool("write_file", path="tests/test_calc.py", content="def test_add():\n    pass\n"))
         self.click()

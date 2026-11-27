@@ -105,6 +105,9 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
 - Nothing generated runs on our VM; the worker does only HTTPS and holds at most a 50 MB tarball in memory (100 MB
   unpacked); sandbox output is capped inside the sandbox, and changed files are read only once their sizes fit.
 - One worker at a time (a lock held for its life), so an overlapping restart can't fail a live build.
+- Builds are counted per GitHub account but the allowance comes from the Matrix user's tier: someone who links a
+  different (30-day-old) GitHub account gets that account's fresh count. Accepted while only FREE exists; a paid tier
+  should also count per Matrix user (GPT review of the rebase onto PR #78).
 - "Talk first" means a waiting talk answer gets the slot before the next build call; a build call already underway
   (up to 3 minutes) is not interrupted, so a talk message sent then may be told "busy, try again in a minute".
 - **Private demo repos are not visible to visitors**: adding them as collaborators would need Administration, which the
