@@ -76,7 +76,10 @@ class Gate(Base):
             self.assertTrue(self.run_(self.lp.watchdog("!r", KEY, item)))
         self.assertEqual((item["stage"], self.tasks("merge")), ("stopped", []))
         self.assertIn("cx-agent needs an update first", self.said[-1][0])
-        self.assertTrue(self.run_(self.lp.saved_merge_waits("!r", KEY, {**item, "held": True})))
+        item.update(stage="merging", held=True)    # decided while the room was stopped, sent at the next tick
+        self.said.clear()
+        self.run_(self.lp.send_held("!r", KEY, item))
+        self.assertEqual((item["stage"], "held" in item, self.tasks("merge")), ("stopped", False, []))
 
     def test_the_gates_by_reported_time(self):
         loop = pm_solo_code.SoloCode()

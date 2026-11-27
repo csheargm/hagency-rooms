@@ -83,9 +83,8 @@ class Progress:
             active = [(k, v) for k, v in self.state.items()     # only the room's current repo's items
                       if v["room"] == room_id and v.get("repo") == repo and v["stage"] in ACTIVE]
             for key, item in active:
-                if item.get("held"):          # a step decided while stopped: send it now (a solo merge: gated)
-                    if not await self.saved_merge_waits(room_id, key, item):
-                        await self.dispatch(room_id, item, item["agent"], item["body"], item["task"])
+                if item.get("held"):          # a step decided while stopped: send it now
+                    await self.send_held(room_id, key, item)
                     continue
                 if not await self.watchdog(room_id, key, item):
                     before = item["stage"]
@@ -94,6 +93,12 @@ class Progress:
             if not active:
                 await self.claim_next(room, lvl)
             await self.announce_done(room_id)
+
+    async def send_held(self, room_id: str, key: str, item: dict) -> None:
+        """A step decided while the room was stopped goes out now; a solo merge only through its version gate
+        (pm_solo_code.saved_merge_waits: GPT review)."""
+        if not await self.saved_merge_waits(room_id, key, item):
+            await self.dispatch(room_id, item, item["agent"], item["body"], item["task"])
 
     async def announce_done(self, room_id: str) -> None:
         """Once nothing is left (none active, none queued), say so once, with where to try it."""
