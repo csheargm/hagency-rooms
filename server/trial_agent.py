@@ -5,8 +5,8 @@ only (trial_turn.py answers; trial_model.py is the model): no code is run, no to
 
 Who it talks to: only people who chose it (🧪 in their chat with @pm, "try the server agent", or the
 panel: pm_trial.py), recorded in data/trial.json, and only in rooms such a person brought it into
-(its own private chat with them, or a room they invited it to: data/trial-rooms.json); outside its
-private chat only when mentioned by name, so it never competes with anyone's own agent there. When
+(its own private chat with them, a room they invited it to, or one another visitor did where they name it:
+data/trial-rooms.json); outside its private chat only when named, so it never competes with anyone's own agent. When
 the last person who brought it leaves a room, it leaves too. It ignores every agent, bot and @pm.
 Each person's tier (trial_tiers.py, default FREE) sets their daily limits.
 

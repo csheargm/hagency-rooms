@@ -126,16 +126,18 @@ class Answering(Base):
         self.run_(hear(self.agent, room("!x", bad), message(bad, "loop?")))
         self.assertEqual(self.asked, [])
 
-    def test_in_a_project_room_only_a_mention_by_the_visitor_who_brought_it(self):
+    def test_in_a_project_room_only_a_mention_by_someone_who_uses_it(self):
+        """Since it is for everyone (GPT review), another person who uses it may name it where it already is."""
         self.enrol()
         self.enrol(OTHER)
-        project = room("!proj", NEW, OTHER)
+        project = room("!proj", NEW, OTHER, ANNA)
         self.run_(self.agent.on_invite(project, SimpleNamespace(state_key=ME, membership="invite", sender=NEW)))
         self.run_(hear(self.agent, project, message(NEW, "just chatting")))           # not for it
-        self.run_(hear(self.agent, project, message(OTHER, "Trial agent, hi", [ME])))   # didn't bring it here
+        self.run_(hear(self.agent, project, message(ANNA, "Server agent, hi", [ME])))  # never chose it
         self.assertEqual(self.asked, [])
-        self.run_(hear(self.agent, project, message(NEW, "Trial agent (shared, limited): hi", [ME])))
-        self.assertEqual(len(self.asked), 1)
+        self.run_(hear(self.agent, project, message(OTHER, "Server agent, hi", [ME])))
+        self.run_(hear(self.agent, project, message(NEW, "Server agent (free, limited): hi", [ME])))
+        self.assertEqual(len(self.asked), 2)
 
     def test_only_in_rooms_the_visitor_is_in(self):
         self.enrol()

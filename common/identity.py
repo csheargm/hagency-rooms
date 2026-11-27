@@ -20,6 +20,9 @@ USER_RE = re.compile(r"^@[^:\s]{1,255}:[A-Za-z0-9.-]{1,255}(:\d{1,5})?$")   # a 
 PREFIX_LOCAL, PREFIX_SERVER, HASH_CHARS = 20, 30, 10
 LABEL_MAX = 9
 LABEL_RE = re.compile(r"^[a-z][a-z0-9]{0,8}$")   # a further agent's label (LABEL_MAX): never as long as the hash
+# A message addressed to the shared server agent by name ("Server agent, …"; "Trial agent", its old name):
+# it answers it (server/trial_turn.py) and a person's own agent leaves it alone (bridge_followup.py).
+SERVER_AGENT_NAME_RE = re.compile(r"^\W*(@?hagency\.)?(server|trial)[ -]agent\b", re.I)
 
 
 def person_id(who: str, home: str) -> str:

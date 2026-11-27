@@ -12,6 +12,8 @@ Mixed into bridge.Bridge (owner_id, user_id, open_questions).
 import re
 import time
 
+from common import identity
+
 OPEN_QUESTION_S = 1800
 MAX_CANDIDATES = 5
 NO_REPLY = "NO_REPLY"
@@ -64,6 +66,8 @@ class BridgeFollowUp:
         if q["left"] <= 0:
             self.open_questions.pop(room.room_id, None)
             return None
+        if identity.SERVER_AGENT_NAME_RE.search(event.body or ""):
+            return None                       # "Server agent, …": for the shared server agent, not me
         names = {n.lower() for n in AGENT_NAME_RE.findall(event.body or "")}
         if names - {self.user_id.lstrip("@").partition(":")[0].lower()}:
             return None                       # names another agent in plain text: not for me

@@ -9,6 +9,7 @@ offer_thumb, is_one_to_one, private_room; `trial` is set by loop.run).
 import logging
 import re
 
+from common import intents
 from common.redact import room_safe
 from server.pm_address import unaddressed
 from server import trial_limits
@@ -37,6 +38,12 @@ NOT_ENROLLED = "Start the server agent first: click 🧪 or type \"try the serve
 UNAVAILABLE = "The server agent isn't available just now. You can bring your own: type \"bring my own\"."
 FAILED = "⚠️ I couldn't start your server agent: {why}. Type \"try the server agent\" to try again."
 NOT_FOR_YOU = "The server agent isn't available to your account."
+
+
+def wants_trial(text: str) -> bool:
+    """Asks for the server agent; never "I don't want …" or "bring my own … server agent" (GPT review: those are
+    pm_welcome's, a refusal or their own agent)."""
+    return bool(TRIAL_RE.search(text)) and not (intents.NEGATED.search(text) or intents.BRING_OWN_RE.search(text))
 
 
 class TrialOffer:
@@ -81,7 +88,7 @@ class TrialOffer:
         if not in_dm or not trial_limits.enabled():   # no key: never mine (as pm_welcome decides "our private chat")
             return False
         if not self.trial_on():                  # the key is set but it's down or still signing in: say so
-            if not TRIAL_RE.search(unaddressed(event.body, self.user_id)):
+            if not wants_trial(unaddressed(event.body, self.user_id)):
                 return False
             await self.say(room.room_id, UNAVAILABLE)
             return True
@@ -90,7 +97,7 @@ class TrialOffer:
         m = USE_RE.match(text)                  # first: "use glm-5.3 for the trial" names a model (independent review)
         if m and (m.group("trial") or mine and (trial_models.allowed(m.group("name")) or m.group("kw") or m.group("kw2"))):
             await self.say(room.room_id, self.choose_model(event.sender, m.group("name")))   # NOT_ENROLLED if not theirs
-        elif TRIAL_RE.search(text):
+        elif wants_trial(text):
             await self.start_trial(room.room_id, event.sender)
         elif mine and MODELS_RE.search(text):
             await self.say(room.room_id, self.model_list(event.sender))

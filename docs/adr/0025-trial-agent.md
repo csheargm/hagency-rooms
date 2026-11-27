@@ -66,7 +66,11 @@ Amended 2026-11-27 (owner): **anyone** may use it, now called the **Server agent
   People from other servers keep the smaller token allowance.
 - **Never competes**: outside its own private chat it still answers only when mentioned (a pill, its ID, or a
   message starting "Server agent, …" / the old "Trial agent, …"), so in a project room where the person also
-  has their own agent it is silent unless named. Still never a builder, reviewer or merger (unchanged).
+  has their own agent it is silent unless named, and a person's own agent leaves "Server agent, …" alone (its
+  follow-up filter, `common/identity.SERVER_AGENT_NAME_RE`). Still never a builder, reviewer or merger (unchanged).
+- **Shared rooms**: someone else who uses it and names it in a room another person brought it into becomes one of
+  that room's sponsors (so it stays while either is there); people who never chose it are still ignored.
+- **A used-up day never reads GitHub**: a PR diff is only fetched while the shortest request still fits their tokens.
 - **Wording**: shown as "Server agent (free, limited)" (display name, its chat "Server agent", every reply ends
   "— Server agent · <model>", @pm's offer, the My agents card, the privacy page). "server agent" / "house agent"
   typed to @pm, and 🏠 on old offers, now start it while it is set up (before, "not here yet").

@@ -21,7 +21,6 @@ ask_model, history, answering, waiting, busy, eligible, sponsors, post).
 import asyncio
 import logging
 import math
-import re
 import time
 
 from nio import MatrixRoom, RoomMessageText
@@ -41,7 +40,7 @@ log = logging.getLogger("trial")
 HISTORY_TURNS = 8                     # this visitor's last turns in this room, kept in memory only
 NOTICE_EVERY_S = 60                   # "still answering" / "busy": at most this often per visitor
 MAX_WAITING = 6                       # answers queued or running at once; more: "busy" at once
-NAME_RE = re.compile(r"^\W*(@?hagency\.)?(server|trial)[ -]agent\b", re.I)   # "Server agent, …" (or its old name)
+NAME_RE = identity.SERVER_AGENT_NAME_RE        # "Server agent, …" (or its old name) at the start
 BRING = ("For your own agent (no daily cap, with tools and the GitHub loop): type \"bring my own\" in your chat with "
          "Product Manager, or talk to the agent you have.")
 CAPPED = {trial_limits.VISITOR: "You've used today's {n} free messages with the server agent.",
@@ -89,11 +88,22 @@ class Turns:
         """Who and where (see the module docstring); the visitor's eligibility is checked by the caller."""
         sender = event.sender
         if (sender == self.me() or is_agent_or_bot(sender) or lifecycle.is_stale(event, self.started_ms)
-                or sender not in self.visitors or not self.still_here(room.room_id, sender)):
+                or sender not in self.visitors):
             return False
         if (self.visitors.get(sender) or {}).get("dm") == room.room_id:
-            return True                   # our private chat: every message is for me
-        return mentions(event, self.me())
+            return self.still_here(room.room_id, sender)   # our private chat: every message is for me
+        if not mentions(event, self.me()):
+            return False
+        self.join_sponsors(room.room_id, sender)
+        return self.still_here(room.room_id, sender)
+
+    def join_sponsors(self, room_id: str, visitor: str) -> None:
+        """Someone else who uses me names me in a room another visitor brought me into: theirs too, so it stays
+        while either is there (GPT review: with everyone eligible, a room has several; only one could invite me)."""
+        room = self.client.rooms.get(room_id)
+        if (visitor not in self.sponsors(room_id) and self.sponsors(room_id) and room is not None and self.eligible(visitor)
+                and visitor in room.users and visitor not in getattr(room, "invited_users", {})):
+            self.add_sponsor(room_id, visitor)
 
     def still_here(self, room_id: str, visitor: str) -> bool:
         """They brought me into this room and are joined there now (asked again before reading and posting)."""
@@ -206,7 +216,8 @@ class Turns:
         """The model's answer to `text`, with this visitor's recent turns here and a PR's diff if asked."""
         repo = await self.repo(room_id)
         n = trial_reads.pr_number(text, repo)
-        diff = await trial_reads.pr_diff(repo, n) if n and repo and self.still_here(room_id, visitor) else None
+        # GPT review: a used-up day never reads GitHub (it would spend the App's quota while holding the slot)
+        diff = await trial_reads.pr_diff(repo, n) if n and repo and self.still_here(room_id, visitor) and self.fits(visitor) else None
         if diff and not await self.may_post(room_id, visitor, repo):   # left, or rebound, while GitHub answered
             self.usage.give_back(visitor)
             return None, None, None
@@ -232,7 +243,7 @@ class Turns:
         remote, now = identity.split(visitor)[1] != SERVER_NAME, time.time()
         self.reserved_at = (trial_limits.day(now), trial_budget.month(now))   # one call at a time: one reservation
         if not self.usage.reserve_tokens(visitor, n, remote):
-            if self.usage.tokens_used(visitor) + self.smallest(visitor) <= self.usage.allowance(visitor, remote):
+            if self.fits(visitor):
                 return TOO_BIG                    # a shorter one still fits: say so, every time
             return self.cap_words(visitor, trial_limits.TOKENS, time.time()) if self.usage.first_notice(visitor, trial_limits.TOKENS) else ""
         if not self.budget.reserve(n):            # this answer could pass the month's token cap: not asked
@@ -244,6 +255,11 @@ class Turns:
         on_day, in_month = getattr(self, "reserved_at", (None, None))
         self.budget.settle(reserved, used, in_month)
         self.usage.settle_tokens(visitor, reserved, used, on_day)
+
+    def fits(self, visitor: str) -> bool:
+        """The shortest possible request still fits what's left of their day's tokens."""
+        remote = identity.split(visitor)[1] != SERVER_NAME
+        return self.usage.tokens_used(visitor) + self.smallest(visitor) <= self.usage.allowance(visitor, remote)
 
     def smallest(self, visitor: str) -> float:
         """What the shortest possible request reserves on their model: below it, the day is used up."""

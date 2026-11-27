@@ -57,6 +57,15 @@ class OwnerWithAgents(TrialBase):
         self.run_(self.lp.on_welcome_reaction(DM, reaction(NEW, "🏠")))   # an old offer's 🏠: no more "not here yet"
         self.assertTrue(said_to(self, "!dm")[-1].startswith("🧪 Your server agent is ready"))
 
+    def test_declining_it_or_bringing_their_own_never_starts_it(self):
+        """GPT review: "I don't want …" and "bring my own … server agent" were taken as asking for it."""
+        self.lp._welcomes[NEW] = {"dm": "!dm", "offer": "$offer", "done": []}
+        self.lp.choose = mock.AsyncMock()
+        self.assertFalse(self.run_(self.lp.on_welcome_text(DM, text(NEW, "I don't want to use the server agent"))))
+        self.run_(self.lp.on_welcome_text(DM, text(NEW, "bring my own so I can use the server agent")))
+        self.assertEqual(self.lp.choose.await_args.args[2], "🔌")
+        self.trial_client.room_create.assert_not_awaited()
+
     def test_the_panel_card_shows_for_them_with_todays_usage(self):
         self.assertEqual(self.lp.trial_view(NEW)["on"], False)
         self.assertEqual(self.run_(self.lp.trial_action(NEW))["result"], "ok")
@@ -77,6 +86,36 @@ class OwnerWithAgents(TrialBase):
         self.assertEqual(self.trial_posts[-1][0], "!proj")
         self.run_(hear(self.lp.trial, project, message(NEW, "and a squash?", mentions=[ME])))   # a pill names it too
         self.assertEqual(len(self.asked), 2)
+
+    def test_a_second_person_who_uses_it_can_name_it_in_a_room_someone_else_brought_it_to(self):
+        other = f"@newbie2:{S}"
+        self.run_(self.lp.start_trial("!dm", NEW))
+        self.lp.trial.visitors[other] = {"dm": "!otherdm", "since": 0, "greeted": True}
+        project = SimpleNamespace(room_id="!proj", users={ME: None, NEW: None, other: None}, invited_users={})
+        self.lp.trial.add_sponsor("!proj", NEW)
+        self.run_(hear(self.lp.trial, project, message(other, "hello everyone")))            # not named: nothing
+        self.assertEqual((self.lp.trial.sponsors("!proj"), len(self.asked)), ([NEW], 0))
+        self.run_(hear(self.lp.trial, project, message(other, "Server agent, what is CI?")))
+        self.assertEqual((self.lp.trial.sponsors("!proj"), len(self.asked)), ([NEW, other], 1))
+        self.run_(self.lp.trial.on_member(project, SimpleNamespace(membership="leave", state_key=NEW)))
+        self.trial_client.room_leave.assert_not_awaited()                                      # the other is still here
+        stranger = f"@stranger:{S}"                                                            # never chose it: ignored
+        project.users[stranger] = None
+        self.run_(hear(self.lp.trial, project, message(stranger, "Server agent, hi")))
+        self.assertEqual((self.lp.trial.sponsors("!proj"), len(self.asked)), ([other], 1))
+
+    def test_a_used_up_day_never_reads_a_pull_request(self):
+        """GPT review: the diff was fetched (GitHub quota, the one slot) before the token allowance refused."""
+        self.run_(self.lp.start_trial("!dm", NEW))
+        dm = self.accept()
+        self.lp.trial.usage.reserve_tokens(NEW, trial_limits.number("TRIAL_VISITOR_TOKENS"), False)   # the day spent
+        read = mock.AsyncMock(return_value="diff")
+        with mock.patch.object(trial_turn.room_state, "repo_of", mock.AsyncMock(return_value="acme/app")), \
+                mock.patch.object(trial_turn.trial_reads, "pr_diff", read):
+            self.run_(hear(self.lp.trial, dm, message(NEW, "what does PR #3 change?")))
+        read.assert_not_awaited()
+        self.assertEqual(self.asked, [])
+        self.assertIn(UPGRADE, self.trial_posts[-1][1])
 
     def test_a_reached_cap_says_the_limit_paid_plans_and_their_own_agent(self):
         self.run_(self.lp.start_trial("!dm", NEW))
