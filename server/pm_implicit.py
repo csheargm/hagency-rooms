@@ -5,7 +5,9 @@ A message that doesn't name @pm still counts as for @pm when
   (b) its sender is who @pm was just talking with (a question of mine waits for them, or I answered
       them within FOLLOW_S),
   (c) its sender is the only person in the room, or
-  (d) the understanding step (the room owner's agent, or the host's model) judges it is: only when one
+  (d) it comes right after @pm's own message (nothing else said in between, within FOLLOW_S): the
+      understanding step reads it like (e), and may well stay silent ("@pm spoke last": note_said), or
+  (e) the understanding step (the room owner's agent, or the host's model) judges it is: only when one
       is available, only for messages the phrase rules read as an intent or that look like a request,
       and at most PER_MINUTE such reads a room, so ordinary chat never floods the owner's agent.
 Never when it is plainly for someone else (a mention, a name, an agent's name, an edit). Whatever
@@ -18,8 +20,9 @@ import logging
 import re
 import time
 
-from nio import MatrixRoom, RoomGetEventResponse, RoomMessageText
+from nio import MatrixRoom, RoomGetEventResponse, RoomMessage, RoomMessageText
 
+from common import github
 from common import intents
 from common import room_state
 from server import pm_brain
@@ -35,6 +38,8 @@ REPLIES = "it replies to one of @pm's messages"
 TALKING = "@pm was just talking with them"
 ALONE = "they are the only person in the room"
 MAYBE = "nobody was named: it may be for @pm, or for someone else in the room"
+AFTER_PM = "nobody was named, but it follows right after @pm's own message: it may answer @pm"
+SPECULATIVE = (MAYBE, AFTER_PM)   # no typing shown, no phrase-rule fallback: silence when the model says none
 REQUEST_RE = re.compile(r"\?\s*$|^\W*(please|pls|can|could|would|will|let'?s|show|tell|what|where|how|when|why|who|"
                         r"is|are|do|does|did|start|stop|make|plan|build)\b", re.I)
 AGENT_NAME_RE = re.compile(r"(?<![\w-])@?[a-z0-9._=-]+-agent\b|\b\w+'s agent\b", re.I)
@@ -72,6 +77,27 @@ def unnamed_ask(waiting: dict) -> bool:
 
 
 class Implicit:
+    def note_said(self, room: MatrixRoom, event: RoomMessage) -> None:
+        """nio callback for every message (@pm's own notices too: pm_kind_reports.listen_early): the room's
+        latest one, and the one before it. An edit isn't a new message; a task to an agent isn't said to people."""
+        content = event.source.get("content", {})
+        rel = content.get("m.relates_to")
+        if isinstance(rel, dict) and rel.get("rel_type") == "m.replace":
+            return
+        said = self.__dict__.setdefault("_said", {})
+        last = said.get(room.room_id)
+        if last and last[0] == event.event_id:
+            return                            # seen already (a replay after a hand-off)
+        mine = event.sender == self.user_id and github.TASK_KEY not in content
+        said[room.room_id] = (event.event_id, event.server_timestamp, mine, last[:3] if last else None)
+
+    def follows_pm(self, room_id: str, event: RoomMessageText) -> bool:
+        """@pm's own message (to people) came right before this one, at most FOLLOW_S earlier."""
+        last = self.__dict__.get("_said", {}).get(room_id)
+        before = last[3] if last and last[0] == event.event_id else last   # whichever callback ran first
+        ts = getattr(event, "server_timestamp", None)
+        return bool(before and before[2] and isinstance(ts, int) and 0 <= ts - before[1] <= FOLLOW_S * 1000)
+
     def note_talk(self, room_id: str, person: str) -> None:
         """@pm is answering this person here (an addressed message): their next words may be for me too."""
         self.__dict__.setdefault("_talks", {})[room_id] = (person, time.monotonic())
@@ -99,14 +125,16 @@ class Implicit:
         if text is not None:
             self.note_talk(room.room_id, event.sender)
             return False
-        if not self.background(self.unaddressed_job(room, event, reply_to, voice, self.generation.get(room.room_id, 0))):
+        after_pm = self.follows_pm(room.room_id, event)   # read now: the next message may come before the job
+        if not self.background(self.unaddressed_job(room, event, reply_to, voice, self.generation.get(room.room_id, 0),
+                                                    after_pm)):
             log.warning("too many messages being understood; skipped %s's unaddressed one", event.sender)
         return True                           # (pm_understand.background: bounded; it may not be for me at all)
 
     async def unaddressed_job(self, room: MatrixRoom, event: RoomMessageText, reply_to: str | None, voice: bool,
-                              gen: int) -> None:
+                              gen: int, after_pm: bool = False) -> None:
         try:
-            await self.on_unaddressed(room, event, without_quote(event.body), reply_to, voice, gen)
+            await self.on_unaddressed(room, event, without_quote(event.body), reply_to, voice, gen, after_pm)
         except (RuntimeError, OSError) as e:  # SendError / network: the log says; the room keeps working
             log.error("couldn't look at %s's message: %s", event.sender, e)
         except Exception:                     # noqa: BLE001 — a background task: never fail silently
@@ -156,7 +184,7 @@ class Implicit:
         return unnamed_ask(waiting) and waiting.get("by") == sender and time.time() < waiting.get("until", 0)
 
     async def on_unaddressed(self, room: MatrixRoom, event: RoomMessageText, body: str, reply_to: str | None,
-                             voice: bool = False, gen: int = 0) -> None:
+                             voice: bool = False, gen: int = 0, after_pm: bool = False) -> None:
         """A message without "@pm" (pm_chat.on_human): for me only by the rules above."""
         sender, rid = event.sender, room.room_id
         if voice or self.is_private_chat(room) or project_rooms.is_front_door(room) or not body.strip() \
@@ -165,10 +193,11 @@ class Implicit:
         if intents.is_yes(body) and self.asked_them(rid, sender):
             await self.say(rid, HOW_TO_CONFIRM)   # a bare "yes" alone doesn't count (yes_counts); never silence
             return
-        how = await self.why_for_pm(room, sender, reply_to)
+        how = await self.why_for_pm(room, sender, reply_to) or (AFTER_PM if after_pm else None)
+        firm = how is not None and how != AFTER_PM   # (a)–(c): plainly for me
         intent = intents.classify(body)
         if intent in EXACT:                   # a repo name or an issue number: never left to a model
-            if how is not None:
+            if firm:
                 await self.act_implicit(room, sender, intent, body, gen)
             return
         if intent == intents.UNKNOWN and reply_to and reply_to == (self.pending.get(rid) or {}).get("event_id") \
@@ -179,14 +208,14 @@ class Implicit:
         why = await self.brain_why_not(room) if self.spend_read(rid) else ""
         if why is None:
             await self.decide(room, sender, body, intent, reply_to, gen, how=how or MAYBE)
-        elif how is not None and self.generation.get(rid, 0) == gen:
+        elif firm and self.generation.get(rid, 0) == gen:
             await self.fall_back(room, sender, intent, body, how, why, gen)
 
     async def after_implicit(self, room: MatrixRoom, sender: str, decision: object, text: str, how: str, gen: int) -> None:
         """What the understanding step made of an unaddressed message (pm_understand.decide)."""
         if isinstance(decision, tuple):
             await self.apply(room, sender, *decision, text, None, gen, named=False)
-        elif how != MAYBE:                    # (a)–(c) without a model: the phrase rules
+        elif how not in SPECULATIVE:          # (a)–(c) without a model: the phrase rules
             await self.fall_back(room, sender, intents.classify(text), text, how, decision or "", gen)
 
     async def fall_back(self, room: MatrixRoom, sender: str, intent: str, text: str, how: str, why: str,

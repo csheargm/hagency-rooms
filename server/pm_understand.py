@@ -16,7 +16,7 @@ from common.pm_actions import INTENT_OF as BRAIN_ACTIONS
 from server import pm_brain
 from common import room_state
 from server.pm_chat import CONFIRM_S, LEVEL_WORDS, ONLY_MODERATORS, without_quote
-from server.pm_implicit import MAYBE, TO_CONFIRM, Implicit, mode_question
+from server.pm_implicit import SPECULATIVE, TO_CONFIRM, Implicit, mode_question
 from server.pm_owner_brain import SIMPLE, OwnerBrain
 
 log = logging.getLogger("loop")
@@ -81,7 +81,7 @@ class Understanding(OwnerBrain, Implicit):
                     how: str | None = None) -> tuple | str | None:
         """Ask the understanding step with the room's context; None (or why not, PM_BRAIN=owner) means
         use the rules. The owner's agent's budgets are spent BEFORE any context is read, so a refused
-        burst costs nothing. Only the speculative read (MAYBE) shows no typing indicator."""
+        burst costs nothing. Only a speculative read (SPECULATIVE) shows no typing indicator."""
         if pm_brain.BRAIN == "off":
             return None
         agent = None
@@ -90,7 +90,7 @@ class Understanding(OwnerBrain, Implicit):
             if agent is None:
                 return why
         ctx = await self.context(room, sender, text, reply_to, how)
-        shown = how != MAYBE                  # they knowingly talk to me: show I'm on it
+        shown = how not in SPECULATIVE        # they knowingly talk to me: show I'm on it
         if shown:
             await self.typing(room.room_id, True)
         try:
