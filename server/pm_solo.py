@@ -40,6 +40,8 @@ NO_OTHER = ("Solo review is on, but none of the builder's owner's other agents i
             "work). Bring a second agent of yours into the room, then say **@pm retry #{n}**.")
 OFFLINE = ("Solo review is on, but your other agent {names} is offline. Wake its computer (or start it in My agents), "
            "then say **@pm retry #{n}**.")
+AWAY = ("Another person's agent, {names}, is here but offline, so it checks this rather than your own agent. Ask "
+        "its owner to wake it, then say **@pm retry #{n}**.")
 SOLO_READY = ("PR #{pr} ready — a person merges. GitHub's review rule can't count a review by your own agent, so as "
               "the repo's admin use **Merge without waiting for requirements** on GitHub.")
 SOLO_READY_NO_BYPASS = ("PR #{pr} ready — a person merges. GitHub's review rule can't count a review by your own agent, "
@@ -153,10 +155,14 @@ class Solo(SoloRules):
 
     async def checkers(self, room: MatrixRoom, item: dict) -> tuple[list[str], bool]:
         """(who may check this item's work, whether that is solo review)."""
-        agents = routing.available(self.agents_in(room), self.agent_online)
+        here = self.agents_in(room)
+        agents = routing.available(here, self.agent_online)
         others = routing.checkers_for(agents, item["builder"], ownership.owner_id)
         if others or not await self.solo_on(room.room_id):
             return others, False
+        if away := routing.checkers_for(here, item["builder"], ownership.owner_id):   # GPT review: another person's
+            item["away_checker"] = [local(a) for a in away]   # agent, offline for now: waited for, never replaced
+            return [], False
         own = routing.own_checkers(agents, item["builder"], ownership.owner_id)
         fit = [a for a in own if self.runs_solo(a)]   # pm_solo_code: never a solo check to code that predates it
         if own and not fit:                   # said by no_checker_steps, with "@pm retry #N"
@@ -170,8 +176,10 @@ class Solo(SoloRules):
         asleep = [local(a) for a in (self.agents_in(room) if room and mine else [])
                   if a != item["builder"] and ownership.owner_id(a) == mine and self.agent_online(local(a)) is False]
         old = (item or {}).pop("old_checker", None) if solo else None   # pm_solo_code: code from before solo review
-        first = (update_line(old[0], old[1], n) if old else OFFLINE.format(names=", ".join(asleep), n=n)
-                 if solo and asleep else (NO_OTHER if solo else HINT).format(n=n))   # review: in the room, but offline
+        away = (item or {}).pop("away_checker", None)                    # checkers: another person's, offline
+        first = (update_line(old[0], old[1], n) if old else AWAY.format(names=", ".join(away), n=n) if away else
+                 OFFLINE.format(names=", ".join(asleep), n=n) if solo and asleep
+                 else (NO_OTHER if solo else HINT).format(n=n))   # review: in the room, but offline
         return "**What you can do:**\n\n" + f"- {first}" + (f"\n- Or: {steps}" if steps else "")
 
     def merge_failed_steps(self, item: dict, key: str, kind: str) -> str | None:
@@ -190,10 +198,12 @@ class Solo(SoloRules):
             return True
         if item.get("solo") is not True or not routing.own_checkers([sender], item["builder"], ownership.owner_id):
             return False
-        if await self.solo_on(room.room_id):
-            return True
+        on = await self.solo_on(room.room_id)
+        if on and not routing.checkers_for(self.agents_in(room), item["builder"], ownership.owner_id):
+            return True                       # GPT review: never while another person's agent is here (back) to check
         item["no_checker"] = True
-        await self.stop(room.room_id, key, item, f"solo review was switched off while {local(sender)} checked it",
+        await self.stop(room.room_id, key, item, f"another person's agent is here to check it, so {local(sender)}'s "
+                        "check doesn't count" if on else f"solo review was switched off while {local(sender)} checked it",
                         self.no_checker_steps(num(key), None, False))
         return False
 
