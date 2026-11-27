@@ -50,11 +50,6 @@ class OldAgents(Base):
         self.run_(self.lp.solo_from_panel(self.room, CX, "on"))
         self.assertTrue(old_reader_on(self.events(), REPO))
 
-    def test_off_is_never_written_as_on(self):
-        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
-        self.assertIsNone(self.run_(self.lp.record_on("!r")))
-        self.assertFalse(old_reader_on(self.events(), REPO))
-
     def test_the_ruleset_task_goes_out_with_the_switch_written(self):
         self.run_(self.lp.ask_ruleset(self.room, CX, True, [], REPO))
         self.assertEqual(len(self.tasks(solo_review.TASK_KIND)), 1)
@@ -73,6 +68,26 @@ class OldAgents(Base):
         asked.assert_awaited()
         self.run_(self.lp.retry(self.room, CX, 7))
         self.assertEqual(item["stage"], "approved")                 # the merge is tried again, PR kept
+
+    def test_record_on_says_off_and_never_lets_a_step_go_out(self):
+        """GPT review: off (or switched off meanwhile) must never count as recorded."""
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
+        self.assertEqual(self.run_(self.lp.record_on("!r")), pm_solo_code.NOT_ON)
+        self.assertFalse(old_reader_on(self.events(), REPO))
+
+    def test_a_review_again_never_goes_to_a_reviewer_on_old_code(self):
+        """GPT review: a fix or a moved PR sent a fresh solo review straight to the saved reviewer."""
+        item = self.built()
+        self.assertEqual(item["reviewer"], CXC)
+        reviews = len(self.tasks("review"))
+        item.update(stage="fixing", task_ids=["F"])                # CXC asked for changes; CXA fixed them
+        self.lp.runs_solo = lambda a: a != CXC                    # its reviewer is on older code now
+        with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=True)):
+            self.run_(self.lp.on_result(self.room, CXA, {"kind": "fix", "issue": 7, "pr": 9, "sha": "def",
+                                                         "task_id": "F"}))
+        self.assertEqual(len(self.tasks("review")), reviews)
+        self.assertEqual((item["stage"], item["no_checker"]), ("stopped", True))
+        self.assertIn(pm_solo_code.update_line("cx-codex-agent", True, 7), self.said[-1][0])
 
     def test_a_checker_on_old_code_gets_no_solo_check(self):
         with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=False)):

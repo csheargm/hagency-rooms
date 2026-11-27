@@ -239,9 +239,7 @@ class Solo(SoloRules):
         account (loop_progress.advance): Autonomous merges as the repo's admin, Assist tells the person how."""
         state = await solo_review.read(self.client, room_id)
         if info.get("headRefOid") != item.get("sha"):
-            item["stage"] = "reviewing"       # the PR moved since it was checked: check what's there now
-            await self.dispatch(room_id, item, item["reviewer"], f"{item['reviewer']}: review PR #{item['pr']} again "
-                                f"(it changed) against #{num(key)}", routing.check_task(item, num(key)))
+            await self.review_again(room_id, key, item, "it changed")   # the PR moved since it was checked
         elif lvl == "autonomous" and info.get("mergeable") == "MERGEABLE" and await self.checks_green(room_id, key, item):
             if not self.runs_solo(item["builder"]):   # pm_solo_code: its code would refuse (or not know) the admin merge
                 item["resume"] = "approved"           # "@pm retry #N" tries the merge again, PR kept

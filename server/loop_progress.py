@@ -12,7 +12,6 @@ from adapters.agents import agents
 from common import github
 from common import room_state
 from common.redact import markup_safe as safe
-from server import routing
 from server.pm_paused import approve_steps, finish_merged, next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
 
 log = logging.getLogger("loop")
@@ -153,9 +152,7 @@ class Progress:
         back to the same reviewer, whose new review is pinned to the new commit."""
         if result["kind"] == "fix":
             item.update(stage="reviewing", fix_sha=result.get("sha"))
-            await self.dispatch(room_id, item, item["reviewer"],
-                                f"{item['reviewer']}: review PR #{item['pr']} again (after fixes) against #{num(key)}",
-                                routing.check_task(item, num(key)))
+            await self.review_again(room_id, key, item, "after fixes")   # pm_solo_code: a solo one to code that does it
             return
         item["sha"] = str(result["sha"])
         if result.get("verdict") == "approve":
@@ -256,10 +253,7 @@ class Progress:
         elif item["stage"] == "approved" and info.get("mergeable") == "CONFLICTING":
             await self.stop(room_id, key, item, f"PR #{item['pr']} has merge conflicts")   # don't block the queue
         elif ok and info.get("headRefOid") and info["headRefOid"] != item.get("sha"):
-            item["stage"] = "reviewing"       # the PR moved since it was approved: review what's there now
-            await self.dispatch(room_id, item, item["reviewer"],
-                                f"{item['reviewer']}: review PR #{item['pr']} again (it changed) against #{num(key)}",
-                                routing.check_task(item, num(key)))
+            await self.review_again(room_id, key, item, "it changed")   # the PR moved since it was approved
         elif ok and lvl == "autonomous":
             item["stage"] = "merging"
             await self.dispatch(room_id, item, item["builder"], f"{item['builder']}: merge PR #{item['pr']}",

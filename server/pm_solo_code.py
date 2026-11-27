@@ -9,12 +9,14 @@ step: the room is told it needs an update first, and it is asked to update (cons
 Mixed into loop.Loop through pm_solo_rules.SoloRules (client, write_solo, drop_other_repo).
 """
 from common import code_report, registry, room_state, solo_review
-from server import console_auto_update, ownership
+from server import console_auto_update, ownership, routing
 from server.pm_cards import local
+from server.pm_paused import num
 
 NEEDS_UPDATE = "{agent} needs an update first: it runs code from before solo review. "   # live test 2026-11-27
 THEN_ASKED = "I've asked it to update. Once My agents shows it Up to date, say **@pm retry #{n}**."
 THEN_BY_HAND = "Update it in My agents (in your chat with Product Manager), then say **@pm retry #{n}**."
+NOT_ON = "Solo review is off here now, so I sent nothing that needs it."
 UNREADABLE = "⚠️ I couldn't read this room's settings just now, so I changed nothing. Please try again in a minute."
 
 
@@ -31,16 +33,34 @@ class SoloCode:
 
     async def record_on(self, rid: str) -> str | None:
         """Before an agent re-checks the switch: on, written out for the room's repo (older agent code reads only
-        that). None when it is there (or was written); else the line to say. Off is never written as on."""
+        that). None only when it is on and recorded for that repo; else the line to say (GPT review: never a
+        step sent while off). Off is never written as on."""
         try:
             state = await solo_review.read(self.client, rid, strict=True)
         except room_state.StateUnreadable:
             return UNREADABLE
         bound = state["bound"]
-        if not solo_review.live(state, bound) or state["repo"] == bound:
-            return None                       # off: the agent refuses anyway; for this repo: already explicit
+        if not solo_review.live(state, bound):
+            return NOT_ON
+        if state["repo"] == bound:
+            return None                       # already explicit for this repo
         await self.drop_other_repo(rid, state, bound)   # another repo's GitHub part never carries over
-        return (await self.write_solo(rid, None, repo=bound, for_repo=bound))[0]
+        err, before = await self.write_solo(rid, None, repo=bound, for_repo=bound)
+        return err or (None if before["on"] else NOT_ON)   # switched off meanwhile: kept off, nothing sent
+
+    async def review_again(self, room_id: str, key: str, item: dict, why: str) -> None:
+        """A fresh review by the item's reviewer (after fixes, or the PR moved); a solo one only to code that does
+        solo steps (GPT review: else it pauses, its update is asked, and "@pm retry #N" goes back to the check)."""
+        reviewer = item["reviewer"]
+        if item.get("solo") is True and not self.runs_solo(reviewer):
+            item["no_checker"] = True
+            await self.stop(room_id, key, item, f"{local(reviewer)} runs code from before solo review",
+                            "**What you can do:**\n\n- " + update_line(local(reviewer), await self.ask_update(reviewer),
+                                                                        num(key)))
+            return
+        item["stage"] = "reviewing"
+        await self.dispatch(room_id, item, reviewer, f"{reviewer}: review PR #{item['pr']} again ({why}) against "
+                            f"#{num(key)}", routing.check_task(item, num(key)))
 
 
 def update_line(agent: str, asked: bool, n: int) -> str:
