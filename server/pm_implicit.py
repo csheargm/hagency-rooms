@@ -92,11 +92,13 @@ class Implicit:
         said[room.room_id] = (event.event_id, event.server_timestamp, mine, last[:3] if last else None)
 
     def follows_pm(self, room_id: str, event: RoomMessageText) -> bool:
-        """@pm's own message (to people) came right before this one, at most FOLLOW_S earlier."""
+        """@pm's own message (to people) came right before this one, at most FOLLOW_S earlier, and this one
+        is fresh: a batch delivered late is no answer to read now (GPT review)."""
         last = self.__dict__.get("_said", {}).get(room_id)
         before = last[3] if last and last[0] == event.event_id else last   # whichever callback ran first
-        ts = getattr(event, "server_timestamp", None)
-        return bool(before and before[2] and isinstance(ts, int) and 0 <= ts - before[1] <= FOLLOW_S * 1000)
+        ts, window = getattr(event, "server_timestamp", None), FOLLOW_S * 1000
+        return bool(before and before[2] and isinstance(ts, int) and 0 <= ts - before[1] <= window
+                    and time.time() * 1000 - ts <= window)
 
     def note_talk(self, room_id: str, person: str) -> None:
         """@pm is answering this person here (an addressed message): their next words may be for me too."""

@@ -4,6 +4,7 @@
 "no need for a second person at this testing stage" a little later: the understanding step must read it.
 Run: .venv/bin/python -m unittest tests.test_after_pm_flow"""
 import asyncio
+import time
 import unittest
 from types import SimpleNamespace
 
@@ -14,7 +15,7 @@ from tests.owner_ai_room import ANNA, ANNA_AGENT, BETTY, PM, RoomBase
 PAUSED = ("⏸ #13 is paused: there's no second person's agent here to review it. Review and merge it on "
           "GitHub, or invite a second person with their agent.")
 ANSWER = "no need for a second person at this testing stage"
-T0 = 1_800_000_000_000                                # ms
+T0 = int(time.time() * 1000) - 10_000                  # ms: just now
 
 
 class AfterPm(RoomBase, unittest.TestCase):
@@ -71,8 +72,14 @@ class AfterPm(RoomBase, unittest.TestCase):
         self.assertEqual((self.asked, self.said), ([], []))
 
     def test_too_long_after_pm_is_ordinary_chat(self):
-        self.post(PM, PAUSED, 0)
-        self.answer(ANNA, ANSWER, pm_implicit.FOLLOW_S + 1)
+        self.post(PM, PAUSED, -pm_implicit.FOLLOW_S - 2)
+        self.answer(ANNA, ANSWER, -1)
+        self.assertEqual((self.asked, self.said), ([], []))
+
+    def test_a_late_delivered_answer_is_ordinary_chat(self):
+        """GPT review: both events reach @pm an hour late (a stuck sync): no answer to read now."""
+        self.post(PM, PAUSED, -3600)
+        self.answer(ANNA, ANSWER, -3580)
         self.assertEqual((self.asked, self.said), ([], []))
 
     def test_a_task_to_an_agent_or_an_edit_isnt_pm_speaking_to_people(self):
@@ -98,8 +105,8 @@ class AfterPm(RoomBase, unittest.TestCase):
     def test_the_budget_still_caps_reads(self):
         self.model = {"action": "none", "reply": ""}
         for i in range(pm_implicit.PER_MINUTE + 2):
-            self.post(PM, PAUSED, i * 2)
-            self.answer(ANNA, f"{ANSWER} {i}", i * 2 + 1)
+            self.post(PM, PAUSED, -60 + i * 2)
+            self.answer(ANNA, f"{ANSWER} {i}", -60 + i * 2 + 1)
         self.assertEqual(len(self.asked), pm_implicit.PER_MINUTE)
 
     def test_either_callback_order_works(self):
@@ -116,7 +123,7 @@ class NoteSaid(unittest.TestCase):
         self.room = SimpleNamespace(room_id="!r")
 
     def ev(self, sender, eid, ms, content=None):
-        return SimpleNamespace(sender=sender, event_id=eid, server_timestamp=ms, source={"content": content or {}})
+        return SimpleNamespace(sender=sender, event_id=eid, server_timestamp=T0 + ms, source={"content": content or {}})
 
     def test_keeps_only_the_last_two_messages(self):
         for i in range(5):
