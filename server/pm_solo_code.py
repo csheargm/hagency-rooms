@@ -71,11 +71,10 @@ class SoloCode:
     async def review_again(self, room_id: str, key: str, item: dict, why: str) -> None:
         """A fresh review by the item's reviewer (after fixes, or the PR moved); a solo one only to code that does
         solo steps (GPT review: else it pauses, its update is asked, and "@pm retry #N" goes back to the check)."""
-        reviewer, room = item["reviewer"], getattr(self.client, "rooms", {}).get(room_id)
-        if item.get("solo") is True and room is not None and routing.checkers_for(
-                self.agents_in(room), item["builder"], ownership.owner_id):   # GPT review: another person's agent is
-            item["stage"] = "reviewing"                                       # here now: it checks, never the sibling
-            return await self.ask_checker(room, item, key)
+        reviewer = item["reviewer"]
+        room = getattr(self.client, "rooms", {}).get(room_id) if item.get("solo") is True else None
+        if room is not None and routing.checkers_for(self.agents_in(room), item["builder"], ownership.owner_id):
+            return await self.recheck_with(room, key, item)   # GPT review: another person's agent is here now
         if item.get("solo") is True and not self.runs_solo(reviewer):
             item["no_checker"] = True
             await self.stop(room_id, key, item, f"{local(reviewer)} runs code from before solo review",
@@ -85,6 +84,18 @@ class SoloCode:
         item["stage"] = "reviewing"
         await self.dispatch(room_id, item, reviewer, f"{reviewer}: review PR #{item['pr']} again ({why}) against "
                             f"#{num(key)}", routing.check_task(item, num(key)))
+
+
+    async def recheck_with(self, room, key: str, item: dict) -> None:
+        """A solo item's next check goes through checker selection again (another person's agent first). If the
+        step can't go out (Matrix refused), it pauses for "@pm retry #N" (GPT review: never left at "reviewing"
+        with the fix task for the watchdog to resend), as check_again does."""
+        item.update(stage="reviewing", task_ids=[])
+        try:
+            await self.ask_checker(room, item, key)
+        except RuntimeError:                  # loop.SendError / GitHub: said by the caller's log
+            item.update(stage="stopped", no_checker=True)
+            raise
 
 
 def update_line(agent: str, asked: bool, n: int) -> str:

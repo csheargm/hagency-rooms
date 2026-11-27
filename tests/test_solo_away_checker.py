@@ -3,7 +3,7 @@ whole-batch review): the item waits for it, said plainly, and a sibling's verdic
 person's agent is here to check. Run: .venv/bin/python -m unittest tests.test_solo_away_checker"""
 import unittest
 
-from tests.test_solo_review import BA, CX, CXA, CXC, Base
+from tests.test_solo_review import BA, CX, CXA, CXC, KEY, Base
 
 
 class AwayChecker(Base):
@@ -53,6 +53,24 @@ class AwayChecker(Base):
         item = self.fix_round(betty_online=False)
         self.assertEqual((item["stage"], item.get("no_checker")), ("stopped", True))
         self.assertIn("is here but offline", self.said[-1][0])
+
+    def test_a_refused_announcement_pauses_instead_of_leaving_the_fix_task(self):
+        """GPT review round 2: Matrix refusing "review requested from …" left it at "reviewing" with the fix task."""
+        from server.loop import SendError
+        real = self.lp.say
+
+        async def say(rid, body, mention=None, task=None, **kw):
+            if body.startswith("review requested from betty"):
+                raise SendError("refused")
+            return await real(rid, body, mention, task, **kw)
+        self.lp.say = say
+        with self.assertRaises(SendError):                   # take_result logs it
+            self.fix_round(betty_online=True)
+        item = self.lp.state[KEY]
+        self.assertEqual((item["stage"], item.get("no_checker")), ("stopped", True))
+        self.lp.say = real
+        self.run_(self.lp.retry(self.room, CX, 7))
+        self.assertEqual((item["stage"], item["reviewer"]), ("reviewing", BA))
 
     def test_alone_the_siblings_verdict_still_counts(self):
         item = self.built()
