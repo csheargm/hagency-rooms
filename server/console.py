@@ -185,7 +185,7 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
     if action == "follow" and value in registry.FOLLOW:
         done = await loop.set_follow(room, user, value, agent or None)
         return "ok" if done is not False else "that isn't one of your agents"
-    if action in ("add", "trial", "trial_model"):   # pm_agents.py: the Connect page goes to our private chat; pm_trial.py:
+    if action in ("add", "trial", "trial_model", "trial_build"):   # pm_agents.py: the Connect page goes to our private chat; pm_trial.py:
         return await (add_agent(loop, user, value) if action == "add" else loop.trial_action(user, action, value))   # ADR 0025
     if action == "code":                  # a never-connected agent's fresh Connect page (console_agents)
         return await fresh_code(loop, user, agent or None)

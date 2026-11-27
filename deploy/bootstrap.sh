@@ -69,6 +69,10 @@ chmod 700 "$PM_DIR" "$PM_DIR/data"
 # envfile.py check (above, and in deploy.sh before @pm stops) refuses a missing or readable key.
 mkdir -p secrets
 chmod 700 secrets
+# Trial builds (docs/TRIAL_BUILDER_SETUP.md, ADR 0027): the Trial Builder App's key goes in trial-secrets/, its
+# settings in trial.env (both the owner's, mode 600); the queue folder @pm and trial-worker share; the worker's venv.
+mkdir -p trial-secrets ../../trial-shared ../../trial-venv
+chmod 700 trial-secrets ../../trial-shared ../../trial-venv
 
 # 5. Element points at our homeserver and shows Hagency's home page (element_home.py, served by Caddy
 #    at /hagency/); Synapse Admin may only use the admin host.

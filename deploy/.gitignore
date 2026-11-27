@@ -10,3 +10,5 @@ synapse-admin-config.json
 secrets/
 element-home/
 state/
+trial.env
+trial-secrets/

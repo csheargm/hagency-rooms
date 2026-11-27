@@ -29,10 +29,12 @@ from nio import (AsyncClient, InviteMemberEvent, JoinResponse, LoginResponse, Ma
                  RoomMessageText, RoomPreset, SyncResponse)
 
 from common import lifecycle
+from common import model_slot
 from common import setup_accounts
 from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME
 from common.saved_dict import SavedDict
 from server import trial_budget
+from server import trial_build_config
 from server import trial_limits
 from server import trial_models
 from server import trial_tiers
@@ -74,7 +76,9 @@ class TrialAgent(Turns):
         self.usage = usage or trial_limits.Usage(folder / "trial-usage.json", tiers=trial_tiers.Tiers(folder / "trial-tiers.json"))
         self.tiers = self.usage.tiers                              # person → tier (default FREE): their limits
         self.budget = budget or trial_budget.Budget(folder / "trial-budget.json")   # the plan's month: never into pay-as-you-go
-        self.slot = asyncio.Semaphore(1)  # one model call at a time: the key's plan allows 3, shared with others
+        # ONE model call at a time for all trial traffic, talk and builds (the plan allows 3, shared with another
+        # project): a file lock the trial-worker shares, talk first (common/model_slot.py, ADR 0027)
+        self.slot = model_slot.Slot(model_slot.lock_path(data_dir or trial_build_config.shared_dir()), model_slot.TALK)
         self.ask_model = ask
         self.history: dict = {}                                    # (room, visitor) → recent turns, in memory only
         self.answering: set = set()                                # visitors with an answer underway (trial_turn.py)
@@ -242,6 +246,8 @@ def start_later(loop) -> None:
         except Exception as e:        # noqa: BLE001 — any failure (a refused admin API, a proxy's HTML page): the
             log.error("trial agent not started: %s", e)   # trial stays off and unoffered; the operator sees why here
     loop.trial_starting = asyncio.create_task(online())
+    if hasattr(loop, "relay_builds"):        # trial builds' news (pm_build.py, ADR 0027): quiet while there is none
+        loop.build_relay = asyncio.create_task(loop.relay_builds())
 
 
 async def start(eligible, busy=None, stopping=None) -> TrialAgent | None:
