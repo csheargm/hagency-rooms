@@ -1,7 +1,8 @@
 """Is a message for @pm? In a room: when it starts with "@pm" / "Product Manager" or mentions @pm.
 In a private chat of mine with exactly one person (one I made, or one they opened with me), every
 message is for me (seen live: "resend me the code" typed there got no answer). A project room never
-counts, however few people are in it: there, plain "stop" stays someone thinking aloud (GPT review).
+counts here, however few people are in it: there, plain "stop" stays someone thinking aloud (GPT review);
+pm_implicit.py decides when an unaddressed message may still be for me, and asks before anything big.
 Mixed into pm_chat.Chat (user_id, dm_rooms).
 """
 import re

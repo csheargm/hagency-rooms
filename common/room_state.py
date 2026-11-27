@@ -102,16 +102,28 @@ async def standing(client: AsyncClient, room_id: str, user: str) -> dict:
     r = await client.room_get_state(room_id)
     if not isinstance(r, RoomGetStateResponse):
         raise StateUnreadable(f"couldn't read {room_id}'s state: {r}")
-    found = {"membership": None, "event_id": None, "moderator": user in creators_in(r.events)}
+    found = {"membership": None, "event_id": None,
+             "moderator": user in creators_in(r.events) or level_in(r.events, user) >= MODERATOR_LEVEL}
     for ev in r.events:
         if ev.get("type") == "m.room.member" and ev.get("state_key") == user:
             found.update(membership=(ev.get("content") or {}).get("membership"), event_id=ev.get("event_id"))
-        elif ev.get("type") == "m.room.power_levels" and ev.get("state_key") == "":
+    return found
+
+
+def level_in(events: list, user: str) -> int:
+    """A user's power level in this state (the room's default when not listed)."""
+    for ev in events:
+        if ev.get("type") == "m.room.power_levels" and ev.get("state_key") == "":
             levels = ev.get("content") or {}
             users = levels.get("users") if isinstance(levels.get("users"), dict) else {}
             level = users.get(user, levels.get("users_default", 0))
-            found["moderator"] = found["moderator"] or (isinstance(level, int) and level >= MODERATOR_LEVEL)
-    return found
+            return level if isinstance(level, int) else 0
+    return 0
+
+
+def joined_in(events: list) -> set:
+    return {ev.get("state_key") for ev in events if ev.get("type") == "m.room.member"
+            and (ev.get("content") or {}).get("membership") == "join"}
 
 
 async def joined_moderator(client: AsyncClient, room_id: str, user: str) -> bool:
@@ -158,3 +170,24 @@ async def is_moderator(client: AsyncClient, room: MatrixRoom, sender: str) -> bo
             creators = {ev.get("sender"), *content.get("additional_creators", [])}
             return version.isdigit() and int(version) >= 12 and sender in creators
     return False
+
+
+OWNER_LEVEL = 100
+
+
+async def owners(client: AsyncClient, room: MatrixRoom) -> list[str]:
+    return (await owners_now(client, room.room_id))[0]
+
+
+async def owners_now(client: AsyncClient, room_id: str) -> tuple[list[str], set]:
+    """(the room's owners who are people, everyone joined), from one read of the server's state NOW, never
+    the sync cache (a just-demoted owner doesn't count; GPT review). Owners: its creators (room v12+) first,
+    then anyone at power level 100; never @pm, an agent or a bot. Whose agent @pm's understanding step
+    asks (ADR 0022), read the same way on @pm's side and the agent's. Unreadable: nobody (fail closed)."""
+    state = await client.room_get_state(room_id)
+    if not isinstance(state, RoomGetStateResponse):
+        return [], set()
+    creators, joined = creators_in(state.events), joined_in(state.events)
+    people = [u for u in joined if u != pm_id(client) and not u.split(":")[0].endswith(("-agent", "-bot"))]
+    top = [u for u in people if u in creators or level_in(state.events, u) >= OWNER_LEVEL]
+    return sorted(top, key=lambda u: (u not in creators, u)), joined

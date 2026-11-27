@@ -15,29 +15,18 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.parse
 from pathlib import Path
 
 from adapters.agents import hermes_profile
 from tests import test_loop_e2e
 from common.setup_accounts import SERVER_NAME, load_env, login
-from tests.test_e2e import api, check, send, test_room
-from tests.test_loop_e2e import make_fake_github, say, wait_for
+from tests.test_e2e import check, send, test_room
+from tests.test_loop_e2e import confirm_latest, make_fake_github, say, wait_for
 from tests import ROOT
 
 PM = f"@pm:{SERVER_NAME}"
 test_loop_e2e.ISSUES = {}                       # the project starts from nothing but the discussion
 test_loop_e2e.STEP_TIMEOUT_S = 600
-
-
-def confirm_latest(anna, room_id, words, ts):
-    """anna reacts ✅ to @pm's newest message containing `words`."""
-    wait_for(anna, room_id, lambda s, b: s == PM and words in b, words, ts)
-    evs = api("GET", f"/_matrix/client/v3/rooms/{urllib.parse.quote(room_id)}/messages?dir=b&limit=20", anna)["chunk"]
-    target = next(e for e in evs if e["sender"] == PM and words in e.get("content", {}).get("body", ""))
-    api("PUT", f"/_matrix/client/v3/rooms/{urllib.parse.quote(room_id)}/send/m.reaction/r{time.time_ns()}", anna,
-        {"m.relates_to": {"rel_type": "m.annotation", "event_id": target["event_id"], "key": "✅"}})
-    return target["content"]["body"]
 
 
 def start_anna(env: dict, pw: dict, logs) -> list[subprocess.Popen]:
@@ -82,7 +71,8 @@ def main():
               and all(i["author"] == "anna-agent" for i in issues), body[:80])
 
         send(anna, room_id, "@pm take it all the way", PM)
-        wait_for(anna, room_id, lambda s, b: s == PM and "Running on my own now" in b, "autonomous", ts)
+        confirm_latest(anna, room_id, "switch to **autonomous**", ts)     # autonomous from words: a 👍 first
+        wait_for(anna, room_id, lambda s, b: s == PM and "merge on their own" in b, "autonomous", ts)
         body = wait_for(anna, room_id, lambda s, b: s.endswith("-agent:" + SERVER_NAME) and b.startswith(("merged", "⚠️")), "merge", ts)
         main_file = subprocess.run(["git", "--git-dir", str(tmp / "remote.git"), "show", "main:docs/HELLO.md"],
                                    capture_output=True, text=True).stdout

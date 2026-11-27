@@ -89,7 +89,8 @@ class Talk(unittest.TestCase):
             return RoomPutStateResponse("$s", room_id)
         create = RoomGetStateResponse([{"type": "m.room.create", "sender": ANNA, "content": {"room_version": "12"}}], "!r")
         self.lp.say = say
-        self.lp.client = SimpleNamespace(room_put_state=put_state, room_get_state=mock.AsyncMock(return_value=create))
+        self.lp.client = SimpleNamespace(room_put_state=put_state, room_get_state=mock.AsyncMock(return_value=create),
+                                         room_get_event=mock.AsyncMock(return_value=None))   # pm_implicit: not @pm's
         lv = mock.patch.object(Loop, "level", lambda _, rid: asyncio.sleep(0, (self.levels or ["off"])[-1]))
         lv.start()                    # the room's mode as last written (pm_paused re-checks it)
         self.addCleanup(lv.stop)
@@ -103,7 +104,7 @@ class Talk(unittest.TestCase):
         back.assert_called_once_with("betty")
         self.assertIn("going back to the official version", self.said[-1])
 
-    def tell(self, sender, body, mention=True, reply_to=None):
+    def tell(self, sender, body, mention=True, reply_to=None, thumb=False):
         content = {"body": body, "m.mentions": {"user_ids": [PM]} if mention else {}}
         if reply_to:
             content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to}}
@@ -113,6 +114,8 @@ class Talk(unittest.TestCase):
             await self.lp.on_human(self.room, ev)
             await asyncio.gather(*self.lp.busy)
         asyncio.run(go())
+        if thumb:                             # TODO(R4): split Talk's phrase flows and Brain's model flows into files
+            self.react(sender, "👍", self.lp.pending["!r"]["event_id"])   # autonomous from words: always a 👍 first
 
     def react(self, sender, key, to):
         asyncio.run(self.lp.on_reaction(self.room, SimpleNamespace(sender=sender, key=key, reacts_to=to)))
@@ -128,11 +131,13 @@ class Talk(unittest.TestCase):
         self.assertEqual(self.levels, ["off"])
         self.assertIn("Stopped", self.said[-1])
 
-    def test_owner_says_take_it_all_the_way_and_it_happens(self):
-        """the owner: "I already said go all the way, why need another ok reaction?" """
+    def test_owner_says_take_it_all_the_way_and_one_thumb_does_it(self):
+        """GPT re-check: autonomous from words is always asked first ("so what does autonomous do" switched)."""
         self.tell(ANNA, "@pm take it all the way")
+        self.assertEqual((self.levels, self.lp.pending["!r"]["kind"]), ([], "mode"))
+        self.react(ANNA, "👍", self.lp.pending["!r"]["event_id"])
         self.assertEqual(self.levels, ["autonomous"])
-        self.assertIn("Running on my own now", self.said[-1])
+        self.assertIn("merge on their own", self.said[-1])
 
     def pause(self, *numbers, room="!r", repo="your-name/hagency-hello", pr=None):
         self.lp.save = mock.Mock()
@@ -144,9 +149,9 @@ class Talk(unittest.TestCase):
         """Screen test: "@pm can you drive to finish all issues" → "Running on my own now", and nothing
         happened: #7 and #9 were paused."""
         self.pause(9, 7)
-        self.tell(ANNA, "@pm take it all the way")
+        self.tell(ANNA, "@pm take it all the way", thumb=True)
         self.assertEqual(self.levels, ["autonomous"])
-        self.assertIn("Running on my own now", self.said[-1])
+        self.assertIn("merge on their own", self.said[-1])
         self.assertIn("I put #7 and #9 back in the queue: they were paused after an agent couldn't finish.", self.said[-1])
         self.assertEqual({}, self.lp.state)                # back in the queue
         self.lp.save.assert_called()
@@ -155,7 +160,7 @@ class Talk(unittest.TestCase):
         self.pause(7, pr=12)
         self.pause(9)
         with mock.patch.object(Loop, "pr_open", mock.AsyncMock(return_value=True)):
-            self.tell(ANNA, "@pm take it all the way")
+            self.tell(ANNA, "@pm take it all the way", thumb=True)
         self.assertIn("I put #9 back in the queue: it was paused after an agent couldn't finish.", self.said[-1])
         self.assertIn('#7 stays paused: its PR #12 may still be open', self.said[-1])
         self.assertIn('say "@pm retry #7"', self.said[-1])
@@ -187,7 +192,7 @@ class Talk(unittest.TestCase):
     def test_a_refused_switch_says_only_why_and_retries_nothing(self):
         self.pause(9)
         with mock.patch.object(Loop, "change_level", mock.AsyncMock(return_value="This room has no repo yet.")):
-            self.tell(ANNA, "@pm take it all the way")
+            self.tell(ANNA, "@pm take it all the way", thumb=True)
         self.assertEqual("This room has no repo yet.", self.said[-1])
         self.assertEqual(1, len(self.lp.state))
 
@@ -399,9 +404,9 @@ class Brain(Talk):
 
     def test_actions_are_confirmed_by_code_not_by_the_model(self):
         self.decision = ("autonomous", "Done, merged everything!")      # the model can't claim results
-        self.tell(ANNA, "@pm ok, take it all the way")
+        self.tell(ANNA, "@pm ok, take it all the way", thumb=True)
         self.assertEqual(self.levels, ["autonomous"])
-        self.assertIn("Running on my own now", self.said[-1])
+        self.assertIn("merge on their own", self.said[-1])
         self.assertNotIn("merged everything", " ".join(self.said))
 
     def test_a_setting_the_rules_miss_is_asked_with_one_click(self):

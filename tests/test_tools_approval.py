@@ -37,7 +37,7 @@ class RetiredWebSwitch(unittest.TestCase):
 
         async def say(room_id, body, *a, **k):
             said.append(body)
-        lp.say, lp.client = say, SimpleNamespace(room_put_state=mock.AsyncMock())
+        lp.say, lp.client, lp.generation = say, SimpleNamespace(room_put_state=mock.AsyncMock()), {}
         asyncio.run(lp.act(SimpleNamespace(room_id="!r"), BETTY, intents.WEB))
         self.assertIn("no web switch", said[-1])
         lp.client.room_put_state.assert_not_called()

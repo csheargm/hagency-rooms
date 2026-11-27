@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 
 from common.setup_accounts import SERVER_NAME, load_env, login
@@ -60,6 +61,17 @@ def wait_for(token, room_id, pred, what, since_ts):
                 return body
         time.sleep(2)
     raise AssertionError(f"timed out waiting for: {what}")
+
+
+def confirm_latest(anna, room_id, words, ts):
+    """anna reacts ✅ to @pm's newest message containing `words` (test_demo_e2e, test_pm_e2e)."""
+    pm = f"@pm:{SERVER_NAME}"
+    wait_for(anna, room_id, lambda s, b: s == pm and words in b, words, ts)
+    evs = api("GET", f"/_matrix/client/v3/rooms/{urllib.parse.quote(room_id)}/messages?dir=b&limit=20", anna)["chunk"]
+    target = next(e for e in evs if e["sender"] == pm and words in e.get("content", {}).get("body", ""))
+    api("PUT", f"/_matrix/client/v3/rooms/{urllib.parse.quote(room_id)}/send/m.reaction/r{time.time_ns()}", anna,
+        {"m.relates_to": {"rel_type": "m.annotation", "event_id": target["event_id"], "key": "✅"}})
+    return target["content"]["body"]
 
 
 def say(token, room_id, body):

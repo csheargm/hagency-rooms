@@ -3,12 +3,11 @@
 decides what is allowed:
   - stop: anyone in the room, at once, no confirmation (the safe direction is always open);
   - assist: the room owner or a maintainer;
-  - autonomous: the owner or a maintainer, at once (they asked in plain words; "stop" undoes it);
+  - autonomous: the owner or a maintainer, always with a 👍 first (from words, never at once);
   - turning the discussion into issues: the plan needs a ✅ from whoever asked for it.
 `!help`, `!status`, `!level …` still work as shortcuts for people who like commands.
 Mixed into loop.Loop (client, user_id, say, level, boards, agents_in, start_plan, file_plan).
 """
-import asyncio
 import re
 import time
 
@@ -29,6 +28,8 @@ log = logging.getLogger("loop")
 CONFIRM_S = 300
 FOLLOW_SETTINGS = {intents.FOLLOW_ALWAYS: "always", intents.FOLLOW_ASK: "ask", intents.FOLLOW_NEVER: "never"}
 NOTE_WORDS = 6               # a longer message to @pm that isn't a command is a requirement, not noise
+ONLY_MODERATORS = "Only the room owner or a maintainer can change how I run this project."
+ASKED_STOP = ' If you only asked, say "@pm let us approve each change" to resume.'   # a question that says stop stops
 LEVEL_WORDS = {"off": "stopped: no new work is handed out and nothing is merged",
                "assist": "assist: agents build and review; a person merges each change",
                "autonomous": "autonomous: agents build, review and merge on their own"}
@@ -36,7 +37,7 @@ WEB_ANSWER = ("There's no web switch to change: when you ask your own agent some
               "with your own settings, web included, in every room. Work I hand out never has the web. To "
               "limit your agent, use your CLI's own settings (a deny rule, or web_search = \"disabled\").")
 HELP = ("Talk to me in plain words, for example:\n"
-        "- **@pm take it all the way**: agents build, review and merge on their own (owner or maintainer)\n"
+        "- **@pm take it all the way**: agents build, review and merge on their own; 👍 to confirm (owner or maintainer)\n"
         "- **@pm let us approve each change**: agents stop at each change for a person to merge\n"
         "- **@pm stop**: no new work and no merges, right away (anyone)\n"
         "- **@pm where are we?**: what's happening now\n"
@@ -49,6 +50,8 @@ HELP = ("Talk to me in plain words, for example:\n"
         "- **@pm make me a project room**, **@pm find a project**, **@pm ask to join owner/name**\n"
         "- **@pm invite link**: a link that lets one person in, even without an account yet (owner or maintainer)\n"
         "- **@pm make this room listed** (or private, or open): who can find and join it (owner or maintainer)\n"
+        "You can skip \"@pm\" when you reply to one of my messages, or right after I've answered you. For big "
+        "steps (stop, mode, plan) I'll ask for a 👍 first.\n"
         "The pinned **Project status** and the **Hagency** panel show progress live.")
 
 # The answer to "what should we do first?" (intents.START): the path from here, for this room.
@@ -86,12 +89,13 @@ class Chat(Addressing):
             await self.say(room.room_id, "🎙 To confirm, click 👍 on my question above.")   # a click, never a transcript
             return
         if not voice and (intents.is_yes(body) or (said is not None and intents.is_approval(said))):
-            if (reply_to in (None, waiting)) and await self.confirm(room, sender):
+            if self.yes_counts(room.room_id, reply_to, text is not None) and (   # pm_implicit.py: autonomous takes a plain yes
+                    await self.needs_plain_yes(room.room_id, said or body) or await self.confirm(room, sender)):
                 return                # "yes", "@pm ok go ahead", or "sounds good" in a reply to the question
             if text is not None and (waiting or intents.is_yes(text)):
                 await self.answer_stale_ok(room.room_id, reply_to, sender)   # an OK, but not one that counts
                 return                # (nothing waiting + "let's build it" goes on to start a plan)
-        if text is None:
+        if await self.heard(room, event, text, reply_to, voice):   # pm_implicit.py: not named, may still be for me
             return
         if customize.GO_BACK.search(text) and not voice:   # works even when that person's own version is broken
             local, _, server = sender.lstrip("@").partition(":")
@@ -106,8 +110,8 @@ class Chat(Addressing):
         if intent in intents.SETTINGS and (voice or not intents.plainly_says(text, intent)):
             await self.ask_setting(room, sender, intent)            # pm_understand.py: one 👍 to be sure
             return
-        if voice and intent in (intents.ASSIST, intents.AUTONOMOUS):
-            await self.ask_mode(room, sender, intent)
+        if intent == intents.AUTONOMOUS or (intent == intents.ASSIST and (voice or intents.is_question(text))):
+            await self.ask_mode(room, sender, intent)      # autonomous, a transcript or a question: a 👍 first
             return
         if intent == intents.SET_REPO:        # a repo name is exact: never left to a model
             await self.set_repo(room, sender, intents.repo_named(text) or "")
@@ -119,30 +123,28 @@ class Chat(Addressing):
             else:
                 await self.retry(room, sender, n)
             return
-        if intent == intents.OFF or pm_brain.BRAIN == "off":
-            await self.by_rules(room, sender, text, intent)    # "stop" never waits for a model
+        if intent != intents.UNKNOWN or pm_brain.BRAIN == "off":   # a phrase I know ("stop", "help", "where
+            await self.by_rules(room, sender, text, intent,    # are we?") never waits for a model (GPT review)
+                                ASKED_STOP if intent == intents.OFF and intents.is_question(text) else "")
             return
-        # The model can take seconds: decide in the background so the sync loop (and a "stop"
-        # right behind this message) is never held up; a stop meanwhile cancels the decision.
-        gen = self.generation.get(room.room_id, 0)
-        job = asyncio.create_task(self.decide(room, sender, text, intent, reply_to, gen, voice))
-        self.busy.add(job)
-        job.add_done_callback(self.busy.discard)
+        await self.understand_later(room, sender, text, intent, reply_to)   # pm_understand.py: in the background
 
-    async def by_rules(self, room: MatrixRoom, sender: str, text: str, intent: str) -> None:
-        """The phrase rules (intents.py): the fast path for "stop", and the fallback for the model."""
+    async def by_rules(self, room: MatrixRoom, sender: str, text: str, intent: str, why: str = "") -> None:
+        """The phrase rules (intents.py): the fast path for "stop", and the fallback for the model (why: it
+        didn't answer, said with "didn't catch that")."""
         if intent == intents.UNKNOWN and await self.revise_plan(room, sender):
             return
         if intent == intents.UNKNOWN and len(text.split()) >= NOTE_WORDS:
             await self.say(room.room_id, "Noted. When you're ready, say \"let's build it\" and I'll turn the "
                                          "discussion into work.")    # it is part of the discussion that gets planned
             return
-        await self.act(room, sender, intent)
+        await self.act(room, sender, intent, why)
 
     async def revise_plan(self, room: MatrixRoom, sender: str) -> bool:
         """A plan waits for ✅ and the owner/maintainer says what to change: plan again with it."""
         p = self.pending.get(room.room_id)
-        if not p or p.get("kind") != "plan" or not await room_state.is_moderator(self.client, room, sender):
+        if not p or p.get("kind") != "plan" or not await room_state.is_moderator(self.client, room, sender) \
+                or self.pending.get(room.room_id) is not p:   # a stop while I checked: no redraft
             return False
         self.pending.pop(room.room_id)
         await self.say(room.room_id, "Updating the plan with that…")
@@ -159,26 +161,28 @@ class Chat(Addressing):
             log.warning("couldn't add the %s shortcut in %s: %s", key, room_id, e)
 
     async def on_reaction(self, room: MatrixRoom, event: ReactionEvent) -> None:
-        wanted = self.pending.get(room.room_id, {}).get("event_id")
-        if intents.is_confirm_reaction(event.key) and event.reacts_to == wanted:
+        p = self.pending.get(room.room_id) or {}
+        if intents.is_confirm_reaction(event.key) and event.reacts_to == p.get("event_id"):
             await self.confirm(room, event.sender)
+        elif intents.is_confirm_reaction(event.key) and event.reacts_to == p.get("redraft", {}).get("event_id"):
+            await self.redraft(room, event.sender, p)   # pm_implicit.ask_redraft: change the plan waiting
 
-    async def act(self, room: MatrixRoom, sender: str, intent: str) -> None:
+    async def act(self, room: MatrixRoom, sender: str, intent: str, why: str = "", gen: int | None = None) -> None:
         rid = room.room_id
+        gen = self.generation.get(rid, 0) if gen is None else gen   # a stop after this wins over a mode change
         if intent == intents.OFF:                                 # never gated: stopping is always safe
-            self.generation[rid] = self.generation.get(rid, 0) + 1    # drop decisions still being thought about
-            self.pending.pop(rid, None)
-            await self.say(rid, await self.change_level(rid, "off") or
+            self.invalidate(rid)              # pm_understand.py: drop decisions in flight and the question waiting
+            await self.say(rid, (await self.change_level(rid, "off") or   # why: ASKED_STOP, after a question
                            "Stopped. No new work is handed out and nothing is merged; steps already "
-                           "running finish. Tell me when to continue.")
+                           "running finish. Tell me when to continue.") + why)
         elif intent in (intents.ASSIST, intents.AUTONOMOUS) and not await room_state.is_moderator(self.client, room, sender):
-            await self.say(rid, "Only the room owner or a maintainer can change how I run this project.")
+            await self.say(rid, ONLY_MODERATORS)
         elif intent == intents.ASSIST:
-            await self.say(rid, await self.change_level(rid, "assist") or
+            await self.say(rid, await self.change_level(rid, "assist", gen) or
                            "OK: agents build and review, and each change waits for a person to merge it."
                            + await pm_paused.after_switch(self, rid, "assist"))
-        elif intent == intents.AUTONOMOUS:   # an explicit phrase from the owner/maintainer: no extra ✅
-            await self.say(rid, await self.change_level(rid, "autonomous") or
+        elif intent == intents.AUTONOMOUS:   # after its 👍 (on_human asks it) or a typed !level / console
+            await self.say(rid, await self.change_level(rid, "autonomous", gen) or
                            "Running on my own now: agents build, review and merge without asking. "
                            "Say \"stop\" anytime." + await pm_paused.after_switch(self, rid, "autonomous"))
         elif intent == intents.WEB:          # ADR 0006: nothing to switch; say so instead of pretending
@@ -193,10 +197,8 @@ class Chat(Addressing):
             await self.say(rid, await self.status_text(rid))
         elif intent == intents.PLAN and not await room_state.is_moderator(self.client, room, sender):
             who = sender.split(":")[0].lstrip("@")         # a contributor asks; the owner decides
-            event_id = await self.say(rid, f"{who} would like to turn this discussion into work. Room owner or "
-                                           "a maintainer: click 👍 below and I'll plan it with your agent.")
-            self.pending[rid] = {"kind": "plan_request", "event_id": event_id, "until": time.time() + CONFIRM_S}
-            await self.offer_thumb(rid, event_id)
+            await self.ask_once(rid, sender, gen, f"{who} would like to turn this discussion into work. Room owner "
+                                "or a maintainer: click 👍 below and I'll plan it with your agent.", {"kind": "plan_request"})
         elif intent == intents.PLAN:
             await self.start_plan(room, sender)
         elif intent == intents.HELP:
@@ -207,24 +209,23 @@ class Chat(Addressing):
             repo = await room_state.repo_of(self.client, rid)
             await self.say(rid, FIRST_STEPS.format(repo=f"✓ This room works on **{repo}**." if repo else REPO_STEP))
         elif intent == intents.ABOUT:
-            await self.say(rid, "I'm the Product Manager: a coordinator, with no AI model of my own. I turn your "
-                                "discussion into work and keep it moving; the thinking and building are done by "
-                                "your own agents, on their owners' models and accounts.")
+            await self.say(rid, pm_brain.about())
         else:
-            await self.say(rid, "I didn't catch that. You can say: **show the plan** · **let's build it** · "
+            await self.say(rid, f"{why}I didn't catch that. You can say: **show the plan** · **let's build it** · "
                                 "**let us approve each change** · **take it all the way** · **stop** · "
                                 "**where are we?**")
 
     async def confirm(self, room: MatrixRoom, sender: str) -> bool:
         """Apply the pending autonomous switch if a moderator confirms in time."""
-        p = self.pending.get(room.room_id)
+        p, gen = self.pending.get(room.room_id), self.generation.get(room.room_id, 0)
         if not p or time.time() > p["until"]:
             return False
         if p.get("kind") != "plan_request" and sender != p.get("by"):
             return False              # only the person who asked confirms (a stray "yes" from anyone else doesn't)
-        if p.get("kind") not in ("bring", "setting") and not await room_state.is_moderator(self.client, room, sender):
-            return False              # authority re-checked now (bringing your OWN agent needs none)
-
+        if p.get("kind") not in ("bring", "setting", "implicit") and not await room_state.is_moderator(self.client, room, sender):
+            return False              # authority re-checked now (your OWN agent needs none; implicit: act's own checks)
+        if not self.still(room.room_id, gen, p):
+            return False              # a stop (or another question) came while I checked: never act on the old one
         self.pending.pop(room.room_id)
         self.note_outcome(p.get("event_id"), "approved")
         if p.get("kind") == "plan_request":
@@ -233,11 +234,13 @@ class Chat(Addressing):
             await self.file_plan(room, p, sender)               # pm_plan.py
         elif p.get("kind") == "setting":                       # your own agent's setting, asked with 👍
             await self.act(room, sender, p["intent"])
+        elif p.get("kind") == "implicit":                       # pm_implicit.py: asked, as I wasn't named
+            await self.do_implicit(room, sender, p, gen)
         elif p.get("kind") == "bring":                          # pm_follow.py: "bring your agent? ✅"
             await self.invite_agent(room.room_id, p["agent"], "Your agent is on its way in.")
         else:                                 # a mode switch asked about with ✅ (ask_mode)
             level = p.get("level", "autonomous")
-            await self.say(room.room_id, await self.change_level(room.room_id, level) or
+            await self.say(room.room_id, await self.change_level(room.room_id, level, gen) or
                            f"OK — {LEVEL_WORDS[level]}. Say \"stop\" anytime."
                            + await pm_paused.after_switch(self, room.room_id, level))
         return True

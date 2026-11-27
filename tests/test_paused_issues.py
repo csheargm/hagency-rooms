@@ -44,6 +44,7 @@ class EveryModeSwitch(unittest.TestCase):
         self.lp = Loop.__new__(Loop)
         self.lp.room_repos, self.lp.state, self.lp.lock, self.lp.save = {}, paused(7, 9), asyncio.Lock(), mock.Mock()
         self.lp.user_id, self.lp.pending, self.lp.boards, self.said = PM, {}, {}, []
+        self.lp.generation = {}
 
         async def say(rid, body, *a, **k):
             self.said.append(body)

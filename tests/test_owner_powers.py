@@ -252,7 +252,8 @@ class SecretSafe(unittest.TestCase):
 class LockedCallers(unittest.TestCase):
     def test_task_brain_and_code_change_turns_never_ask_for_owner_powers(self):
         """Loop builds/reviews/plans (tasks.py), @pm's brain and code changes run on untrusted text."""
-        for name in ("adapters/agents/tasks.py", "server/pm_brain.py", "adapters/agents/bridge_custom.py"):
+        for name in ("adapters/agents/tasks.py", "server/pm_brain.py", "adapters/agents/bridge_custom.py",
+                     "adapters/agents/understand_task.py"):   # @pm reads with the owner's agent: no tools (ADR 0022)
             src = (ROOT / name).read_text()
             self.assertIn("run_turn(", src, name)
             self.assertNotIn("owner=", src, name)

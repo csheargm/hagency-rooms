@@ -42,7 +42,7 @@ KEEP = object()               # write_level: keep the room's "only discusses its
 NOT_MODERATOR = "Only the room owner or a maintainer can choose this room's repo."
 NEED_POWER = ("I can't save this room's settings yet: Matrix lets only moderators do that. Room owner, please "
               "make me a Moderator (Room settings → Roles & Permissions → @pm → Moderator), then ask again.")
-
+STOPPED_MEANWHILE = "Someone said stop just now, so I didn't change the mode."
 
 NOT_CONNECTED = ("First connect your GitHub account, so I know it's yours: click **Connect GitHub** in the Hagency "
                  "panel, or say \"connect my github\" in our private chat. Then ask again.")
@@ -264,15 +264,17 @@ class Settings(Projects):
         self.dm_rooms[user] = resp.room_id
         return resp.room_id
 
-    async def change_level(self, room_id: str, level: str) -> str | None:
-        """Write the room's loop level; returns an error line, or None when done. Any explicit mode
-        change cancels a confirmation still waiting (it was asked for under the old mode)."""
-        if self.pending.get(room_id, {}).get("kind", "autonomous") in ("autonomous", "mode"):
+    async def change_level(self, room_id: str, level: str, gen: int | None = None) -> str | None:
+        """Write the room's loop level (an error line, or None). A mode change drops a confirmation still waiting; a stop,
+        from anywhere, invalidates everything in flight (pm_understand.invalidate); gen: a stop since then wins."""
+        if level == "off":
+            self.invalidate(room_id)
+        elif self.pending.get(room_id, {}).get("kind", "autonomous") in ("autonomous", "mode", "implicit"):   # pm_implicit.py
             self.pending.pop(room_id, None)
-        return await self.write_level(room_id, level, unbound_ok=level == "off")   # stopping never binds a room (anyone may stop)
+        return await self.write_level(room_id, level, unbound_ok=level == "off", gen=gen)   # stopping never binds a room
 
     async def write_level(self, room_id: str, level: str | None, repo: str | None = None, discussion=KEEP,
-                          unbound_ok: bool = False, requester: tuple | None = None) -> str | None:
+                          unbound_ok: bool = False, requester: tuple | None = None, gen: int | None = None) -> str | None:
         """Write the room's level (and repo): callers have checked that a moderator asked. A room that only
         discusses a repo another room runs never leaves "off". Every binding write reads and writes under
         one short lock (not the poll's), so a "stop" can't write back a repo a rebind just replaced."""
@@ -285,9 +287,10 @@ class Settings(Projects):
             only_discusses = bound_discussion if discussion is KEEP else discussion
             if only_discusses and level != "off":
                 return RUN_ELSEWHERE
-            problem = requester and await self.requester_problem(room_id, requester, repo)   # the last await before the write
-            if problem:
+            if problem := requester and await self.requester_problem(room_id, requester, repo):   # the last await before the write
                 return problem
+            if gen is not None and self.generation.get(room_id, 0) != gen:
+                return STOPPED_MEANWHILE      # GPT review: a stop while the mode change was checked wins
             resp = await self.client.room_put_state(room_id, github.LEVEL_EVENT, room_state.content(level, repo, only_discusses))
         if not hasattr(resp, "event_id"):
             if getattr(resp, "status_code", "") == "M_FORBIDDEN":    # a room someone made: I joined at power 0

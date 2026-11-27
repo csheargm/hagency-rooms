@@ -101,7 +101,7 @@ class RoomPerRepo(Base):
             q.start()
             self.addCleanup(q.stop)
         self.lp.lock, self.lp.install_watches, self.lp.state = asyncio.Lock(), {}, {}
-        self.lp.pending, self.lp.plans, self.lp.last_plans = {}, {}, {}
+        self.lp.pending, self.lp.plans, self.lp.last_plans, self.lp.generation = {}, {}, {}, {}
         for rid in ("!a", "!b"):                                            # Anna is joined there, a moderator
             self.members[(rid, ANNA)], self.mods[rid] = "join", {ANNA}
 
