@@ -20,13 +20,14 @@ from pathlib import Path
 QUEUED, RUNNING, DONE, FAILED = "queued", "running", "done", "failed"
 HEARTBEAT_S = 90                     # older: the worker is down (or off), and builds aren't offered
 KEEP_S = 7 * 24 * 3600               # finished jobs are kept this long (the visitor's history)
-BUSY, ALREADY = "busy", "already"
+BUSY, ALREADY, OFF = "busy", "already", "off"
 
 
 class Jobs:
     def __init__(self, folder: Path, clock=time.time) -> None:
         self.folder, self.clock = Path(folder), clock
         self.path, self.lock_path, self.beat_path = self.folder / "jobs.json", self.folder / "jobs.lock", self.folder / "worker.json"
+        self.worker_lock = self.folder / "worker.lock"
 
     @contextlib.contextmanager
     def _locked(self):
@@ -71,8 +72,11 @@ class Jobs:
         return Jobs._queued(jobs).index(job_id) + 1 + ahead
 
     def enqueue(self, visitor: str, github_id: int, dm: str, limit: int) -> tuple[str, str | None, int]:
-        """(QUEUED | ALREADY | BUSY, job id, position): one job at a time per visitor; at most `limit` waiting."""
+        """(QUEUED | ALREADY | BUSY | OFF, job id, position): one job at a time per visitor; at most `limit`
+        waiting; OFF when the worker's heartbeat went meanwhile (checked under the lock shut() takes)."""
         with self._locked() as jobs:
+            if self.alive() is None:
+                return OFF, None, 0
             mine = next((j for j, v in jobs.items() if v.get("visitor") == visitor and v.get("state") in (QUEUED, RUNNING)), None)
             if mine:
                 return ALREADY, mine, 0 if jobs[mine]["state"] == RUNNING else self._position(jobs, mine)
@@ -148,6 +152,32 @@ class Jobs:
 
     def stop_beating(self) -> None:
         self.beat_path.unlink(missing_ok=True)
+
+    def shut(self, why: str) -> list[str]:
+        """The kill switch, in one step under the queue's lock: no heartbeat (so @pm queues nothing more),
+        and everything waiting or running failed with `why`."""
+        with self._locked() as jobs:
+            self.stop_beating()
+            hit = [j for j, v in jobs.items() if v.get("state") in (QUEUED, RUNNING)]
+            for j in hit:
+                jobs[j].update(state=FAILED, outcome={"why": why}, finished=self.clock())
+            return hit
+
+    @contextlib.contextmanager
+    def one_worker(self):
+        """Held for a worker's whole life: a second one (an overlapping restart) exits instead of failing the
+        first one's build and killing its sandboxes (GPT review). Yields False when another holds it."""
+        self.folder.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.worker_lock, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            yield True
+        finally:
+            os.close(fd)
 
     def alive(self) -> dict | None:
         """The worker's caps while its heartbeat is fresh; None: builds are off."""

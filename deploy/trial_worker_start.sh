@@ -10,5 +10,5 @@ if [ -z "${E2B_API_KEY:-}" ]; then
   exit 0
 fi
 [ -x /venv/bin/python ] || python -m venv /venv
-/venv/bin/pip install -q --disable-pip-version-check --no-cache-dir -r requirements-trial.txt
+/venv/bin/pip install -q --disable-pip-version-check --no-cache-dir -r deploy/requirements-trial.txt
 exec /venv/bin/python -m server.trial_worker

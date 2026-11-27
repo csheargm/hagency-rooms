@@ -43,14 +43,15 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
   secrets. A visitor (by GitHub account id) leases one; the lease ends after 7 days or once every PR it opened is
   closed, and the next visitor gets it recycled: trial PRs closed, `trial/` branches deleted, the default branch reset to
   the template commit (the one the pool first saw). No repo is created at runtime, so no Administration permission.
-- **Untrusted execution only in E2B** (`common/sandbox.py`, SDK `e2b==2.66.0`, worker-only `requirements-trial.txt`).
+- **Untrusted execution only in E2B** (`common/sandbox.py`, SDK `e2b==2.66.0`, worker-only `deploy/requirements-trial.txt`).
   - BUILD sandbox: our pinned template (`TRIAL_E2B_TEMPLATE`), 2 vCPU, 1 GiB, E2B timeout 15 min, `envs={}`. Egress
     `deny_out` all traffic, `allow_out` only `pypi.org`, `files.pythonhosted.org`, `registry.npmjs.org` (E2B: allow
     wins over deny; with a domain allowed, its default DNS server 8.8.8.8 is reachable too). Before anything is
     uploaded: a blocked host (`example.com`) is probed and must not answer, and `env` must hold only plain settings
     (no credential-like names); otherwise the build is refused ("stopped for safety").
   - TEST sandbox: fresh, `allow_internet_access=False`, the pristine tree plus the validated patch, the template's
-    fixed test command (`TRIAL_TEST_CMD`, never one taken from the repo). Its exit code is the verdict.
+    fixed test command (`TRIAL_TEST_CMD`, never one taken from the repo; `python -P` so nothing in the repo stands in
+    for pytest). The verdict: exit 0 AND its JUnit report shows at least one passed test and none failed.
   - Every sandbox is killed in `finally`; a reaper kills any of ours older than 20 min (metadata `hagency=trial-build`),
     and all of them when the worker starts or is switched off.
 - **The tool loop** (`server/trial_tools.py`) runs in the worker: tools `run`, `read_file`, `write_file`, `list_dir`,
@@ -70,7 +71,8 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
   carries an opaque job id, never the Matrix ID.
 - **The reviewer** (`server/trial_review.py`) is talk-only: the issue, the diff and the test result go to the model as
   text; its notes go on the PR as a COMMENT review headed "AI self-check", with a fixed part listing the files and any
-  outside `src/` and `tests/`. It never approves. @pm then says "Ready: a person merges".
+  outside `src/` and `tests/`. It never approves. @pm then says "Ready: a person merges". Model words reach GitHub and
+  Matrix only as inert text (`common/redact.inert`: no links, mentions, markup or HTML).
 - **The worker is its own compose service, `trial-worker`** (`server/trial_worker.py`): `read_only`, tmpfs `/tmp`,
   `cap_drop: ALL`, `no-new-privileges`, `pids_limit: 128`, `cpus: 0.5`, `mem_limit: 512m`; its own outbound network
   `trial-out` (never `db` or `edge`); only `deploy/trial.env` (E2B key, Trial App id, its Ollama key, caps) and
@@ -93,11 +95,16 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
 - **Caps** (counted by @pm when a job is queued, never given back): per GitHub account 3 a UTC day and 10 ever; 20 a day
   for the server, bypassed by the operator's `TRIAL_BUILD_DEMO_USERS`; the queue holds 5; one job at a time per visitor;
   2 sandbox-hours a day (`TRIAL_SANDBOX_S_PER_DAY`), after which builds wait for 00:00 UTC.
-- **Kill switch:** `TRIAL_BUILD=off` in `trial.env`, then restart `trial-worker`: our sandboxes are killed, waiting and
+- **Kill switch:** `TRIAL_BUILD=off` in `trial.env`, then recreate `trial-worker` (`up -d --force-recreate`; a plain
+  restart keeps the old settings): our sandboxes are killed, waiting and
   running builds fail ("switched off"), the heartbeat goes, the offer disappears; the talk-only trial keeps working.
 
 ## Consequences
-- Nothing generated runs on our VM; the worker does only HTTPS and holds at most a 50 MB tarball in memory.
+- Nothing generated runs on our VM; the worker does only HTTPS and holds at most a 50 MB tarball in memory (100 MB
+  unpacked); sandbox output is capped inside the sandbox, and changed files are read only once their sizes fit.
+- One worker at a time (a lock held for its life), so an overlapping restart can't fail a live build.
+- "Talk first" means a waiting talk answer gets the slot before the next build call; a build call already underway
+  (up to 3 minutes) is not interrupted, so a talk message sent then may be told "busy, try again in a minute".
 - **Private demo repos are not visible to visitors**: adding them as collaborators would need Administration, which the
   owner ruled out. They see the outcome in chat (PR number, files, tests, the self-check excerpt); the owner can add a
   visitor by hand. Phase 2 (their own public repo via a `hagency-trials` fork, cross-repo PR) is a separate ADR.

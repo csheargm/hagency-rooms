@@ -12,6 +12,7 @@ class Queue(unittest.TestCase):
     def setUp(self):
         self.now = [1000.0]
         self.jobs = tj.Jobs(Path(tempfile.mkdtemp()), clock=lambda: self.now[0])
+        self.jobs.beat({})
 
     def add(self, n):
         self.now[0] += 1
@@ -57,7 +58,9 @@ class Queue(unittest.TestCase):
         self.assertEqual(self.jobs.all(), {})
 
     def test_heartbeat_freshness(self):
+        self.jobs.stop_beating()
         self.assertIsNone(self.jobs.alive())
+        self.assertEqual(self.jobs.enqueue("@x:s", 1, "!x", 5)[0], tj.OFF)   # nothing queues without a worker
         self.jobs.beat({"TRIAL_BUILD_QUEUE": 5})
         self.assertEqual(self.jobs.alive(), {"TRIAL_BUILD_QUEUE": 5})
         self.now[0] += tj.HEARTBEAT_S + 1

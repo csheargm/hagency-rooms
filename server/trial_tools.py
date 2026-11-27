@@ -86,21 +86,19 @@ class ToolLoop:
 
     async def tool(self, name: str, args: dict) -> str:
         """One tool's result, as text for the model (refusals too: it may try something else)."""
-        if name == "run":
+        if name == "run":                 # output capped inside the sandbox (common/sandbox.capped)
             left = max(1.0, min(RUN_TIMEOUT_S, self.deadline - self.clock()))
             try:
-                r = await self.box.run(f"cd {sandbox.ROOT} && {args.get('command', '')}", timeout=left)
+                r = await self.box.run_capped(str(args.get("command", "")), OUTPUT_CHARS, timeout=left)
             except asyncio.TimeoutError:
                 return "the command timed out"
-            return cut(f"exit code {r.exit_code}\n{r.stdout}\n{r.stderr}".strip())
+            return cut(f"exit code {r.exit_code}\n{r.stdout}".strip())
         path = repo_path(args.get("path"))
         if path is None:
             return "refused: paths are relative to the repo and stay inside it"
         if name == "read_file":
-            try:
-                return cut((await self.box.read(path)).decode("utf-8", "replace"))
-            except sandbox.SandboxError:
-                return "no such file"
+            data = await self.box.read_capped(path, OUTPUT_CHARS + 1)
+            return "no such file" if data is None else cut(data.decode("utf-8", "replace"))
         if name == "write_file":
             content = str(args.get("content", ""))
             if not path or len(content) > MAX_WRITE:
@@ -108,8 +106,8 @@ class ToolLoop:
             await self.box.write_files({path: content.encode("utf-8")})
             return "written"
         if name == "list_dir":
-            r = await self.box.run(f"ls -la -- {shlex.quote(posixpath.join(sandbox.ROOT, path))}", timeout=30)
-            return cut(r.stdout or r.stderr)
+            r = await self.box.run_capped(f"ls -la -- {shlex.quote(posixpath.join(sandbox.ROOT, path))}", OUTPUT_CHARS, timeout=30)
+            return cut(r.stdout)
         return f"no such tool: {name[:40]}"
 
     async def run(self, chat: list[dict]) -> Ended:
@@ -120,6 +118,8 @@ class ToolLoop:
             message = await self.think(chat)
             if message is None:
                 return Ended(TOKENS, steps=steps, tokens=self.used)
+            if self.clock() >= self.deadline:     # the slot or the model took the time left (GPT review)
+                return Ended(TIME, steps=steps, tokens=self.used)
             calls = [c.get("function") or {} for c in message.get("tool_calls") or [] if isinstance(c, dict)]
             chat.append({"role": "assistant", "content": trial_build_model.clean(message.get("content") or "", OUTPUT_CHARS),
                          "tool_calls": message.get("tool_calls") or []})

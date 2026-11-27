@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from common import sandbox
+from common import sandbox_fake
 
 
 def run(coro):
@@ -17,13 +18,13 @@ def run(coro):
 
 class Checks(unittest.TestCase):
     def test_a_blocked_host_that_answers_refuses_the_sandbox(self):
-        box = run(sandbox.FakeSandboxes(egress_open=True).create(sandbox.BUILD, "j"))
+        box = run(sandbox_fake.FakeSandboxes(egress_open=True).create(sandbox.BUILD, "j"))
         with self.assertRaises(sandbox.SandboxError) as e:
             run(sandbox.check_egress(box))
         self.assertIn("safety", str(e.exception))
 
     def test_a_closed_or_hanging_probe_passes(self):
-        run(sandbox.check_egress(run(sandbox.FakeSandboxes().create(sandbox.BUILD, "j"))))
+        run(sandbox.check_egress(run(sandbox_fake.FakeSandboxes().create(sandbox.BUILD, "j"))))
 
         class Hangs:
             async def run(self, cmd, timeout=0):
@@ -31,10 +32,10 @@ class Checks(unittest.TestCase):
         run(sandbox.check_egress(Hangs()))
 
     def test_the_environment_holds_nothing_beyond_plain_settings(self):
-        clean = run(sandbox.FakeSandboxes(environ="PATH=/usr/bin\nHOME=/home/user\nLANG=C.UTF-8\n").create(sandbox.TEST, "j"))
+        clean = run(sandbox_fake.FakeSandboxes(environ="PATH=/usr/bin\nHOME=/home/user\nLANG=C.UTF-8\n").create(sandbox.TEST, "j"))
         run(sandbox.check_clean(clean))
         for dirty in ("PATH=/bin\nE2B_API_KEY=x\n", "PATH=/bin\nGITHUB_TOKEN=x\n", "PATH=/bin\nMY_THING=1\n"):
-            box = run(sandbox.FakeSandboxes(environ=dirty).create(sandbox.TEST, "j"))
+            box = run(sandbox_fake.FakeSandboxes(environ=dirty).create(sandbox.TEST, "j"))
             with self.assertRaises(sandbox.SandboxError):
                 run(sandbox.check_clean(box))
 
@@ -42,13 +43,13 @@ class Checks(unittest.TestCase):
         for bad in ("nope", '{"files": []}', '{"files": {"a": 1}, "links": [], "other": []}'):
             with self.assertRaises(sandbox.SandboxError):
                 sandbox.parse_listing(bad)
-        self.assertEqual(sandbox.parse_listing('{"files": {"a": "h"}, "links": ["l"], "other": []}')["links"], ["l"])
+        self.assertEqual(sandbox.parse_listing('{"files": {"a": ["h", 1]}, "links": ["l"], "other": []}')["links"], ["l"])
 
 
 class Reaper(unittest.TestCase):
     def test_only_old_sandboxes_are_reaped_and_zero_means_all(self):
         now = [1000.0]
-        boxes = sandbox.FakeSandboxes(clock=lambda: now[0])
+        boxes = sandbox_fake.FakeSandboxes(clock=lambda: now[0])
         old = run(boxes.create(sandbox.BUILD, "a"))
         now[0] += sandbox.REAP_AFTER_S - 60
         young = run(boxes.create(sandbox.BUILD, "b"))

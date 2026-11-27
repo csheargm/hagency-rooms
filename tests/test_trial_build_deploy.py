@@ -50,7 +50,7 @@ class WorkerIsolation(unittest.TestCase):
 
     def test_the_e2b_sdk_is_pinned_for_the_worker_only(self):
         root = DEPLOY.parent
-        self.assertIn("e2b==2.66.0", (root / "requirements-trial.txt").read_text())
+        self.assertIn("e2b==2.66.0", (DEPLOY / "requirements-trial.txt").read_text())
         self.assertNotIn("e2b", (root / "requirements.txt").read_text())
 
 

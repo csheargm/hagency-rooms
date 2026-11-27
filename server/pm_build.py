@@ -13,7 +13,7 @@ import logging
 import re
 import time
 
-from common.redact import markup_safe, room_safe
+from common.redact import inert, room_safe
 from server import github_link
 from server import trial_build
 from server import trial_build_config
@@ -25,7 +25,6 @@ log = logging.getLogger("loop")
 BUILD_RE = re.compile(r"\b(try|start|run|do|want|give me)\b.{0,20}\bbuild\b", re.I)
 RELAY_S = 5
 EXCERPT_CHARS = 400
-URL_RE = re.compile(r"\b(?:https?|ftp)://\S+|\bwww\.\S+", re.I)
 PRIVACY = ("It works on a private Hagency demo repo (not yours): the issue and the code go to E2B (a sandbox "
            "service) and Ollama Cloud. Nothing of yours is used.")
 QUEUED = "🛠️ Your trial build is queued: you're **#{n}**. I'll tell you here when it starts and when it's done. " + PRIVACY
@@ -40,25 +39,23 @@ DONE = ("✅ Your trial build is done: pull request #{pr} in {repo}, for issue #
 FAILED = "⚠️ Your trial build didn't finish: {why}. Nothing was opened. You have {left} trial builds left today."
 
 
-def excerpt(text: object) -> str:
-    """Model words for a room: no links, no mentions (@room either), no markup, at most EXCERPT_CHARS."""
-    cut = URL_RE.sub("(link removed)", room_safe(text, 4000)).replace("@", "@​")
-    cut = " ".join(cut.split())
-    return markup_safe(cut[:EXCERPT_CHARS] + ("…" if len(cut) > EXCERPT_CHARS else ""))
+def excerpt(text: object, limit: int = EXCERPT_CHARS) -> str:
+    """Anything a model or a repo chose (its words, a title, a file name), inert in a room (common/redact.inert)."""
+    return inert(room_safe(text, 4000), limit)
 
 
 def news_words(job: dict, event: str, left: int) -> str:
     out = job.get("outcome") or {}
     if event == "started":
-        return STARTED.format(issue=int(job.get("issue") or 0), repo=markup_safe(job.get("repo") or "a demo repo"),
-                              title=markup_safe(str(job.get("title") or "")[:120]))
+        return STARTED.format(issue=int(job.get("issue") or 0), repo=excerpt(job.get("repo") or "a demo repo", 120),
+                              title=excerpt(job.get("title") or "", 120))
     if event == trial_jobs.DONE:
-        files = ", ".join(markup_safe(p) for p in (out.get("files") or [])[:10]) or "nothing"
-        return DONE.format(pr=int(out.get("pr") or 0), repo=markup_safe(out.get("repo") or ""), issue=int(out.get("issue") or 0),
+        files = ", ".join(excerpt(p, 200) for p in (out.get("files") or [])[:10]) or "nothing"
+        return DONE.format(pr=int(out.get("pr") or 0), repo=excerpt(out.get("repo") or "", 120), issue=int(out.get("issue") or 0),
                            files=files, review=excerpt(out.get("review") or "(nothing)"))
     why = trial_build.WHY.get(str(out.get("why")), trial_build.WHY["error"])
     if out.get("why") == "patch" and out.get("rule"):
-        why = f"{why}, because {markup_safe(out['rule'])}"
+        why = f"{why}, because {excerpt(out['rule'], 200)}"
     return FAILED.format(why=why, left=left)
 
 
@@ -97,6 +94,8 @@ class BuildOffer:
 
     def queue_build(self, room_id: str, person: str, link: dict, caps: dict) -> str:
         state, _, n = self.build_jobs().enqueue(person, link["id"], room_id, int(caps["TRIAL_BUILD_QUEUE"]))
+        if state == trial_jobs.OFF:                  # the worker stopped while the gate was checked (GPT review)
+            return OFF
         if state == trial_jobs.BUSY:
             return BUSY.format(n=caps["TRIAL_BUILD_QUEUE"])
         if state == trial_jobs.ALREADY:

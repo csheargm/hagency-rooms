@@ -7,7 +7,9 @@ import unittest
 from pathlib import Path
 
 from common import sandbox
+from common import sandbox_fake
 from server import trial_build
+from server import trial_build_config
 from server import trial_github
 from server import trial_jobs
 from server import trial_patch
@@ -60,18 +62,18 @@ class HappyPath(BuildBase):
             self.assertFalse({"workflows", "administration", "actions", "secrets"} & set(t["permissions"]))
 
     def test_two_fresh_sandboxes_build_then_test_without_network_and_both_are_killed(self):
-        boxes = sandbox.FakeSandboxes(kit.on_run)
+        boxes = sandbox_fake.FakeSandboxes(kit.on_run)
         self.queue_and_run(kit.deps(self.folder, sandboxes=boxes))
         self.assertEqual([b.kind for b in boxes.boxes], [sandbox.BUILD, sandbox.TEST])
         self.assertTrue(all(b.killed for b in boxes.boxes))
         test_box = boxes.boxes[1]
         self.assertEqual(test_box.files["src/calc.py"], kit.FIXED.encode())   # the pristine copy plus the patch
-        self.assertIn("python -m pytest -q", test_box.ran)                    # the template's fixed command
+        self.assertIn(f"{trial_build_config.test_command()} --junitxml={trial_build.REPORT}", test_box.ran)   # the fixed command
         self.assertTrue(all(sandbox.PROBE_CMD in b.ran for b in boxes.boxes))   # egress probed first, both times
 
     def test_the_model_never_sees_a_credential_and_tool_output_is_capped(self):
         ask = kit.scripted(kit.tool("run", command="yes | head -c 50000"), *kit.FIX)
-        boxes = sandbox.FakeSandboxes(lambda box, cmd: sandbox.Result(0, "y" * 50000) if "yes" in cmd else kit.on_run(box, cmd))
+        boxes = sandbox_fake.FakeSandboxes(lambda box, cmd: sandbox.Result(0, "y" * 50000) if "yes" in cmd else kit.on_run(box, cmd))
         self.queue_and_run(kit.deps(self.folder, sandboxes=boxes, ask_build=ask))
         tool_out = [m for m in ask.asked[1] if m["role"] == "tool"][0]["content"]
         self.assertLess(len(tool_out), 9000)
@@ -100,7 +102,7 @@ class Refusals(BuildBase):
                 box.links.append("src/evil")
             return kit.on_run(box, cmd)
         out = self.refused(kit.tool("run", command="ln -s /etc/passwd src/evil"),
-                           kit.tool("write_file", path="src/calc.py", content=kit.FIXED), boxes=sandbox.FakeSandboxes(link))
+                           kit.tool("write_file", path="src/calc.py", content=kit.FIXED), boxes=sandbox_fake.FakeSandboxes(link))
         self.assertEqual(out["rule"], trial_patch.LINK)
 
     def test_an_empty_diff_is_a_failure_not_a_pass(self):
@@ -117,14 +119,14 @@ class Refusals(BuildBase):
         self.assertEqual(out["why"], "tests_failed")           # only the separate test sandbox's exit code counts
 
     def test_an_open_egress_stops_the_build_before_anything_is_uploaded(self):
-        boxes = sandbox.FakeSandboxes(kit.on_run, egress_open=True)
+        boxes = sandbox_fake.FakeSandboxes(kit.on_run, egress_open=True)
         out = self.refused(*kit.FIX, boxes=boxes)
         self.assertEqual(out["why"], "unsafe")
         self.assertEqual(boxes.boxes[0].files, {})
         self.assertTrue(boxes.boxes[0].killed)
 
     def test_a_sandbox_holding_a_credential_is_refused(self):
-        boxes = sandbox.FakeSandboxes(kit.on_run, environ="PATH=/bin\nGITHUB_TOKEN=ghs_x\n")
+        boxes = sandbox_fake.FakeSandboxes(kit.on_run, environ="PATH=/bin\nGITHUB_TOKEN=ghs_x\n")
         self.assertEqual(self.refused(*kit.FIX, boxes=boxes)["why"], "unsafe")
 
     def test_running_out_of_steps_is_a_failure(self):

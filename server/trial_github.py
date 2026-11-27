@@ -13,6 +13,7 @@ Never logged or put in an error: the private key, the JWT, a token.
 """
 import asyncio
 import io
+import logging
 import re
 import tarfile
 import urllib.error
@@ -22,6 +23,7 @@ import urllib.request
 from common import github
 from common import github_app
 
+log = logging.getLogger("trial-build")
 READ = {"contents": "read", "issues": "read", "pull_requests": "read", "metadata": "read"}
 WRITE = {"contents": "write", "issues": "write", "pull_requests": "write", "metadata": "read"}
 BRANCH_PREFIX = "trial/"
@@ -30,6 +32,8 @@ SEED_LABEL = github.LABEL                # "agent-ok": the loop's own label (com
 MAX_TARBALL = 50 * 1024 * 1024
 MAX_FILE = 5 * 1024 * 1024
 MAX_MEMBERS = 5000
+MAX_EXPANDED = 100 * 1024 * 1024       # the whole tree, unpacked (GPT review: members alone weren't bounded)
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TARBALL_HOSTS = ("codeload.github.com",)
 # (method, path under /repos/<repo>) a token may write; bodies are checked too (check_write)
 WRITES = [("POST", re.compile(r"^/git/(trees|commits|refs)$")), ("PATCH", re.compile(r"^/git/refs/heads/[A-Za-z0-9._/-]{1,200}$")),
@@ -49,6 +53,10 @@ def check_write(method: str, sub: str, body: dict | None) -> None:
     body = body or {}
     if sub == "/git/refs" and not str(body.get("ref", "")).startswith(f"refs/heads/{BRANCH_PREFIX}"):
         raise TrialGitHubError("trial builds only make trial/ branches")
+    if method == "PATCH" and sub.startswith("/git/refs/") and (
+            sub.startswith(f"/git/refs/heads/{BRANCH_PREFIX}") or set(body) != {"sha", "force"}
+            or not SHA_RE.match(str(body.get("sha"))) or body.get("force") is not True):
+        raise TrialGitHubError("trial builds only reset a default branch to its template")
     if method == "PATCH" and sub.startswith("/pulls/") and body != {"state": "closed"}:
         raise TrialGitHubError("trial builds only close their own pull requests")
     if sub.endswith("/reviews") and body.get("event") != "COMMENT":
@@ -59,6 +67,7 @@ def unpack(data: bytes) -> dict:
     """GitHub's tarball → {path: (mode, bytes)}, without the top folder. Symlinks and submodules keep
     their mode ("120000"), with no content, so the patch can refuse touching them (trial_patch.py)."""
     out: dict = {}
+    total = 0
     try:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
             members = tar.getmembers()
@@ -70,9 +79,10 @@ def unpack(data: bytes) -> dict:
                     continue
                 if m.issym() or m.islnk() or not m.isfile():
                     out[path] = ("120000", b"")
-                elif m.size > MAX_FILE:
-                    raise TrialGitHubError("the demo repo has a file too big to build on")
+                elif m.size > MAX_FILE or total + m.size > MAX_EXPANDED:
+                    raise TrialGitHubError("the demo repo is too big to build on")
                 else:
+                    total += m.size
                     out[path] = ("100755" if m.mode & 0o111 else "100644", tar.extractfile(m).read())
     except (tarfile.TarError, OSError, EOFError):
         raise TrialGitHubError("the demo repo's tarball wasn't readable") from None
@@ -123,11 +133,18 @@ class TrialGitHub:
             raise TrialGitHubError(f"GitHub gave no token for {repo} ({status})")
         return data["token"]
 
-    async def revoke(self, token: str) -> None:
-        try:
-            await self.call("DELETE", "/installation/token", token)
-        except github.GitHubError:
-            pass                  # it expires within the hour anyway; nothing else may hold it up
+    async def revoke(self, token: str) -> bool:
+        """Revoke `token` (tried twice); False, and a warning for the operator, if GitHub didn't confirm: the
+        token then lives until it expires (an hour), scoped to one demo repo (GPT review: this was silent)."""
+        for _ in range(2):
+            try:
+                status, _ = await self.call("DELETE", "/installation/token", token)
+            except github.GitHubError:
+                continue          # GitHub didn't answer: once more
+            if status in (204, 401):   # 401: already invalid
+                return True
+        log.warning("a Trial Builder token couldn't be revoked; it expires within the hour")
+        return False
 
     async def get(self, token: str, repo: str, sub: str) -> object:
         status, data = await self.call("GET", f"/repos/{self._repo(repo)}{sub}", token)
@@ -185,8 +202,10 @@ class TrialGitHub:
         number = pr.get("number") if isinstance(pr, dict) else None
         if not isinstance(number, int):
             raise TrialGitHubError("GitHub didn't say which pull request it opened")
-        await self.write(token, repo, "POST", f"/issues/{number}/labels", {"labels": [LABEL]})
         return number
+
+    async def label(self, token: str, repo: str, number: int) -> None:
+        await self.write(token, repo, "POST", f"/issues/{int(number)}/labels", {"labels": [LABEL]})
 
     async def comment_review(self, token: str, repo: str, number: int, body: str) -> None:
         await self.write(token, repo, "POST", f"/pulls/{int(number)}/reviews", {"event": "COMMENT", "body": body})
@@ -195,7 +214,9 @@ class TrialGitHub:
         """Back to the template: trial PRs closed, trial branches deleted, the default branch reset."""
         branch, head = await self.base(token, repo)
         for pr in await self.get(token, repo, "/pulls?state=open&per_page=100") or []:
-            if isinstance(pr, dict) and str((pr.get("head") or {}).get("ref", "")).startswith(BRANCH_PREFIX):
+            head = (pr.get("head") or {}) if isinstance(pr, dict) else {}
+            same_repo = str((head.get("repo") or {}).get("full_name", "")).lower() == repo.lower()
+            if same_repo and str(head.get("ref", "")).startswith(BRANCH_PREFIX):   # ours, never a fork's (GPT review)
                 await self.write(token, repo, "PATCH", f"/pulls/{int(pr['number'])}", {"state": "closed"})
         for ref in await self.get(token, repo, f"/git/matching-refs/heads/{BRANCH_PREFIX}") or []:
             name = str(ref.get("ref", "")).removeprefix("refs/heads/") if isinstance(ref, dict) else ""

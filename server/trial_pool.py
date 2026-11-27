@@ -48,20 +48,28 @@ class Pool:
         if mine := self.mine(github_id):
             return mine
         for repo in self.repos:
-            token = await gh.token(repo, write=True)
+            token = await gh.token(repo)                  # read only: most repos are just looked at
             try:
                 if not await self.ended(gh, token, repo):
                     continue
                 e = self.entry(repo)
                 if not e.get("template"):
                     e["template"] = (await gh.base(token, repo))[1]   # first sight: this commit is the template
-                elif e.get("github_id") is not None:
-                    await gh.recycle(token, repo, e["template"])
-                self.state[repo] = {**e, "github_id": github_id, "since": self.clock(), "prs": []}
-                return repo
             finally:
                 await gh.revoke(token)
+            if e.get("github_id") is not None:
+                await self.recycle(gh, repo, e["template"])
+            self.state[repo] = {**e, "github_id": github_id, "since": self.clock(), "prs": []}
+            return repo
         raise NoRepoFree()
+
+    async def recycle(self, gh, repo: str, template: str) -> None:
+        """A write token only for this (GPT review: one was minted for every repo looked at)."""
+        token = await gh.token(repo, write=True)
+        try:
+            await gh.recycle(token, repo, template)
+        finally:
+            await gh.revoke(token)
 
     def opened(self, repo: str, number: int) -> None:
         e = self.entry(repo)

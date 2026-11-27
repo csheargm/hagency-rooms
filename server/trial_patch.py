@@ -10,7 +10,7 @@ come out of it. A patch is refused (Refused, with the rule broken) when it has:
   - a symlink, or anything but regular files, where the sandbox's repo is;
   - binary content (a NUL byte, or not UTF-8);
   - edits to test files or test config (the fixed test command must test the visitor's change, not
-    a rewritten test);
+    a rewritten test), or a module that would stand in for the test runner (pytest.py, a .pth);
   - more than MAX_BYTES of changed content or more than MAX_FILES files;
   - path problems once case and Unicode are normalised (absolute, "..", control characters,
     backslashes, not NFC, two paths that differ only by case);
@@ -32,6 +32,9 @@ TEST_CONFIG = {"conftest.py", "pytest.ini", "tox.ini", "setup.cfg", "pyproject.t
                "package.json", "package-lock.json", ".mocharc.js", ".mocharc.json", ".mocharc.yml", "Makefile",
                "requirements.txt", "requirements-dev.txt", ".coveragerc", "sitecustomize.py", "usercustomize.py"}
 TEST_CONFIG_PREFIXES = ("jest.config.", "vitest.config.", "karma.conf.", "babel.config.", "playwright.config.")
+# A top-level module or package that would stand in for the test runner itself (GPT review: a repo-root
+# pytest.py could answer "passed"); the test command also runs with `python -P`, so the repo isn't first.
+RUNNER_MODULES = {"pytest", "_pytest", "py", "pluggy", "iniconfig", "packaging", "unittest", "site", "runpy"}
 DEFAULT_MODE = "100644"
 UNSAFE_CHARS = set('\\`<>|*?"')     # never in a name the PR, the review or a chat message shows
 PLAIN_MODES = ("100644", "100755")      # anything else in the template (a symlink, a submodule) is never touched
@@ -77,9 +80,10 @@ def check_path(path: str) -> None:
 def is_test_path(path: str) -> bool:
     parts = path.split("/")
     name = parts[-1].casefold()
+    top = parts[0].casefold().removesuffix(".py")
     return (any(p.casefold() in TEST_DIRS for p in parts[:-1]) or name in {n.casefold() for n in TEST_CONFIG}
             or name.startswith(TEST_CONFIG_PREFIXES) or name.startswith("test_") or name.endswith("_test.py")
-            or ".test." in name or ".spec." in name)
+            or ".test." in name or ".spec." in name or name.endswith(".pth") or top in RUNNER_MODULES)
 
 
 def check_text(path: str, data: bytes) -> None:

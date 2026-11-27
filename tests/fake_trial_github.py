@@ -92,7 +92,8 @@ class FakeTrialGitHub:
             pr = self.pulls.get(int(m.group(1)))
             return (200, {"state": pr["state"]}) if pr else (404, {})
         if sub.startswith("/pulls?"):
-            return 200, [{"number": n, "head": {"ref": p["head"]}} for n, p in self.pulls.items()
+            return 200, [{"number": n, "head": {"ref": p["head"], "repo": {"full_name": p.get("head_repo", repo)}}}
+                         for n, p in self.pulls.items()
                          if p["repo"] == repo and p["state"] == "open"]
         if sub.startswith("/git/matching-refs/heads/trial/"):
             return 200, [{"ref": r} for (rp, r) in self.refs if rp == repo and r.startswith("refs/heads/trial/")]

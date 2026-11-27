@@ -10,15 +10,17 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from common import model_slot
 from common import sandbox
+from common import sandbox_fake
 from server import trial_budget
 from server import trial_build
 from server import trial_build_config
 from server import trial_github
 from server import trial_jobs
 from server import trial_pool
-from tests.fake_trial_github import FakeTrialGitHub
+from tests.fake_trial_github import FakeTrialGitHub, tarball
 
 REPO = "hagency-trials/demo-1"
+tarball_of = tarball                  # the template as GitHub serves it (tests use kit.tarball_of)
 BROKEN = "def add(a, b):\n    return a - b\n"
 FIXED = "def add(a, b):\n    return a + b\n"
 TEMPLATE = {"src/calc.py": BROKEN, "tests/test_calc.py": "from src.calc import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
@@ -67,10 +69,17 @@ FIX = (tool("read_file", path="src/calc.py"), tool("write_file", path="src/calc.
        tool("run", command="python -m pytest -q"), tool("finish", summary="add() now adds."))
 
 
+def junit(passed: int = 1, failed: int = 0, skipped: int = 0) -> str:
+    """pytest's JUnit report, as --junitxml writes it."""
+    return (f'<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" '
+            f'failures="{failed}" skipped="{skipped}" tests="{passed + failed + skipped}" time="0.01"></testsuite></testsuites>')
+
+
 def on_run(box, cmd):
     """The template's commands: the fixed test command passes only once add() adds."""
-    if box.kind == sandbox.TEST and cmd == trial_build_config.test_command():
+    if box.kind == sandbox.TEST and cmd == f"{trial_build_config.test_command()} --junitxml={trial_build.REPORT}":
         ok = box.files.get("src/calc.py") == FIXED.encode()
+        box.outside[trial_build.REPORT] = junit(passed=int(ok), failed=int(not ok)).encode()
         return sandbox.Result(0 if ok else 1, "1 passed" if ok else "1 failed")
     return sandbox.Result(0, "1 passed (the build sandbox says so; it is never believed)")
 
@@ -86,10 +95,11 @@ async def review_ask(chat):
 def deps(folder: Path, gh: FakeTrialGitHub | None = None, sandboxes=None, ask_build=None, slot=None) -> trial_build.Deps:
     gh = gh or FakeTrialGitHub({REPO: TEMPLATE})
     client = trial_github.TrialGitHub("12345", str(key_file()), [REPO], call=gh.call, fetch=gh.fetch)
-    d = trial_build.Deps(gh=client, sandboxes=sandboxes or sandbox.FakeSandboxes(on_run), pool=trial_pool.Pool(folder / "pool.json", [REPO], 7),
+    d = trial_build.Deps(gh=client, sandboxes=sandboxes or sandbox_fake.FakeSandboxes(on_run), pool=trial_pool.Pool(folder / "pool.json", [REPO], 7),
                          jobs=trial_jobs.Jobs(folder), slot=slot or model_slot.Slot(model_slot.lock_path(folder), model_slot.BUILD),
                          budget=trial_budget.Budget(folder / "build-budget.json", fetch=no_balance),
                          ask_build=ask_build or scripted(*FIX),
                          ask_review=review_ask)
     d.fake = gh
+    d.jobs.beat(CAPS)                     # the worker is up (enqueue checks it)
     return d

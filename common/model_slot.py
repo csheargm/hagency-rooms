@@ -69,7 +69,10 @@ class Slot:
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     marker.touch()            # refreshed while waiting: never stale while we wait
                 if not (self.kind == BUILD and self.talk_waiting()) and self._try_lock():
-                    return True
+                    if self.kind == BUILD and self.talk_waiting():   # one came between the check and the lock
+                        self.release()                               # (GPT review): it goes first
+                    else:
+                        return True
                 await asyncio.sleep(self.poll_s)
         finally:
             if marker is not None:

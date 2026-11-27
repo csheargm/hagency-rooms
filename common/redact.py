@@ -56,3 +56,13 @@ def markup_safe(text: object) -> str:
     """Issue titles and reasons come from issue authors and agents: never let them become markup
     (the status board and @pm's messages are rendered as HTML in Element and in the side panel)."""
     return MARKDOWN_RE.sub(r"\\\g<0>", html.escape(" ".join(str(text).split()), quote=False))
+
+
+URL_RE = re.compile(r"\b(?:https?|ftp)://\S+|\bwww\.\S+", re.I)
+
+
+def inert(text: object, limit: int) -> str:
+    """Model words for a room or a GitHub comment (trial builds, ADR 0027): no credentials, no links, no
+    mentions (@room either), no markup or HTML, one paragraph, at most `limit` characters (GPT review)."""
+    s = " ".join(URL_RE.sub("(link removed)", secret_safe(text)).replace("@", "@​").split())
+    return markup_safe(s[:limit] + ("…" if len(s) > limit else ""))

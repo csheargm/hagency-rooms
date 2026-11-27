@@ -71,25 +71,30 @@ async def tick(d: trial_build.Deps) -> str | None:
     return await run_one(d, *claimed) if claimed else None
 
 
-async def serve(d: trial_build.Deps, stop: asyncio.Event, poll_s: float = POLL_S) -> None:
-    for job_id in d.jobs.fail_unfinished("restart"):
-        log.warning("trial build %s was underway at restart: failed", job_id)
-    await d.sandboxes.reap(older_than_s=0)          # nothing of ours can be legitimately alive now
-    try:
-        while not stop.is_set():
-            await tick(d)
-            try:
-                await asyncio.wait_for(stop.wait(), poll_s)
-            except asyncio.TimeoutError:
-                continue          # the next round
-    finally:
-        d.jobs.stop_beating()
+async def serve(d: trial_build.Deps, stop: asyncio.Event, poll_s: float = POLL_S) -> bool:
+    """Run until `stop`; False at once if another worker is running (it keeps its builds and sandboxes)."""
+    with d.jobs.one_worker() as mine:
+        if not mine:
+            log.error("another trial-worker is running: this one exits")
+            return False
+        for job_id in d.jobs.fail_unfinished("restart"):
+            log.warning("trial build %s was underway at restart: failed", job_id)
+        await d.sandboxes.reap(older_than_s=0)      # nothing of ours can be legitimately alive now
+        try:
+            while not stop.is_set():
+                await tick(d)
+                try:
+                    await asyncio.wait_for(stop.wait(), poll_s)
+                except asyncio.TimeoutError:
+                    continue      # the next round
+        finally:
+            d.jobs.stop_beating()
+    return True
 
 
 async def shut_down(jobs: trial_jobs.Jobs, sandboxes) -> None:
     """The kill switch: no sandbox of ours survives, nothing waits, and @pm stops offering builds."""
-    jobs.stop_beating()
-    for job_id in jobs.fail_unfinished("off", states=(trial_jobs.QUEUED, trial_jobs.RUNNING)):
+    for job_id in jobs.shut("off"):
         log.warning("trial build %s: switched off", job_id)
     if sandboxes is not None:
         log.warning("switched off: killed %s sandbox(es)", await sandboxes.reap(older_than_s=0))

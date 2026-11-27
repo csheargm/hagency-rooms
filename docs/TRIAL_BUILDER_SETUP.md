@@ -50,8 +50,9 @@ dashboard under **Templates**.
    Add a small project whose tests fail until a seeded issue is fixed, for example:
    - `src/__init__.py` (empty) and `src/calc.py`: `def add(a, b): return a - b`
    - `tests/test_calc.py`: `from src.calc import add` and `def test_add(): assert add(2, 3) == 5`
-   - The template's tests must run with the fixed command `python -m pytest -q` (`TRIAL_TEST_CMD`) and need nothing
-     beyond pytest (test sandboxes have no network).
+   - The template's tests must pass with the fixed command `python -P -m pytest -q -p no:cacheprovider -o pythonpath=.`
+     (`TRIAL_TEST_CMD`) once the issue is fixed, and need nothing beyond pytest (test sandboxes have no network).
+     A build passes only if at least one test passed and none failed.
    Then **Settings** → tick **Template repository**.
 4. Make the demo repos from it: on `trial-template`, click **Use this template** → **Create a new repository**, owner
    `hagency-trials`, name `demo-1`, **Private**. Repeat for `demo-2` and `demo-3` (their names go in `TRIAL_REPOS`).
@@ -89,7 +90,7 @@ cp trial.env.example trial.env && chmod 600 trial.env
 nano trial.env                   # fill in the values below
 nano trial-secrets/trial-app.pem # paste the .pem from step 4.7
 chmod 600 trial-secrets/trial-app.pem
-sudo docker compose --env-file .env up -d trial-worker
+sudo docker compose --env-file .env up -d --force-recreate trial-worker   # after every trial.env change
 sudo docker compose --env-file .env logs trial-worker   # "trial builds on: 3 demo repo(s) in hagency-trials"
 ```
 
@@ -118,6 +119,8 @@ What goes where:
 
 ## Turning it off
 
-In `deploy/trial.env` set `TRIAL_BUILD=off`, then `sudo docker compose --env-file .env restart trial-worker`. Our
+In `deploy/trial.env` set `TRIAL_BUILD=off`, then `sudo docker compose --env-file .env up -d --force-recreate
+trial-worker` (a plain `restart` would keep the old settings: Compose reads `trial.env` only when it creates the
+container). Our
 sandboxes are killed, waiting builds are told they were switched off, and **Try a build** disappears; the talk-only
 trial agent keeps working. To pause spending at the source, revoke the E2B key in E2B's dashboard.

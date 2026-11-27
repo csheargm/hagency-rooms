@@ -13,11 +13,13 @@
 Outcomes are plain data for @pm's fixed message templates (pm_build.py); failures carry a WHY key.
 """
 import logging
+import re
 import shlex
 import time
 from dataclasses import dataclass
 
 from common import sandbox
+from common.redact import inert
 from server import trial_build_config as config
 from server import trial_build_model
 from server import trial_github
@@ -30,6 +32,7 @@ from server import trial_review
 from server import trial_tools
 
 log = logging.getLogger("trial-build")
+NO_REVIEW = "(the AI self-check couldn't be posted on GitHub; please read the change yourself)"
 WHY = {"no_repo": "every demo repo is in use just now", "no_issue": "the demo repo has no open issue to work on",
        "github": "GitHub couldn't be reached, or refused", "sandbox": "the sandbox couldn't be used",
        "unsafe": "the sandbox's safety check failed, so it was stopped", "patch": "the change was refused",
@@ -39,6 +42,10 @@ WHY = {"no_repo": "every demo repo is in use just now", "no_issue": "the demo re
        "budget": "trial builds have used their AI budget for now", "error": "something went wrong on the server",
        "restart": "the server restarted during the build", "off": "trial builds were switched off"}
 NO_TESTS = 5                     # pytest: nothing was collected, so nothing was tested
+REPORT = "/tmp/hagency-junit.xml"  # the test run's JUnit report, outside the repo
+MAX_REPORT = 200_000
+SUITE_RE = re.compile(r"<testsuite\b[^>]*>")
+ATTR_RE = re.compile(r'\b(tests|failures|errors|skipped)="(\d{1,7})"')
 
 
 class Failed(RuntimeError):
@@ -76,16 +83,19 @@ async def upload(box, files: dict) -> None:
 
 
 async def read_back(box, pristine: dict) -> tuple[dict, list, list]:
-    """What the repo holds now ({path: bytes}), reading only files whose hash differs from the pristine copy."""
+    """What the repo holds now ({path: bytes}), reading only files whose hash differs from the pristine copy,
+    and only once their listed sizes fit the patch's limits (GPT review: nothing big is ever pulled in)."""
     listing = await box.listing()
     after: dict = {}
-    differ = [p for p, h in listing["files"].items()
+    differ = [p for p, (h, _) in listing["files"].items()
               if not trial_patch.ignored(p) and (p not in pristine or sandbox.sha256(pristine[p][1]) != h)]
-    if len(differ) > trial_patch.MAX_FILES:
+    if len(differ) > trial_patch.MAX_FILES or sum(listing["files"][p][1] for p in differ) > trial_patch.MAX_BYTES:
         raise trial_patch.Refused(trial_patch.TOO_BIG)
     for p in listing["files"]:
         if p in differ:
             after[p] = await box.read(p)
+            if len(after[p]) != listing["files"][p][1]:     # it changed after it was listed: never trusted
+                raise trial_patch.Refused(trial_patch.TOO_BIG)
         elif not trial_patch.ignored(p):
             after[p] = pristine[p][1]
     return after, listing["links"], listing["other"]
@@ -134,18 +144,33 @@ def patched(pristine: dict, patch: list) -> dict:
     return files
 
 
+def report_counts(xml: str) -> tuple[int, int] | None:
+    """(passed, failed or errored) from pytest's JUnit report, or None when it isn't one."""
+    m = SUITE_RE.search(xml)
+    if not m:
+        return None
+    n = {k: int(v) for k, v in ATTR_RE.findall(m.group(0))}
+    if "tests" not in n:
+        return None
+    bad = n.get("failures", 0) + n.get("errors", 0)
+    return n["tests"] - bad - n.get("skipped", 0), bad
+
+
 async def run_tests(d: Deps, job_id: str, pristine: dict, patch: list) -> None:
-    """The template's fixed command in a no-network sandbox; Failed unless it exits 0."""
+    """The template's fixed command in a no-network sandbox: it must exit 0 AND its report must show at least
+    one test that passed and none that failed (R14: a run with nothing tested is not a pass; GPT review)."""
     async def work(box):
         await upload(box, patched(pristine, patch))
-        return await box.run(config.test_command(), timeout=config.number("TRIAL_TEST_S"), cwd=sandbox.ROOT)
+        ran = await box.run_capped(f"{config.test_command()} --junitxml={REPORT}", 4096, timeout=config.number("TRIAL_TEST_S"))
+        return ran, await box.read_capped(REPORT, MAX_REPORT)
     try:
-        result = await in_sandbox(d, job_id, sandbox.TEST, work)
+        ran, report = await in_sandbox(d, job_id, sandbox.TEST, work)
     except TimeoutError:
         raise Failed("tests_unrun") from None
-    if result.exit_code == NO_TESTS or result.exit_code >= 126:   # nothing collected, or the command isn't there
-        raise Failed("tests_unrun")
-    if result.exit_code != 0:
+    counts = report_counts(report.decode("utf-8", "replace")) if report is not None else None
+    if ran.exit_code == NO_TESTS or ran.exit_code >= 126 or counts is None or counts == (0, 0):
+        raise Failed("tests_unrun")                # nothing collected, the command isn't there, or no report
+    if ran.exit_code != 0 or counts[1] or counts[0] <= 0:
         raise Failed("tests_failed")
 
 
@@ -162,16 +187,28 @@ def review_ask(d: Deps):
 async def publish(d: Deps, job_id: str, repo: str, base: tuple, issue: dict, patch: list, summary: str) -> tuple[int, str]:
     title = f"Trial build: fix #{issue['number']}"
     body = (f"Written by AI in a sandbox (a Hagency trial build, job {job_id}), for #{issue['number']}.\n\n"
-            f"{trial_review.no_pings(summary) or '(no summary)'}\n\nA person reviews and merges this; the trial never merges.")
+            f"{inert(summary, 2000) or '(no summary)'}\n\nA person reviews and merges this; the trial never merges.")
     review = await trial_review.comment(issue, patch, "passed", d.slot, review_ask(d))
     token = await d.gh.token(repo, write=True)
     try:
         number = await d.gh.open_pr(token, repo, base, f"{trial_github.BRANCH_PREFIX}{issue['number']}-{job_id}", patch, title, body)
-        d.pool.opened(repo, number)
-        await d.gh.comment_review(token, repo, number, review)
+        d.pool.opened(repo, number)                # recorded at once: the PR exists, whatever comes next
+        review = await finish_pr(d, token, repo, number, review)
     finally:
         await d.gh.revoke(token)
     return number, review
+
+
+async def finish_pr(d: Deps, token: str, repo: str, number: int, review: str) -> str:
+    """Its label and the self-check; the PR is open either way, so a refusal here is said, not a failed build
+    (GPT review: @pm said "nothing was opened" about an open PR)."""
+    try:
+        await d.gh.label(token, repo, number)
+        await d.gh.comment_review(token, repo, number, review)
+    except trial_github.github.GitHubError as e:
+        log.warning("trial PR %s#%s: %s", repo, number, e)
+        return NO_REVIEW
+    return review
 
 
 async def read_repo(d: Deps, job_id: str, github_id: int) -> tuple[str, tuple, dict, dict]:

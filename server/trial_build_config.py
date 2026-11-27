@@ -33,7 +33,9 @@ DEFAULTS = {
     "TRIAL_TEST_S": 300,               # the test run
 }
 DEFAULT_TEMPLATE = "hagency-trial-python"
-DEFAULT_TEST_CMD = "python -m pytest -q"
+# -P: the repo isn't put first on sys.path, so nothing in it can stand in for pytest; the repo is added by
+# pytest itself once it runs (pythonpath=.). The worker adds --junitxml (trial_build.REPORT). GPT review.
+DEFAULT_TEST_CMD = "python -P -m pytest -q -p no:cacheprovider -o pythonpath=."
 DEFAULT_REPOS = "demo-1,demo-2,demo-3"
 SHARED_ENV = "TRIAL_SHARED_DIR"
 
@@ -113,6 +115,8 @@ def caps() -> dict:
 if __name__ == "__main__":
     if sys.argv[1:] == ["check"]:
         gone = [] if switched_off() else missing()
+        if not enabled():                 # a heartbeat left by an earlier run must not keep the offer up (GPT review)
+            (shared_dir() / "worker.json").unlink(missing_ok=True)
         print("trial builds: " + ("switched off (TRIAL_BUILD=off)" if switched_off() else
                                   f"off, not configured: {', '.join(gone)}" if gone else "on"))
         sys.exit(0 if enabled() else 1)
