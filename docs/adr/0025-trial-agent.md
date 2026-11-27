@@ -67,7 +67,10 @@ Amended 2026-11-27 (owner): **anyone** may use it, now called the **Server agent
 - **Never competes**: outside its own private chat it still answers only when mentioned (a pill, its ID, or a
   message starting "Server agent, …" / the old "Trial agent, …"), so in a project room where the person also
   has their own agent it is silent unless named, and a person's own agent leaves "Server agent, …" alone (its
-  follow-up filter, `common/identity.SERVER_AGENT_NAME_RE`). Still never a builder, reviewer or merger (unchanged).
+  follow-up filter, `common/identity.SERVER_AGENT_NAME_RE`), and so does @pm (`pm_implicit.for_someone_else`). The rule is
+  words with a space or its exact id, never `server-agent`/`trial-agent` (a real person's agent); public sign-up and
+  SSO also keep `server` and `trial` as usernames (`deploy/sso_login.RESERVED_PEOPLE`). Still never a builder,
+  reviewer or merger (unchanged).
 - **Shared rooms**: someone else who uses it and names it in a room another person brought it into becomes one of
   that room's sponsors (so it stays while either is there); people who never chose it are still ignored.
 - **A used-up day never reads GitHub**: a PR diff is only fetched while the shortest request still fits their tokens.

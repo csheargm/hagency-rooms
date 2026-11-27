@@ -103,6 +103,10 @@ class NoTakeover(unittest.TestCase):
         self.assertEqual(render(g, {"email": "Anna.Lee@gmail.com"}), "anna.lee")
         self.assertEqual(render(g, {"email": "cx-agent@gmail.com"}), "cx-agent-g")
         self.assertEqual(render(g, {"email": "x-bot @gmail.com"}), "x-bot-g")          # trimmed first
+        # their agent would be "server-agent" / "trial-agent", read as the shared server agent (ADR 0025)
+        self.assertEqual(render(gh, {"login": "Server"}), "server-gh")
+        self.assertEqual(render(g, {"email": "trial@gmail.com"}), "trial-g")
+        self.assertEqual(render(gh, {"login": "servers"}), "servers")
 
 
 class ReservedNamesModule(unittest.TestCase):
@@ -120,7 +124,7 @@ class ReservedNamesModule(unittest.TestCase):
     def test_it_reserves_pm_owner_and_the_agent_and_bot_suffixes(self):
         config = next(m["config"] for m in json.loads(value(configure(GENERATED, OPEN), "modules"))
                       if m["module"].startswith("hagency_reserved_names"))
-        self.assertEqual(config, {"names": ["pm", "owner"], "suffixes": ["-agent", "-bot"]})
+        self.assertEqual(config, {"names": ["pm", "owner", "server", "trial"], "suffixes": ["-agent", "-bot"]})
 
 
 class NoSecrets(unittest.TestCase):

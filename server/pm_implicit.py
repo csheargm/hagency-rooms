@@ -23,6 +23,7 @@ import time
 from nio import MatrixRoom, RoomGetEventResponse, RoomMessage, RoomMessageText
 
 from common import github
+from common import identity
 from common import intents
 from common import room_state
 from server import pm_brain
@@ -150,7 +151,8 @@ class Implicit:
             return True                       # an edit is never a new request
         mentions = content.get("m.mentions")
         ids = mentions.get("user_ids") if isinstance(mentions, dict) else None
-        if (isinstance(ids, list) and ids) or without_pill(body, self.user_id)[1] or AGENT_NAME_RE.search(body):
+        if (isinstance(ids, list) and ids) or without_pill(body, self.user_id)[1] or AGENT_NAME_RE.search(body) \
+                or identity.SERVER_AGENT_NAME_RE.search(body):   # "Server agent, …": the shared one's (independent review)
             return True
         m = LEADING_NAME_RE.match(body)
         names = {n.lower() for u, info in room.users.items() if u != self.user_id
