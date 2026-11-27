@@ -1,6 +1,7 @@
 """Unit tests for disk_history.py and guard.py's disk messages and timer.
 Run from deploy/: python3 -m unittest discover -p 'test_*.py'"""
 import datetime
+import json
 import subprocess
 import tempfile
 import unittest
@@ -203,6 +204,19 @@ class GuardWithoutVnstat(unittest.TestCase):
                 self.assertEqual(guard.main(MON), 1)
                 self.assertIn("traffic" if isinstance(effect, Exception) else "vnstat doesn't watch ens3",
                               run.call_args.kwargs["input"])
+
+    def test_valid_json_of_the_wrong_shape_still_records_the_disk(self):
+        """GPT review: "interfaces": null or a month without "tx" raised before the disk was recorded."""
+        month = {"date": {"year": datetime.date.today().year, "month": datetime.date.today().month}}
+        for payload in ({"interfaces": None}, {"interfaces": [{"name": "ens3", "traffic": {"month": [month]}}]}):
+            vnstat = mock.Mock(returncode=0, stdout=json.dumps(payload))
+            with self.subTest(payload=payload), \
+                    mock.patch.object(guard.subprocess, "run", side_effect=[vnstat, mock.Mock(returncode=0)]) as run, \
+                    mock.patch.object(guard.disk_history, "record", return_value=([], [])) as record:
+                self.assertEqual(guard.main(MON), 1)
+                record.assert_called_once_with(MON, over=True)
+                self.assertIn("90% full", run.call_args.kwargs["input"])
+                self.assertIn("can't read this month's traffic", run.call_args.kwargs["input"])
 
 
 class Timer(unittest.TestCase):
