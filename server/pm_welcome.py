@@ -1,6 +1,6 @@
 """@pm welcomes newcomers. Synapse puts every new account in the private Welcome room (#welcome,
 created and owned by @pm: deploy/configure_synapse.py, local_signup.py). When a person without an
-agent joins it, @pm opens a private chat with them, once, and offers one button:
+agent joins it, @pm opens a private chat with them, once, and offers 🔌 (and 🧪 while the trial agent runs: pm_trial.py):
   🔌 Bring your own: an AI on their own computer (agent_kinds.IN_WORDS; remote_agent.py, connect.py).
 The server agent (one run by this server) isn't built yet, so it is not offered; anyone who types
 "server agent" (or its old name, "house agent") is told so (old offers still carry a 🏠 button: its
@@ -32,7 +32,7 @@ from common.lifecycle import is_stale
 from common.local_signup import WELCOME_ALIAS, WELCOME_LOCALPART
 from common import intents
 from server.pm_address import unaddressed
-from server.pm_first import BRING, HOUSE, FirstAgent, picked_from
+from server.pm_first import BRING, HOUSE, TRIAL, FirstAgent, picked_from
 from server.pm_github import GitHubLink
 from server.pm_invite import InviteLinks
 from server.pm_lobby import WELCOME_NAME, WELCOME_TOPIC, Lobby
@@ -173,7 +173,7 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
             dm = await self.private_room(person)
             if dm is None:
                 return None
-            offer = await self.say(dm, WELCOME.format(name=person.split(":")[0].lstrip("@")))
+            offer = await self.say(dm, WELCOME.format(name=person.split(":")[0].lstrip("@")) + self.trial_line())
         except RuntimeError as e:             # loop.SendError
             log.error("couldn't welcome %s: %s", person, e)
             return None
@@ -181,7 +181,7 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
             greeting.discard(person)
         pointed = {"pointed": True} if self.welcomes().get(person, {}).get("pointed") else {}   # said once, ever
         self.welcomes()[person] = {"dm": dm, "offer": offer, "done": [], **pointed}
-        await self.offer_thumb(dm, offer, BRING)   # no 🏠 until the server agent exists (R1)
+        await self.offer_buttons(dm, offer, BRING)   # pm_trial.py: 🧪 too while the trial agent runs; no 🏠 (R1)
         return dm
 
     async def on_welcome_reaction(self, room: MatrixRoom, event: ReactionEvent) -> bool:
@@ -194,15 +194,15 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         if not entry or room.room_id != entry.get("dm") or event.reacts_to != entry.get("offer"):
             return False
         key = event.key.replace("️", "")
-        if key in (HOUSE, BRING) and key not in entry.get("done", []):
-            self.welcomes()[event.sender] = {**entry, "done": [*entry.get("done", []), key]}   # each button once
+        if key in (HOUSE, BRING, TRIAL) and key not in entry.get("done", []):   # 🧪 while it's down: said, not used up
+            self.welcomes()[event.sender] = {**entry, "done": [*entry.get("done", []), *([key] if self.counts_once(key) else [])]}
             await self.choose(room.room_id, event.sender, key)
         return True
 
     async def on_welcome_text(self, room: MatrixRoom, event: RoomMessageText) -> bool:
         """True if the message was about getting an agent (answered here)."""
         if await self.on_invite_text(room, event) or await self.on_github_text(room, event) or await self.on_add_text(room, event) \
-                or await self.on_project_text(room, event):   # pm_invite, pm_github, pm_agents, pm_projects
+                or await self.on_project_text(room, event) or await self.on_trial_text(room, event):   # pm_invite, pm_github, pm_agents, pm_projects, pm_trial
             return True
         entry = self.welcomes().get(event.sender) or {}
         in_dm = room.room_id == entry.get("dm") or self.is_one_to_one(room, event.sender)   # pm_address.py

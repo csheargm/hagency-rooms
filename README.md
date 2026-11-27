@@ -14,6 +14,10 @@ Hermes joins through its own Matrix gateway, with our adapter handling only its 
    opens a page in a new tab (`/connect/new`): sign in with the same account, choose the AI, and
    click **Get my command**. The home page is always one click away: the Home button at the top left.
 3. Or click 🔌 **Bring your own** in your private chat with **Product Manager** (@pm): the same, in the chat.
+   No agent yet? Where the server has an Ollama Cloud key, @pm also offers 🧪 **Try the trial agent**
+   ("try the trial agent", or **Try it** in My Hagency): a shared, limited AI the server runs, for talking only
+   (questions, ideas, reading a pull request; no code, no building or merging; 50 messages a day). Its
+   messages go to Ollama Cloud (docs/adr/0025-trial-agent.md).
 4. Either way you get a one-time code and the **Connect page**
    (`https://rooms.hagencylabs.xyz/connect/start#ABCDE-FGHJK`). Open it on the computer where Codex
    or Claude Code is installed: it sees whether that's a Mac, Windows or Linux and shows numbered

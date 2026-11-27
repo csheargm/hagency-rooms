@@ -1,7 +1,8 @@
 # Hagency Rooms on the Oracle VM: Caddy (TLS) in front of Element Web, Synapse and @pm's console.
 # Only Caddy publishes ports (80/443, plus 8448 for federation). Postgres, Synapse and @pm stay internal.
 # Images are pinned here, so a deploy of a commit always runs the same versions (docs/DEPLOY_ORACLE.md).
-# The site is GitHub Pages. People's own agents run on their computers (connect.py), never here.
+# The site is GitHub Pages. People's own agents run on their computers (connect.py), never here; only the
+# shared, talk-only trial agent runs in @pm's container, with OLLAMA_API_KEY set (ADR 0025).
 name: hagency
 x-logs: &logs                           # Docker's logs stay small on the 45 GB disk
   driver: json-file
@@ -80,12 +81,24 @@ services:
       HAGENCY_REMOTE_PER_HOUR: ${REMOTE_PER_HOUR:-10}   # at most this many of their agents made per hour
       HAGENCY_TEST_LIMITS: ${HAGENCY_TEST_LIMITS:-0}   # 1: higher per-person limits while testing (common/test_limits.py)
       PANEL_HOST: 0.0.0.0                 # reachable by Caddy on the edge network only
-      PM_BRAIN: "owner"                   # no model keys here: @pm reads with the room owner's agent (ADR 0022), else its phrase rules
+      PM_BRAIN: "owner"                   # @pm itself uses no model key: it reads with the room owner's agent (ADR 0022), else its phrase rules
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}   # @pm reads GitHub as its read-only App (docs/GITHUB_APP.md)
       GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-hagency-rooms}
       GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}   # Connect GitHub (device flow); public, not the secret
       GITHUB_APP_PRIVATE_KEY_PATH: /run/hagency-github/github-app.pem
       HAGENCY_REPOS: ${HAGENCY_REPOS:-}   # optional: only these repos (empty: any with the App and write access)
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}   # the trial agent (ADR 0025): empty = off; its messages go to Ollama Cloud
+      TRIAL_MODELS: ${TRIAL_MODELS:-glm-5.3,kimi-k3.1-pro*2,kimi-k2.7-code,deepseek-v4.1-flash,gpt-oss:120b}   # visitors pick; first = default
+      TRIAL_PER_VISITOR: ${TRIAL_PER_VISITOR:-50}   # messages per visitor per UTC day
+      TRIAL_PER_SERVER: ${TRIAL_PER_SERVER:-1000}   # messages for the whole server per UTC day
+      TRIAL_MAX_TOKENS: ${TRIAL_MAX_TOKENS:-1500}
+      TRIAL_TIMEOUT_S: ${TRIAL_TIMEOUT_S:-90}
+      TRIAL_MAX_SHARE: ${TRIAL_MAX_SHARE:-0.5}   # trials stop at this share of the Ollama plan's month (never pay-as-you-go)
+      TRIAL_MONTHLY_TOKENS: ${TRIAL_MONTHLY_TOKENS:-5000000}
+      TRIAL_QUEUE_WAIT_S: ${TRIAL_QUEUE_WAIT_S:-20}   # one model call at a time; then "busy, try again"
+      TRIAL_PAUSE_S: ${TRIAL_PAUSE_S:-900}
+      TRIAL_VISITOR_TOKENS: ${TRIAL_VISITOR_TOKENS:-150000}   # tokens per visitor per UTC day
+      TRIAL_REMOTE_TOKENS: ${TRIAL_REMOTE_TOKENS:-50000}     # the same for people from other servers   # a 429/402 from Ollama pauses trials this long (or its Retry-After)
     volumes:
       - ../../pm:/app                   # ~/hagency/pm: this commit's files (deploy.sh) and @pm's state
       - ./pm-secret:/run/hagency:ro     # root-owned on the host: @pm can read the secret, never replace it

@@ -247,9 +247,19 @@ in any way, `synapse_modules/hagency_reserved_names.py` also refuses @pm, @owner
 names to email sign-up and to Google/GitHub ("Rate limited", deliberately vague); @pm still makes
 agents through the admin API. Everyone, however they signed up, lands in Welcome with @pm.
 
+## The trial agent (docs/adr/0025-trial-agent.md)
+
+Off until `OLLAMA_API_KEY` (an Ollama Cloud API key) is set in `deploy/.env`; then deploy as usual. @pm creates
+`@hagency.trial-agent` (password in `~/hagency/pm/.env`, like @pm's) and offers 🧪 to people without an agent.
+Its other settings have defaults in `.env.example`: `TRIAL_MODELS` (the models visitors may pick, first = default; glm-5.3), 50 messages per visitor and 1000 for the
+server per UTC day, `TRIAL_MAX_SHARE` 0.5 of the plan's month (all users of the key count) and
+`TRIAL_MONTHLY_TOKENS`, one call at a time. A 429/402 from Ollama pauses trials and logs
+"trial agent paused" (`docker compose logs pm`). `TRIAL_MAX_SHARE` is checked between calls and the key may be
+shared, so also set a pay-as-you-go spending limit in the Ollama account for a hard stop. Its counts are in `~/hagency/pm/data/trial-*.json`.
+
 ## Next (separate steps)
 
-- **The server agent** (🏠 on old offers): run by the server with its own model key and a daily budget.
+- **Trial agent step 2**: tools and building, in a sandbox (step 1, talk only, is above).
 - **@pm's GitHub:** the read-only "Hagency Rooms" GitHub App, and optionally `HAGENCY_REPOS` to allow
   only certain repos (empty: any repo with the App and the asker's write access; docs/GITHUB_APP.md);
   the owner registers the App and puts its key in `deploy/secrets/`.

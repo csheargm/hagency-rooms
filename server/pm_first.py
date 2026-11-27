@@ -7,7 +7,7 @@ My Hagency (console_agents.add_agent). The choice is recorded on their first age
 same fields as a further agent's: pm_kinds.FIELDS) and so reaches credentials_for and the Connect
 page link exactly as an added agent's does. Once it has connected, its AI stays: another AI is
 another agent (pm_agents.py).
-Mixed into loop.Loop (say, busy, may_have_agent, start_add, send_code, has_connected_agent).
+Mixed into loop.Loop (say, busy, may_have_agent, start_add, send_code, has_connected_agent). 🧪: pm_trial.py.
 """
 import asyncio
 import logging
@@ -17,6 +17,7 @@ from common import agent_kinds
 from common import pm_kinds
 from common import registry
 from server import remote_agent
+from server.pm_trial import TRIAL, TrialOffer
 from common.redact import room_safe
 from common.setup_accounts import AccountError
 
@@ -46,13 +47,16 @@ def picked_from(text: str) -> dict | str | None:
     return pm_kinds.from_words(m.group("how")) if m else None
 
 
-class FirstAgent:
+class FirstAgent(TrialOffer):   # pm_trial.py: 🧪, the shared trial agent (ADR 0025)
     async def choose(self, dm: str, person: str, key: str, picked: dict | None = None) -> None:
         """🔌 (or "bring my own"): set up their first agent and send its Connect message; picked: the AI
         it runs (pm_kinds.choice; {}: the one found on their computer), only while it has never
         connected; None: keep what it has."""
         if key == HOUSE:
             await self.say(dm, SERVER_REPLY)
+            return
+        if key == TRIAL:
+            await self.start_trial(dm, person)
             return
         busy = self.__dict__.setdefault("_provisioning", set())
         if person in busy or not self.may_have_agent(person):

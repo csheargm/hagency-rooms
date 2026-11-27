@@ -231,7 +231,8 @@ function buttons(name, values, current, enabled) {
     ${live(v) ? '' : 'disabled'}>${esc(cap(v))}</button>`).join("") + `</span>`; }
 document.addEventListener("click", e => { const b = e.target.closest("button[data-a]");
   if (b && ok(b)) act(b.dataset.a, b.dataset.a === "repo" ? $("repo").value.trim() : b.dataset.a === "add" ? (typeof addValue === "function" ? addValue() : $("newagent").value.trim())
-    : b.dataset.a === "rename" ? $("rename-" + b.dataset.g).value.trim() : b.dataset.v, b.dataset.g); });
+    : b.dataset.a === "rename" ? $("rename-" + b.dataset.g).value.trim() : b.dataset.a === "trial_model" ? $("trialmodel").value
+    : b.dataset.v, b.dataset.g); });
 let polling = false;                        // one view request at a time (GPT review: a late 401 of an old session)
 async function refresh() {
   if (!session || polling) return;
@@ -255,7 +256,7 @@ async function show() {
   const typing = document.activeElement && document.activeElement.id;
   const sameCode = typing === "ghcode" && s.github && s.github.code === $("ghcode").value   // a code gone: redrawn
     || typeof ghCodeKept === "function" && ghCodeKept(typing, s, typing && $(typing).value);   // My agents' code too
-  const fields = ["repo", "newagent", "newkind", "newmodel", "newbase"];
+  const fields = ["repo", "newagent", "newkind", "newmodel", "newbase", "trialmodel"];
   if (typing && (fields.includes(typing) || sameCode || typing.startsWith("rename-"))) return;   // don't wipe what's being typed
   $("me").textContent = "";
   $("title").textContent = s.room;
@@ -273,10 +274,20 @@ async function show() {
   $("controls").innerHTML = h; $("p").innerHTML = s.html;      // s.html: server-escaped board (panel.render)
   if (typeof showCards === "function") showCards(s);           // Your cards (panel_cards.js): kept, not redrawn
 }
+// The shared trial agent (pm_trial.py, ADR 0025): only while it runs and you have no agent of your own.
+function trialCard(t) {
+  if (!t) return "";
+  const what = t.on ? `Its chat is <b>Trial agent</b> (accept the invite under Invites if you haven't). ${esc(t.left)} of ${esc(t.per_day)} messages left today.`
+    : `No agent yet? Talk to a shared, limited AI (${esc(t.per_day)} messages a day): questions, ideas, reading a pull request. It can't run code, build or merge.`;
+  const pick = t.on ? `<div class="set"><div>Model: <b>${esc(t.model)}</b></div><span class="field"><select id="trialmodel">${
+    (t.models || []).map(m => `<option ${m === t.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
+    <button data-a="trial_model">Use</button></span></div>` : "";
+  return `<section class="card"><h2>Trial agent (shared, limited)</h2><div class="set"><div>${what}<div class="hint">What you write to it goes to Ollama Cloud.</div></div>
+    <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat again" : "Try it"}</button></div>${pick}</section>`; }
 function personal(s) {
   $("sub").innerHTML = '<span class="chip">Your agents and GitHub, the same in every room</span>';
   $("who").innerHTML = `<span class="chip">${esc(s.user)}</span>`;
-  $("controls").innerHTML = card("agentCards", s) + card("githubCard", s);
+  $("controls").innerHTML = card("agentCards", s) + trialCard(s.trial) + card("githubCard", s);
   if (typeof showCards === "function") showCards(null);
   $("p").innerHTML = "";
 }

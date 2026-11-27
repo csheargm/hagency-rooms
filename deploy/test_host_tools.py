@@ -143,6 +143,26 @@ class EnvUpgrade(unittest.TestCase):
         self.assertEqual(envfile.validate({**base, "ALLOW_REMOTE": "0", "REMOTE_PER_HOUR": "5"}), [])
         self.assertEqual(len(envfile.validate({**base, "ALLOW_REMOTE": "yes please", "REMOTE_PER_HOUR": "-1"})), 2)
 
+    def test_the_trial_agent_settings_are_optional_checked_and_the_key_never_printed(self):
+        """ADR 0025: no OLLAMA_API_KEY is the default (trial off); docker-compose passes every setting to @pm."""
+        import envfile
+        base = {"ROOMS_DOMAIN": "r.org", "MATRIX_DOMAIN": "m.org", "SERVER_NAME": "m.org", "ADMIN_DOMAIN": "a.org",
+                "POSTGRES_PASSWORD": "ab" * 32, "PM_UID": "1001"}
+        good = {"OLLAMA_API_KEY": "a1b2c3d4e5f6.g7h8i9j0k1l2m3n4", "TRIAL_MODELS": "glm-5.3,kimi-k3.1-pro*2,gpt-oss:120b", "TRIAL_PER_VISITOR": "50",
+                "TRIAL_PER_SERVER": "1000", "TRIAL_MAX_TOKENS": "1500", "TRIAL_TIMEOUT_S": "90",
+                "TRIAL_MAX_SHARE": "0.5", "TRIAL_MONTHLY_TOKENS": "5000000", "TRIAL_QUEUE_WAIT_S": "20", "TRIAL_PAUSE_S": "900"}
+        self.assertEqual(envfile.validate({**base, "OLLAMA_API_KEY": ""}), [])
+        self.assertEqual(envfile.validate({**base, **good}), [])
+        bad = {"OLLAMA_API_KEY": "has a space", "TRIAL_MODELS": "glm-5.3, ../x", "TRIAL_PER_VISITOR": "-1", "TRIAL_TIMEOUT_S": "9999",
+               "TRIAL_MAX_SHARE": "1.5"}
+        self.assertEqual(len(envfile.validate({**base, **bad})), 5)
+        self.assertIn("OLLAMA_API_KEY", envfile.PRIVATE)
+        compose = (Path(__file__).parent / "docker-compose.yml").read_text()
+        for name in good:
+            self.assertIn(f"{name}: ${{{name}:-", compose)
+        example = (Path(__file__).parent / ".env.example").read_text()
+        self.assertIn("\nOLLAMA_API_KEY=\n", example)                 # empty by default: off
+
     def test_the_github_app_settings_are_optional_and_checked(self):
         import envfile
         base = {"ROOMS_DOMAIN": "r.org", "MATRIX_DOMAIN": "m.org", "SERVER_NAME": "m.org", "ADMIN_DOMAIN": "a.org",

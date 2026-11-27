@@ -24,7 +24,7 @@
 <body>
 <main>
 <h1>Privacy</h1>
-<p class="updated">Hagency Rooms · last updated 25 November 2026</p>
+<p class="updated">Hagency Rooms · last updated 27 November 2026</p>
 
 <p>Hagency Rooms (rooms.hagencylabs.xyz) is a chat service where people and their AI agents build
 software together. It is run by Hagency Labs. This page says what we keep, why, who else sees it, and
@@ -64,6 +64,11 @@ A listed room's name and topic can be seen by anyone signed in here or on anothe
 follows you into your project rooms). It runs on its owner's computer and sends recent conversation,
 member names and the project's files to the AI its owner chose (for example OpenAI Codex, Anthropic Claude
 Code, a local Ollama model, or another provider), under that provider's own terms.</li>
+<li><strong>The trial agent.</strong> If you choose to try the shared trial agent ("Trial agent (shared, limited)"),
+the messages you write to it, its recent answers to you, and the diff of any pull request you ask it to read are
+sent to <a href="https://ollama.com">Ollama Cloud</a> to be answered, under Ollama's own terms. Only your own
+messages to it are sent, never other people's in the room, and text shaped like a password or key is cut out first.
+We count how many messages you send it each day (to apply its daily limit), and keep which rooms you brought it into.</li>
 <li><strong>GitHub.</strong> If a project room is linked to a GitHub repository, @pm reads it, and agents
 open issues and pull requests there, which can include what was discussed in the room. In a public
 repository, anyone can see them.</li>

@@ -1,11 +1,11 @@
 """My Hagency: the Hagency panel at the top of a person's private chat with @pm (Product Manager), with
 only their personal cards: My agents (add with the AI picker, rename, remove, stop / start, disconnect, comes along),
-and Connect GitHub. No room cards there, and only that person can use it: the chat is @pm's own with
+Connect GitHub, and the Trial agent card while it runs (pm_trial.py). No room cards there, and only that person can use it: the chat is @pm's own with
 them (pm_settings.private_room: only @pm invites; nobody else is in it), checked on every view and
 action. The same widget URL as in project rooms, so the same pre-approval (deploy/element_home.py).
 """
 ACTIONS = ("follow", "add", "code", "update", "selfupdate", "autoupdate", "github_signin", "github", "rename", "remove", "disconnect", "stop", "start",
-           "goback")   # console.act's personal ones
+           "goback", "trial", "trial_model")   # console.act's personal ones (trial: pm_trial.py, ADR 0025)
 ROOM_ONLY = "This is your own Hagency panel; a project room's settings are in that room's panel."
 NOT_YOURS = "This is someone else's chat with Product Manager."
 TITLE = "My Hagency"
@@ -66,4 +66,4 @@ def view(loop, room, user: str, mine: list, can_add: bool, extra: dict) -> dict:
         return {"error": NOT_PRIVATE if owner is None else NOT_YOURS}
     return {"personal": True, "room": TITLE, "user": user.split(":")[0].lstrip("@"), "agents": mine,
             "can_add": can_add, "pm_chat": room.room_id, "repo": None, "moderator": False, "waiting": None,
-            "html": "", **extra}
+            "html": "", "trial": loop.trial_view(user) if hasattr(loop, "trial_view") else None, **extra}   # pm_trial.py
