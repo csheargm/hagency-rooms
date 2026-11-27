@@ -44,11 +44,12 @@ const send = async data => { listener({origin: element, source: ctx.parent, data
   const asked = posted.find(m => m.requestId === "c1").response.capabilities;
   if (scenario !== "not_approved")
     await send({api: "toWidget", requestId: "c2", action: "notify_capabilities", data: {requested: asked, approved: asked}});
-  const html = (els.controls.innerHTML + el("agents").innerHTML);
-  const href = (html.match(/<a href="([^"]+)"[^>]*data-pmchat/) || [])[1];
+  if (scenario === "refused_trial") { el("trialchat").click = () => {}; ctx.openChat("!trial:example"); }   // its own link
+  const html = scenario === "refused_trial" ? el("msg").innerHTML : (els.controls.innerHTML + el("agents").innerHTML);
+  const href = (html.match(/<a [^>]*href="([^"]+)"[^>]*data-pmchat/) || [])[1];
+  const label = (html.match(/data-pmchat="1" data-label="([^"]+)"/) || [])[1];
   let prevented = false;
-  const a = {href, closest: sel => sel.includes("pmchat") ? a : null,
-             dataset: scenario === "refused_trial" ? {label: "open the Trial agent chat"} : {}};   // openChat's link
+  const a = {href, closest: sel => sel.includes("pmchat") ? a : null, dataset: label ? {label} : {}};
   clicker.forEach(f => f({target: a, preventDefault: () => { prevented = true; }}));
   const nav = posted.find(m => m.action === "org.matrix.msc2931.navigate");
   if (scenario.startsWith("refused")) await send({api: "fromWidget", requestId: nav.requestId, action: nav.action, response: {error: {message: "no"}}});
@@ -90,7 +91,9 @@ class ChatLink(unittest.TestCase):
 
     def test_a_refused_trial_chat_link_keeps_its_own_words(self):
         """GPT review: the fallback for the Trial agent chat's link said it opens Product Manager."""
-        got = self.run_page("refused_trial")
+        got = self.run_page("refused_trial")             # the link panel_agents.openChat made, clicked
+        self.assertEqual(got["nav"], "https://matrix.to/#/!trial%3Aexample")
+        self.assertIn('<a href="https://matrix.to/#/!trial%3Aexample" target="_blank"', got["msg"])
         self.assertIn("open the Trial agent chat</a>", got["msg"])
         self.assertNotIn("Product Manager", got["msg"])
 
