@@ -255,9 +255,12 @@ class Progress:
         elif ok and info.get("headRefOid") and info["headRefOid"] != item.get("sha"):
             await self.review_again(room_id, key, item, "it changed")   # the PR moved since it was approved
         elif ok and lvl == "autonomous":
-            item["stage"] = "merging"
+            if item.get("solo") is True and await self.solo_withdrawn(room_id, key, item):
+                return                               # GPT review: switched off while GitHub was asked
+            item["stage"] = "merging"                # "solo": the agent re-reads the switch before it merges
             await self.dispatch(room_id, item, item["builder"], f"{item['builder']}: merge PR #{item['pr']}",
-                                {"kind": "merge", "issue": num(key), "pr": item["pr"], "sha": item["sha"]})
+                                {"kind": "merge", "issue": num(key), "pr": item["pr"], "sha": item["sha"],
+                                 **({"solo": True} if item.get("solo") is True else {})})
         elif ok and item["stage"] == "approved":
             item["stage"] = "ready"
             await self.say(room_id, f"PR #{item['pr']} ready — a person merges")

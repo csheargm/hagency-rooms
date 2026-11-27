@@ -153,8 +153,8 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
                 elif kind in tasks.AUTONOMOUS_ONLY and await room_state.level(self.client, room_id) != "autonomous":
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "room is no longer autonomous", "line": f"{kind} skipped: room is no longer autonomous"}
-                elif (task.get("on") if kind == solo_review.TASK_KIND else task.get("admin")) is True \
-                        and not await solo_review.enabled(self.client, room_id):   # ADR 0023: re-read from the room now
+                elif any(task.get(f) is True for f in (("on",) if kind == solo_review.TASK_KIND else ("admin", "solo"))) \
+                        and not await solo_review.enabled(self.client, room_id):   # ADR 0023: re-read now (any solo merge)
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "solo review is off in this room", "line": f"{kind} refused: solo review is off here"}
                 else:
