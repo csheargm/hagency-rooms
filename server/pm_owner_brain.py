@@ -91,11 +91,11 @@ class OwnerBrain:
         return agent, ""
 
     async def still_owners_agent(self, room: MatrixRoom, agent: str) -> bool:
-        """Right before the context goes out: the agent is still joined and its owner still owns the room
-        (read now). A to-device message reaches every device of that account: accepted risk, ADR 0022."""
-        if agent not in room.users or agent in room.invited_users:
-            return False
-        return any(self.own_agent(room, owner) == agent for owner in await room_state.owners(self.client, room))
+        """Right before the context goes out: the agent is still joined and its owner still owns the room, both
+        from the room's state read now (unreadable: no). A to-device message reaches every device of that
+        account: accepted risk, ADR 0022."""
+        owners, joined = await room_state.owners_now(self.client, room.room_id)
+        return agent in joined and any(self.own_agent(room, owner) == agent for owner in owners)
 
     async def ask_owner(self, room: MatrixRoom, agent: str, ctx: dict) -> tuple[str, str] | str:
         """(action, reply) from the room owner's agent (admit_owner chose it), or why not (said when the

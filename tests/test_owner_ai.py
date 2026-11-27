@@ -25,8 +25,11 @@ CTX = {"repo": "you/hello", "mode": "assist", "sender": "betty", "role": "contri
        "plan": "none", "board": "(none yet)", "transcript": "anna: hi", "replied": "", "text": "where are we"}
 
 
-def state(*events) -> RoomGetStateResponse:
-    return RoomGetStateResponse(list(events), "!r")
+def state(*events, joined=(ANNA, BETTY, PM, ANNA_AGENT), levels=None) -> RoomGetStateResponse:
+    """The room's state as the server has it now: membership and power levels included (never the sync cache)."""
+    members = [{"type": "m.room.member", "state_key": u, "content": {"membership": "join"}} for u in joined]
+    power = [{"type": "m.room.power_levels", "state_key": "", "content": {"users": levels}}] if levels else []
+    return RoomGetStateResponse([*events, *members, *power], "!r")
 
 
 def created_by(user: str, version: str = "12") -> dict:
@@ -84,11 +87,11 @@ class NoTools(unittest.TestCase):
 
 
 class Owners(unittest.TestCase):
-    def owners(self, users, events, levels=None):
-        levels = levels or {}
+    def owners(self, users, events, levels=None, cached=None):
+        cached = cached or levels or {}               # the sync cache: never what counts (GPT review)
         room = SimpleNamespace(room_id="!r", users=dict.fromkeys(users), invited_users={},
-                               power_levels=SimpleNamespace(get_user_level=lambda u: levels.get(u, 0)))
-        client = SimpleNamespace(user_id=PM, room_get_state=mock.AsyncMock(return_value=state(*events)))
+                               power_levels=SimpleNamespace(get_user_level=lambda u: cached.get(u, 0)))
+        client = SimpleNamespace(user_id=PM, room_get_state=mock.AsyncMock(return_value=state(*events, joined=users, levels=levels)))
         return asyncio.run(room_state.owners(client, room))
 
     def test_the_creator_owns_a_room_they_made(self):
@@ -101,6 +104,16 @@ class Owners(unittest.TestCase):
     def test_creators_come_first_and_agents_never_count(self):
         got = self.owners([ANNA, BETTY, ANNA_AGENT], [created_by(BETTY)], {ANNA: 100, ANNA_AGENT: 100})
         self.assertEqual(got, [BETTY, ANNA])
+
+    def test_a_just_demoted_owner_no_longer_counts(self):
+        """GPT review: the sync cache still said 100; the state read now says 0."""
+        self.assertEqual(self.owners([PM, BETTY], [created_by(PM)], {BETTY: 0}, cached={BETTY: 100}), [])
+
+    def test_unreadable_state_means_no_owner(self):
+        room = SimpleNamespace(room_id="!r", users=dict.fromkeys([ANNA]), invited_users={},
+                               power_levels=SimpleNamespace(get_user_level=lambda u: 100))
+        client = SimpleNamespace(user_id=PM, room_get_state=mock.AsyncMock(return_value=None))
+        self.assertEqual(asyncio.run(room_state.owners(client, room)), [])
 
 
 class AgentSide(unittest.TestCase):

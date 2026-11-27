@@ -41,7 +41,9 @@ OWNER's agent, not the speaker's).
   through one place (`pm_understand.invalidate`): it advances the room's generation and drops the
   question waiting. A 👍 question is installed only if no stop came and the waiting question is still
   the one seen before it was sent (`ask_once`); a 👍 or typed OK is consumed under the same check. A
-  plan question is never replaced: a change to it is asked on the side (`ask_redraft`).
+  plan question is never replaced: a change to it is asked on the side (`ask_redraft`), on every
+  unaddressed path, the phrase-rule fallback included. A confirmed mode change carries its generation
+  to the write: under the binding lock, right before saving, a stop since then wins.
 
 ### Without "@pm" (`server/pm_implicit.py`)
 In a project room a message that doesn't name @pm counts as for @pm when it **replies to @pm**, comes
@@ -80,7 +82,8 @@ on the question. All of this runs in the background, so the sync loop (and a "@p
   every device logged into the owner's agent's account receives the room context. Matrix to-device
   carries no sender device, and agents use a fixed device id, so @pm can't bind it to one device.
   Mitigation: right before sending, @pm checks again that the agent is still a joined member and that
-  its owner is still one of the room's owners (read now); @pm's check of the answer (full sender id
+  its owner is still one of the room's owners, membership and power levels both from the room's state
+  read now, never the sync cache (unreadable: not sent, the phrase rules answer); @pm's check of the answer (full sender id
   plus the task id) stays as it is.
 - Anyone can send @pm a to-device message: an answer counts only with a string task id @pm issued,
   from the agent it went to.

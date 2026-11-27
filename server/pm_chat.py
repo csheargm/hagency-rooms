@@ -164,8 +164,9 @@ class Chat(Addressing):
         elif intents.is_confirm_reaction(event.key) and event.reacts_to == p.get("redraft", {}).get("event_id"):
             await self.redraft(room, event.sender, p)   # pm_implicit.ask_redraft: change the plan waiting
 
-    async def act(self, room: MatrixRoom, sender: str, intent: str, why: str = "") -> None:
+    async def act(self, room: MatrixRoom, sender: str, intent: str, why: str = "", gen: int | None = None) -> None:
         rid = room.room_id
+        gen = self.generation.get(rid, 0) if gen is None else gen   # a stop after this wins over a mode change
         if intent == intents.OFF:                                 # never gated: stopping is always safe
             self.invalidate(rid)              # pm_understand.py: drop decisions in flight and the question waiting
             await self.say(rid, await self.change_level(rid, "off") or
@@ -174,11 +175,11 @@ class Chat(Addressing):
         elif intent in (intents.ASSIST, intents.AUTONOMOUS) and not await room_state.is_moderator(self.client, room, sender):
             await self.say(rid, ONLY_MODERATORS)
         elif intent == intents.ASSIST:
-            await self.say(rid, await self.change_level(rid, "assist") or
+            await self.say(rid, await self.change_level(rid, "assist", gen) or
                            "OK: agents build and review, and each change waits for a person to merge it."
                            + await pm_paused.after_switch(self, rid, "assist"))
         elif intent == intents.AUTONOMOUS:   # an explicit phrase from the owner/maintainer: no extra ✅
-            await self.say(rid, await self.change_level(rid, "autonomous") or
+            await self.say(rid, await self.change_level(rid, "autonomous", gen) or
                            "Running on my own now: agents build, review and merge without asking. "
                            "Say \"stop\" anytime." + await pm_paused.after_switch(self, rid, "autonomous"))
         elif intent == intents.WEB:          # ADR 0006: nothing to switch; say so instead of pretending
@@ -233,12 +234,12 @@ class Chat(Addressing):
         elif p.get("kind") == "setting":                       # your own agent's setting, asked with 👍
             await self.act(room, sender, p["intent"])
         elif p.get("kind") == "implicit":                       # pm_implicit.py: asked, as I wasn't named
-            await self.do_implicit(room, sender, p)
+            await self.do_implicit(room, sender, p, gen)
         elif p.get("kind") == "bring":                          # pm_follow.py: "bring your agent? ✅"
             await self.invite_agent(room.room_id, p["agent"], "Your agent is on its way in.")
         else:                                 # a mode switch asked about with ✅ (ask_mode)
             level = p.get("level", "autonomous")
-            await self.say(room.room_id, await self.change_level(room.room_id, level) or
+            await self.say(room.room_id, await self.change_level(room.room_id, level, gen) or
                            f"OK — {LEVEL_WORDS[level]}. Say \"stop\" anytime."
                            + await pm_paused.after_switch(self, room.room_id, level))
         return True

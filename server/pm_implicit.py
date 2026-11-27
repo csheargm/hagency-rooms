@@ -170,6 +170,8 @@ class Implicit:
                         gen: int) -> None:
         """No model read it. A reply to my message was plainly said to me: never silence ("didn't catch
         that", with why). Otherwise only what the rules know, quietly (it may be for someone else)."""
+        if intent == intents.UNKNOWN and await self.ask_redraft(room, sender, gen):
+            return                            # a change to the plan waiting: asked first, never redrafted on a guess
         if how == REPLIES and intent == intents.UNKNOWN:
             await self.by_rules(room, sender, text, intent, why)
         else:
@@ -223,11 +225,11 @@ class Implicit:
             self.note_outcome(asked["event_id"], "approved")
             await self.revise_plan(room, sender)
 
-    async def do_implicit(self, room: MatrixRoom, sender: str, p: dict) -> None:
+    async def do_implicit(self, room: MatrixRoom, sender: str, p: dict, gen: int | None = None) -> None:
         """Their 👍 on ask_implicit's question (pm_chat.confirm): the usual checks run again now."""
         if p["intent"] == intents.SET_REPO:
             await self.set_repo(room, sender, p["repo"])
         elif p["intent"] == intents.RETRY:
             await self.retry(room, sender, p["issue"])
         else:
-            await self.act(room, sender, p["intent"])
+            await self.act(room, sender, p["intent"], gen=gen)

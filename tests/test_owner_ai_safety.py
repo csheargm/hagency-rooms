@@ -8,16 +8,17 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from nio import RoomGetStateResponse
+from nio import RoomGetEventResponse, RoomGetStateResponse
 
 from adapters.agents import agents
 from common import intents
 from common import room_state
 from server import pm_chat
 from server import pm_owner_brain
+from server import pm_settings
 from server import pm_understand
 from server.loop import Loop
-from tests.owner_ai_room import ANNA, ANNA_AGENT, BETTY, PM, RoomBase
+from tests.owner_ai_room import ANNA, ANNA_AGENT, BETTY, CREATE, PM, RoomBase
 
 
 def named(sender: str, body: str) -> SimpleNamespace:
@@ -144,11 +145,54 @@ class StopInvalidates(RoomBase, unittest.TestCase):
         self.assertEqual(self.levels, [])
 
 
+    def test_a_console_stop_during_the_confirmed_switchs_moderator_check_wins(self):
+        """GPT re-check: the 👍 passed, then act() looked up the moderator; a stop meanwhile saved "off",
+        and the older confirmation then saved "autonomous"."""
+        self.lp.change_level = Loop.change_level.__get__(self.lp)          # the real write, under its lock
+        self.lp.write_level = Loop.write_level.__get__(self.lp)
+        self.lp.kick = mock.Mock()
+        saved = []
+        self.lp.client.room_put_state = mock.AsyncMock(side_effect=lambda rid, kind, content: saved.append(content)
+                                                       or SimpleNamespace(event_id="$s"))
+        self.lp.pending["!r"] = {"kind": "implicit", "intent": intents.AUTONOMOUS, "event_id": "$q", "by": ANNA,
+                                 "until": time.time() + 300}
+        checks = []
+
+        async def stop_on_second_check(client, room, sender):
+            checks.append(sender)
+            if len(checks) == 1:                      # act()'s own check (an implicit 👍 has none): the stop lands now
+                await self.lp.change_level("!r", "off")
+            return True
+        with mock.patch.object(room_state, "is_moderator", stop_on_second_check), \
+                mock.patch.object(room_state, "binding_of", mock.AsyncMock(return_value=("you/hello", False))):
+            self.react(ANNA)
+        self.assertEqual([c.get("level") for c in saved], ["off"])
+        self.assertIn(pm_settings.STOPPED_MEANWHILE, self.said)
+
+
+class RedraftOnTheFallback(RoomBase, unittest.TestCase):
+    def test_a_reply_to_an_older_pm_message_never_redrafts_without_a_thumb(self):
+        """GPT re-check: plan waiting, the owner's agent offline, a moderator's reply to an older @pm message
+        went fall_back -> by_rules -> revise_plan and cleared the approval."""
+        mine = RoomGetEventResponse()
+        mine.event = SimpleNamespace(sender=PM, body="Mode: assist.")
+        self.lp.client.room_get_event = mock.AsyncMock(return_value=mine)
+        self.lp.agent_online = lambda agent: False
+        self.lp.start_plan = mock.AsyncMock()
+        plan = {"kind": "plan", "event_id": "$plan", "by": ANNA, "until": time.time() + 300}
+        self.lp.pending["!r"] = plan
+        self.tell(ANNA, "drop the French page", mention=False, reply_to="$older")
+        self.lp.start_plan.assert_not_awaited()
+        self.assertIs(self.lp.pending["!r"], plan)
+        self.assertIn("redraft the plan", self.said[-1])
+
+
 class OwnersAgentAndBudgets(RoomBase, unittest.TestCase):
     """Findings 3 and 4."""
     def test_an_agent_that_left_after_admission_gets_no_context(self):
         def leave(room_id, include_self=False):
-            del self.room.users[ANNA_AGENT]           # it left while the history was read
+            left = [e for e in CREATE.events if e.get("state_key") != ANNA_AGENT]   # it left while the history was read
+            self.lp.client.room_get_state = mock.AsyncMock(return_value=RoomGetStateResponse(left, "!r"))
             return "anna: hi"
         self.lp.discussion = leave
         self.tell(BETTY, "@pm colours?")

@@ -18,8 +18,9 @@ from server.loop import Loop
 ANNA, BETTY = "@anna:bridge.localhost", "@betty:bridge.localhost"     # anna made the room: its owner
 PM = f"@{github.PM_BOT}:bridge.localhost"
 ANNA_AGENT = "@anna-agent:bridge.localhost"
-CREATE = RoomGetStateResponse([{"type": "m.room.create", "sender": ANNA, "state_key": "",
-                                "content": {"room_version": "12"}}], "!r")
+CREATE = RoomGetStateResponse([{"type": "m.room.create", "sender": ANNA, "state_key": "", "content": {"room_version": "12"}},
+                               *({"type": "m.room.member", "state_key": u, "content": {"membership": "join"}}
+                                 for u in (ANNA, BETTY, PM, ANNA_AGENT))], "!r")
 
 
 class RoomBase:
@@ -59,7 +60,7 @@ class RoomBase:
                                     add_to_device_callback=mock.Mock(), room_get_state=mock.AsyncMock(return_value=CREATE),
                                     room_get_event=mock.AsyncMock(return_value=None))
         lp.level = mock.AsyncMock(side_effect=lambda rid: (self.levels or ["assist"])[-1])
-        lp.change_level = mock.AsyncMock(side_effect=lambda rid, level: self.levels.append(level))
+        lp.change_level = mock.AsyncMock(side_effect=lambda rid, level, gen=None: self.levels.append(level))
         lp.agents_in = lambda room: [ANNA_AGENT]
         lp.own_agent = lambda room, person: ANNA_AGENT if person == ANNA else None
         lp.agent_online = lambda agent: True
