@@ -165,7 +165,9 @@ class Worker(BuildBase):
         with kit.configured_env(self.folder, TRIAL_SANDBOX_S_PER_DAY="0"):
             d.jobs.enqueue("@a:bridge.localhost", 1, "!a", 5)
             self.assertIsNone(asyncio.run(trial_worker.tick(d)))
-        self.assertEqual([j["state"] for j in d.jobs.all().values()], [trial_jobs.QUEUED])
+        (job,) = d.jobs.all().values()
+        self.assertEqual((job["state"], job["outcome"]["why"]), (trial_jobs.FAILED, "paused"))   # said, and given back
+        self.assertEqual(d.jobs.alive()["paused"], "sandbox_day")                                # @pm refuses new ones
 
     def test_a_crash_inside_a_build_fails_it_plainly(self):
         d = kit.deps(self.folder)

@@ -27,6 +27,7 @@ from common.bridge_config import ROOT, SERVER_NAME
 
 USAGE_FILE = ROOT / "data" / "trial-build-usage.json"
 AGE_CACHE_S = 24 * 3600
+AGE_FAIL_CACHE_S = 600                # a failed read is retried after this (independent review)
 REMOTE = "Builds are for people with an account on this server."
 NO_GITHUB = ("Builds need your GitHub account connected first: in My Hagency, click **Connect GitHub**. "
              "It must be at least {days} days old.")
@@ -56,8 +57,8 @@ def _created_at(github_id: int) -> float | None:
 
 async def account_created(github_id: int, now: float, read=None) -> float | None:
     cached = _ages.get(github_id)
-    if cached and cached[1] is not None and now - cached[0] < AGE_CACHE_S:
-        return cached[1]
+    if cached and now - cached[0] < (AGE_CACHE_S if cached[1] is not None else AGE_FAIL_CACHE_S):
+        return cached[1]                  # a failure too, briefly: GitHub's anonymous quota is shared
     created = await asyncio.to_thread(read or _created_at, github_id)
     _ages[github_id] = (now, created)
     return created
@@ -84,16 +85,29 @@ class Usage:
             d, key = self._today(), str(github_id)
             return int(d["today"].get(key, 0)), int(d["total"].get(key, 0)), int(d.get("server", 0))
 
+    def give_back(self, github_id: int) -> None:
+        """A build the server failed (trial_build.REFUNDED) doesn't count, today or ever."""
+        with self.lock:
+            d, key = self._today(), str(github_id)
+            for where in (d["today"], d["total"]):
+                if int(where.get(key, 0)) > 0:
+                    where[key] = int(where[key]) - 1
+            d["server"] = max(0, int(d.get("server", 0)) - 1)
+            self._save(d)
+
     def take(self, github_id: int) -> None:
         with self.lock:
             d, key = self._today(), str(github_id)
             d["today"][key] = int(d["today"].get(key, 0)) + 1
             d["total"][key] = int(d["total"].get(key, 0)) + 1
             d["server"] = int(d.get("server", 0)) + 1
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(f".{os.getpid()}.tmp")
-            tmp.write_text(json.dumps(d))
-            os.replace(tmp, self.path)
+            self._save(d)
+
+    def _save(self, d: dict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(d))
+        os.replace(tmp, self.path)
 
 
 def left_today(usage: Usage, github_id: int | None, allowance: tuple[int, int]) -> int:

@@ -28,7 +28,10 @@ FORBIDDEN_NAMES = {".gitattributes", ".gitmodules", ".pre-commit-config.yaml"}
 IGNORED_DIRS = {"__pycache__", ".pytest_cache", "node_modules", ".venv", ".mypy_cache", ".ruff_cache"}
 IGNORED_SUFFIXES = (".pyc", ".pyo")
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "testing"}
-TEST_CONFIG = {"conftest.py", "pytest.ini", "tox.ini", "setup.cfg", "pyproject.toml", "noxfile.py",
+# Every file pytest reads its settings or plugins from (independent review: .pytest.ini was missed); the test
+# command also runs with `-c /dev/null`, so none of them is read anyway.
+TEST_CONFIG = {"conftest.py", "pytest.ini", ".pytest.ini", "pytest.toml", ".pytest.toml", "tox.ini", "setup.cfg",
+               "pyproject.toml", "noxfile.py", ".pdbrc", "pytest.cfg",
                "package.json", "package-lock.json", ".mocharc.js", ".mocharc.json", ".mocharc.yml", "Makefile",
                "requirements.txt", "requirements-dev.txt", ".coveragerc", "sitecustomize.py", "usercustomize.py"}
 TEST_CONFIG_PREFIXES = ("jest.config.", "vitest.config.", "karma.conf.", "babel.config.", "playwright.config.")

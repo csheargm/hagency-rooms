@@ -27,13 +27,16 @@ DEFAULTS = {
     "TRIAL_BUILD_TOKENS": 150_000,     # model tokens in one build
     "TRIAL_SANDBOX_S_PER_DAY": 7200,   # our soft cap on sandbox time a day (about $0.25)
     "TRIAL_MIN_ACCOUNT_DAYS": 30,      # the GitHub account's age
-    "TRIAL_LEASE_DAYS": 7,             # a visitor keeps their demo repo this long
+    "TRIAL_LEASE_DAYS": 1,             # a visitor keeps their demo repo this long (with an open PR)
     "TRIAL_TEST_S": 300,               # the test run
 }
 DEFAULT_TEMPLATE = "hagency-trial-python"
 # -P: the repo isn't put first on sys.path, so nothing in it can stand in for pytest; the repo is added by
 # pytest itself once it runs (pythonpath=.). The worker adds --junitxml (trial_build.REPORT). GPT review.
-DEFAULT_TEST_CMD = "python -P -m pytest -q -p no:cacheprovider -o pythonpath=."
+# -c /dev/null: pytest reads no config from the repo at all (no testpaths, addopts, plugins); --rootdir and the
+# explicit tests/ folder say what to run; no plugin auto-loading (independent review).
+DEFAULT_TEST_CMD = ("PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -P -m pytest -q -c /dev/null --rootdir=. "
+                    "-p no:cacheprovider -o \"pythonpath=$PWD\" tests")   # $PWD: -c moves relative paths to /dev
 DEFAULT_REPOS = "demo-1,demo-2,demo-3"
 SHARED_ENV = "TRIAL_SHARED_DIR"
 

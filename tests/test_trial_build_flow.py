@@ -45,6 +45,7 @@ class BuildFlowBase(TrialBase):
 
     def click(self, who=NEW):
         """What the panel shows after "Try a build": its words (an ok result carries them in "says")."""
+        self.lp._build_asks = {}              # each click as if a while after the last (pm_build.too_soon)
         said = self.run_(self.lp.trial_action(who, "trial_build"))
         return said["says"] if isinstance(said, dict) else said
 

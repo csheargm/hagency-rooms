@@ -40,7 +40,10 @@ WHY = {"no_repo": "every demo repo is in use just now", "no_issue": "the demo re
        "tokens": "it used all its AI allowance without finishing", "tests_failed": "the tests failed",
        "tests_unrun": "the tests couldn't be run", "model": "the AI service couldn't answer",
        "budget": "trial builds have used their AI budget for now", "error": "something went wrong on the server",
-       "restart": "the server restarted during the build", "off": "trial builds were switched off"}
+       "restart": "the server restarted during the build", "off": "trial builds were switched off",
+       "paused": "builds are paused for now (today's sandbox time or the AI budget is used up)"}
+# Failures that were the server's doing, not the build's: the visitor's build is given back (independent review).
+REFUNDED = {"budget", "no_repo", "paused", "off", "restart", "sandbox", "unsafe", "github", "model", "error"}
 NO_TESTS = 5                     # pytest: nothing was collected, so nothing was tested
 REPORT = "/tmp/hagency-junit.xml"  # the test run's JUnit report, outside the repo
 MAX_REPORT = 200_000
@@ -65,6 +68,7 @@ class Deps:
     ask_build: object = None
     ask_review: object = None
     clock: object = time.monotonic
+    pool_seen: tuple | None = None        # (when, the pool's status for the heartbeat): trial_worker.pool_status
 
 
 def pick(issues: list[dict], job_id: str) -> dict:
@@ -177,10 +181,16 @@ async def run_tests(d: Deps, job_id: str, pristine: dict, patch: list) -> None:
 def review_ask(d: Deps):
     """The reviewer's talk-only call, counted against the month like every trial call."""
     async def ask(chat):
+        if await d.budget.stopped():              # paused or used up: no review call (independent review)
+            raise trial_model.TrialModelError("trial builds' AI budget is paused")
         reserved = trial_model.high_estimate(chat, trial_limits.number("TRIAL_MAX_TOKENS"))
         if not d.budget.reserve(reserved):
             raise trial_model.TrialModelError("the trial budget is used up")
-        return await trial_model.ask(chat, count=lambda used: d.budget.settle(reserved, used), model=trial_build_model.model())
+        try:
+            return await trial_model.ask(chat, count=lambda used: d.budget.settle(reserved, used), model=trial_build_model.model())
+        except trial_model.TrialLimited as e:     # 429/402: pause, as for a build call (it was swallowed)
+            d.budget.pause(e.retry_after or 900, f"Ollama answered {e.status} to a review")
+            raise
     return d.ask_review or ask
 
 

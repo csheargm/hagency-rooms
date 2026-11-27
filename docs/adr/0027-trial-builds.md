@@ -40,8 +40,8 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
 
 - **Demo repos.** A fixed pool (`TRIAL_REPOS`, default `demo-1,demo-2,demo-3`) in `TRIAL_ORG` (`hagency-trials`), made
   by the owner from a template with seeded, known-solvable `agent-ok` issues. Private. Actions disabled org-wide, no
-  secrets. A visitor (by GitHub account id) leases one; the lease ends after 7 days or once every PR it opened is
-  closed, and the next visitor gets it recycled: trial PRs closed, `trial/` branches deleted, the default branch reset to
+  secrets. A visitor (by GitHub account id) leases one; the lease ends after a day (`TRIAL_LEASE_DAYS`), once every PR
+  it opened is closed, or after an hour with no PR, and the next visitor gets it recycled: trial PRs closed, `trial/` branches deleted, the default branch reset to
   the template commit (the one the pool first saw). No repo is created at runtime, so no Administration permission.
 - **Untrusted execution only in E2B** (`common/sandbox.py`, SDK `e2b==2.66.0`, worker-only `deploy/requirements-trial.txt`).
   - BUILD sandbox: our pinned template (`TRIAL_E2B_TEMPLATE`), 2 vCPU, 1 GiB, E2B timeout 15 min, `envs={}`. Egress
@@ -50,8 +50,9 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
     uploaded: a blocked host (`example.com`) is probed and must not answer, and `env` must hold only plain settings
     (no credential-like names); otherwise the build is refused ("stopped for safety").
   - TEST sandbox: fresh, `allow_internet_access=False`, the pristine tree plus the validated patch, the template's
-    fixed test command (`TRIAL_TEST_CMD`, never one taken from the repo; `python -P` so nothing in the repo stands in
-    for pytest). The verdict: exit 0 AND its JUnit report shows at least one passed test and none failed.
+    fixed test command (never one taken from the repo: `python -P -m pytest -c /dev/null --rootdir=. … tests`, no plugin
+    auto-loading, so no repo config, conftest outside the template's or plugin is read; every pytest config file is
+    refused in a patch anyway). The verdict: exit 0 AND its JUnit report shows at least one passed test and none failed.
   - Every sandbox is killed in `finally`; a reaper kills any of ours older than 20 min (metadata `hagency=trial-build`),
     and all of them when the worker starts or is switched off.
 - **The tool loop** (`server/trial_tools.py`) runs in the worker: tools `run`, `read_file`, `write_file`, `list_dir`,
@@ -105,6 +106,11 @@ Option C, Phase 1: **Hagency-owned demo repos only**.
 - Nothing generated runs on our VM; the worker does only HTTPS and holds at most a 50 MB tarball in memory (100 MB
   unpacked); sandbox output is capped inside the sandbox, and changed files are read only once their sizes fit.
 - One worker at a time (a lock held for its life), so an overlapping restart can't fail a live build.
+- While the AI budget is stopped or the day's sandbox time is used, the worker claims nothing, says why in its
+  heartbeat (`paused`), and fails what waits as "paused"; it also publishes how many demo repos are free. @pm
+  refuses before counting when builds are paused or every repo is someone else's. A build the server failed
+  (`trial_build.REFUNDED`: budget, no repo, paused, off, restart, sandbox, GitHub, model, a crash) is given back.
+  One build request per person every 20 s; a failed GitHub age lookup is cached 10 minutes (independent review).
 - Builds are counted per GitHub account but the allowance comes from the Matrix user's tier: someone who links a
   different (30-day-old) GitHub account gets that account's fresh count. Accepted while only FREE exists; a paid tier
   should also count per Matrix user (GPT review of the rebase onto PR #78).

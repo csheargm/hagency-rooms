@@ -49,6 +49,10 @@ POSTED = "an **AI self-check** was posted on it as a comment, not an approval"
 NOT_POSTED = "the AI self-check couldn't be posted on it (read the change yourself)"
 OPENED_UNFINISHED = ("⚠️ Your server agent build opened pull request #{pr} in {repo}, but didn't finish: {why}. Its AI "
                      "self-check may be missing. A person reviews and merges it (the trial never merges).")
+PAUSED = "⏳ Builds by the server agent are paused for now (today's sandbox time or the AI budget is used up). Please try again later."
+NO_REPO = "⏳ Every demo repo is in use by someone else's build just now. Please try again in a while."
+TOO_SOON = "One moment: I'm still answering your last build request."
+ASK_EVERY_S = 20
 FAILED = "⚠️ Your server agent build didn't finish: {why}. Nothing was opened. You have {left} builds left today."
 
 
@@ -107,12 +111,31 @@ class BuildOffer:
             said = OFF
         elif not self.may_build(person, caps):
             said = NOT_FOR_YOU
-        elif refused := await trial_gate.refusal(person, link, caps, self.build_allowance(person), self.build_usage(), time.time()):
+        elif refused := self.too_soon(person) or self.unavailable(caps, link) or await trial_gate.refusal(
+                person, link, caps, self.build_allowance(person), self.build_usage(), time.time()):
             said = refused
         else:
             said = self.queue_build(room_id, person, link, caps)
         await self.say(room_id, said)
         return said
+
+    def too_soon(self, person: str) -> str | None:
+        """One ask per person per ASK_EVERY_S: clicks never become a flood of GitHub lookups (independent review)."""
+        asked = self.__dict__.setdefault("_build_asks", {})
+        if time.monotonic() - asked.get(person, -ASK_EVERY_S) < ASK_EVERY_S:
+            return TOO_SOON
+        asked[person] = time.monotonic()
+        return None
+
+    @staticmethod
+    def unavailable(caps: dict, link: dict | None) -> str | None:
+        """Refused before anything is counted: builds paused, or every demo repo leased to someone else."""
+        if caps.get("paused"):
+            return PAUSED
+        holders = caps.get("lease_holders") or []
+        if caps.get("free_repos") == 0 and not (link and link["id"] in holders):
+            return NO_REPO
+        return None
 
     def queue_build(self, room_id: str, person: str, link: dict, caps: dict) -> str:
         state, _, n = self.build_jobs().enqueue(person, link["id"], room_id, int(caps["TRIAL_BUILD_QUEUE"]))
@@ -122,7 +145,7 @@ class BuildOffer:
             return BUSY.format(n=caps["TRIAL_BUILD_QUEUE"])
         if state == trial_jobs.ALREADY:
             return ALREADY.format(where="running now" if n == 0 else f"queued (#{n})")
-        self.build_usage().take(link["id"])          # counted once queued, never given back
+        self.build_usage().take(link["id"])          # counted once queued; given back if the server fails it
         return QUEUED.format(n=n)
 
     async def on_build_text(self, room, event) -> bool:
@@ -149,6 +172,9 @@ class BuildOffer:
         mine = self.build_jobs().of(person)
         link = github_link.link_of(person)
         allowance = self.build_allowance(person)
+        if caps.get("paused") and mine is None:
+            return {"left": 0, "per_day": allowance[0], "github": bool(link), "days": caps.get("TRIAL_MIN_ACCOUNT_DAYS", 30),
+                    "state": "paused for now"}
         return {"left": trial_gate.left_today(self.build_usage(), link["id"] if link else None, allowance),
                 "per_day": allowance[0], "github": bool(link),
                 "days": caps.get("TRIAL_MIN_ACCOUNT_DAYS", 30),
@@ -161,11 +187,14 @@ class BuildOffer:
             link = github_link.link_of(job.get("visitor") or "")
             allowance = self.build_allowance(job.get("visitor") or "")
             left = trial_gate.left_today(self.build_usage(), link["id"] if link else job.get("github_id"), allowance)
+            refund = event == trial_jobs.FAILED and (job.get("outcome") or {}).get("why") in trial_build.REFUNDED
             try:
-                await self.say(job["dm"], news_words(job, event, left))
+                await self.say(job["dm"], news_words(job, event, left + refund))
             except RuntimeError as e:    # Matrix refused: said again next round (the job keeps it unsaid)
                 log.error("trial build %s news to %s: %s", job_id, job.get("dm"), room_safe(e))
                 continue
+            if refund and job.get("github_id") is not None:   # the server's failure, not theirs: given back, once
+                self.build_usage().give_back(int(job["github_id"]))
             jobs.told(job_id, event)
             said += 1
         return said

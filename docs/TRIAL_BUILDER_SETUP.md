@@ -50,8 +50,9 @@ dashboard under **Templates**.
    Add a small project whose tests fail until a seeded issue is fixed, for example:
    - `src/__init__.py` (empty) and `src/calc.py`: `def add(a, b): return a - b`
    - `tests/test_calc.py`: `from src.calc import add` and `def test_add(): assert add(2, 3) == 5`
-   - The template's tests must pass with the fixed command `python -P -m pytest -q -p no:cacheprovider -o pythonpath=.`
-     (`TRIAL_TEST_CMD`) once the issue is fixed, and need nothing beyond pytest (test sandboxes have no network).
+   - The template's tests live in `tests/` and must pass once the issue is fixed with the fixed command (pytest on
+     `tests/` with no config read from the repo: no `pytest.ini`, `pyproject.toml` settings or plugins), needing nothing
+     beyond pytest (test sandboxes have no network).
      A build passes only if at least one test passed and none failed.
    Then **Settings** → tick **Template repository**.
 4. Make the demo repos from it: on `trial-template`, click **Use this template** → **Create a new repository**, owner

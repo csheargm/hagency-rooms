@@ -30,6 +30,7 @@ from server import trial_pool
 
 log = logging.getLogger("trial-build")
 POLL_S = 5
+POOL_CHECK_S = 60
 BEAT_S = 30
 
 
@@ -58,16 +59,43 @@ async def run_one(d: trial_build.Deps, job_id: str, job: dict) -> str:
     return state
 
 
+async def paused(d: trial_build.Deps) -> str | None:
+    """Why no build may start now ("budget" or "sandbox_day"), or None (independent review: these were
+    found only after a job was claimed, a repo leased and a sandbox made)."""
+    if await d.budget.stopped():
+        return "budget"
+    if d.jobs.sandbox_seconds_today(day_start(time.time())) >= config.number("TRIAL_SANDBOX_S_PER_DAY"):
+        return "sandbox_day"
+    return None
+
+
+async def pool_status(d: trial_build.Deps) -> dict:
+    """The pool's state for @pm (free repos, lease holders), read from GitHub at most every POOL_CHECK_S."""
+    now = time.monotonic()
+    if d.pool_seen is None or now - d.pool_seen[0] >= POOL_CHECK_S:
+        try:
+            free, holders = await d.pool.status(d.gh)
+            d.pool_seen = (now, {"free_repos": free, "lease_holders": holders})
+        except Exception as e:   # noqa: BLE001 — unknown this round: @pm then doesn't refuse on it (the
+            log.warning("the demo repos' status couldn't be read: %s", type(e).__name__)   # worker still checks)
+            return {}
+    return d.pool_seen[1]
+
+
 async def tick(d: trial_build.Deps) -> str | None:
-    """One round: heartbeat, reaper, tidy, and at most one build; the build's end state, if one ran."""
-    d.jobs.beat(config.caps())
+    """One round: heartbeat (with why builds are paused, and the pool), reaper, tidy, and at most one build;
+    the build's end state, if one ran. While paused nothing starts, and what waits is failed and given back."""
+    stop = await paused(d)
+    d.jobs.beat({**config.caps(), "paused": stop, **(await pool_status(d))})
     try:
         await d.sandboxes.reap()
     except Exception as e:   # noqa: BLE001 — E2B unreachable: retried next round, and E2B's own timeout
         log.warning("the sandbox reaper couldn't run: %s", type(e).__name__)   # (15 min) ends every sandbox anyway
     d.jobs.prune()
-    if d.jobs.sandbox_seconds_today(day_start(time.time())) >= config.number("TRIAL_SANDBOX_S_PER_DAY"):
-        return None               # today's sandbox time is used: builds wait for tomorrow
+    if stop:
+        for job_id in d.jobs.fail_unfinished("paused", states=(trial_jobs.QUEUED,)):
+            log.info("trial build %s: not started, builds are paused (%s)", job_id, stop)
+        return None
     claimed = d.jobs.claim()
     return await run_one(d, *claimed) if claimed else None
 
@@ -125,7 +153,8 @@ async def main() -> int:
                                if config.env("E2B_API_KEY") else None)
         return 0 if done else 1           # refused: non-zero, so Compose tries it again (GPT review)
     if gone := config.missing():
-        jobs.stop_beating()
+        for job_id in jobs.shut("off"):       # nothing waits for a worker that won't come (independent review)
+            log.warning("trial build %s: builds are off (not configured)", job_id)
         log.info("trial builds are off (not configured: %s)", ", ".join(gone))
         return 0
     log.info("trial builds on: %d demo repo(s) in %s", len(config.repos()), config.org())

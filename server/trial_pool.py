@@ -8,11 +8,14 @@ who needs that repo gets it recycled first: trial PRs closed, trial branches del
 branch reset to the template commit (the commit the repo had when the pool first saw it).
 State: pool.json in the worker's shared folder ({repo: {"template", "github_id", "since", "prs"}}).
 """
+import logging
 import time
 from pathlib import Path
 
+from common import github
 from common.saved_dict import SavedDict
 
+log = logging.getLogger("trial-build")
 
 IDLE_S = 3600                        # a lease with no PR: well past any build's 15 minutes (GPT review)
 
@@ -49,24 +52,59 @@ class Pool:
         return self.clock() - float(e.get("since") or 0) >= IDLE_S   # nothing opened: theirs only while building
 
     async def lease(self, gh, github_id: int) -> str:
-        """Their repo (recycled first if someone else had it), or NoRepoFree."""
+        """Their repo (recycled first if someone else had it), or NoRepoFree. A repo GitHub refuses is skipped
+        and logged for the operator, never a failure for everyone (independent review)."""
         if mine := self.mine(github_id):
             return mine
         for repo in self.repos:
-            token = await gh.token(repo)                  # read only: most repos are just looked at
             try:
-                if not await self.ended(gh, token, repo):
+                e = await self.free_entry(gh, repo)
+                if e is None:
                     continue
-                e = self.entry(repo)
-                if not e.get("template"):
-                    e["template"] = (await gh.base(token, repo))[1]   # first sight: this commit is the template
-            finally:
-                await gh.revoke(token)
-            if e.get("github_id") is not None:
-                await self.recycle(gh, repo, e["template"])
+                if e.get("github_id") is not None:
+                    await self.recycle(gh, repo, e["template"])
+            except github.GitHubError as err:
+                log.warning("demo repo %s skipped: %s", repo, err)
+                continue
             self.state[repo] = {**e, "github_id": github_id, "since": self.clock(), "prs": []}
             return repo
         raise NoRepoFree()
+
+    async def free_entry(self, gh, repo: str) -> dict | None:
+        """`repo`'s record when it may be leased now (its template commit known), else None."""
+        token = await gh.token(repo)                      # read only: most repos are just looked at
+        try:
+            if not await self.ended(gh, token, repo):
+                return None
+            e = self.entry(repo)
+            if not e.get("template"):
+                e["template"] = (await gh.base(token, repo))[1]   # first sight: this commit is the template
+            return e
+        finally:
+            await gh.revoke(token)
+
+    async def status(self, gh) -> tuple[int, list[int]]:
+        """(repos free now, GitHub ids holding a lease): @pm counts a build only when one is free or theirs.
+        A repo GitHub refuses counts as not free."""
+        free, holders = 0, []
+        for repo in self.repos:
+            e = self.entry(repo)
+            try:
+                if e.get("github_id") is None or self.clock() - float(e.get("since") or 0) >= self.lease_s:
+                    free += 1
+                    continue
+                token = await gh.token(repo)
+                try:
+                    ended = await self.ended(gh, token, repo)
+                finally:
+                    await gh.revoke(token)
+            except github.GitHubError as err:
+                log.warning("demo repo %s unreadable: %s", repo, err)
+                continue
+            free += ended
+            if not ended:
+                holders.append(e["github_id"])
+        return free, holders
 
     async def recycle(self, gh, repo: str, template: str) -> None:
         """A write token only for this (GPT review: one was minted for every repo looked at)."""

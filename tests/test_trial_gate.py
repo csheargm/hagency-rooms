@@ -32,8 +32,9 @@ class Age(unittest.TestCase):
             return None if len(reads) == 1 else 1234.0
         with mock.patch.object(tg, "_ages", {}):
             self.assertIsNone(asyncio.run(tg.account_created(5, 0, read)))
-            self.assertEqual(asyncio.run(tg.account_created(5, 1, read)), 1234.0)
-            self.assertEqual(asyncio.run(tg.account_created(5, 2, read)), 1234.0)
+            self.assertIsNone(asyncio.run(tg.account_created(5, 1, read)))           # a failure is kept a while too
+            self.assertEqual(asyncio.run(tg.account_created(5, tg.AGE_FAIL_CACHE_S, read)), 1234.0)
+            self.assertEqual(asyncio.run(tg.account_created(5, tg.AGE_FAIL_CACHE_S + 1, read)), 1234.0)
         self.assertEqual(reads, [5, 5])
 
     def test_the_read_needs_no_token_and_a_failure_is_unknown(self):
