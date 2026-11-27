@@ -12,19 +12,14 @@ from unittest import mock
 from nio import ToDeviceEvent, ToDeviceResponse
 
 from common import code_report
-from common import intents
 from common import registry
-from common import solo_review
 from server import auto_update
 from server import console
 from server import console_update
-from server import pm_solo_rules
 from tests import test_more_agents_flows as flows
-from tests import test_solo_review
 from tests.test_auto_update import Panel, report
 from tests.test_kind_report import FakeClient
 from tests.test_more_agents_flows import CX, CXA, CXC
-from tests.test_solo_review import BETTY
 from tests.test_versions import NEW, OLD
 
 
@@ -245,6 +240,16 @@ class Flows(flows.Base):
         self.assertEqual(self.said[-1], ("!r", needs + BY_HAND.format(again=AGAIN_ON)))
         self.assertEqual(len(self.asks()), 2)
 
+    def test_a_server_that_doesnt_know_its_version_asks_nothing_and_never_crashes(self):
+        """GPT final review: update_for_task reached due() with no server version and raised."""
+        self.start(OLD)
+        self.lp._updates.clear()
+        with mock.patch.object(console_update, "SERVER", None):
+            asyncio.run(self.lp.needs_update("!r", CX, CXA, on=False, bypass=True))
+            asyncio.run(auto_update.sweep(self.lp))
+        self.assertIn("Update it in My agents", self.said[-1][1])
+        self.assertEqual(len(self.asks()), 1)
+
     def test_a_task_never_overrides_the_owners_switch_nor_updates_code_that_wont_wait(self):
         """GPT review: a room action (Solo review) must not update an agent whose owner turned Auto-update off,
         nor an older agent at once (it would update under a running turn)."""
@@ -267,29 +272,6 @@ class Flows(flows.Base):
             self.assertEqual(asyncio.run(self.lp.ruleset_agent(room, CX)), (None, (CX, CXA)))
             with mock.patch.object(code_report, "TASK_SINCE", {"solo_ruleset": OLD["time"]}):
                 self.assertEqual(asyncio.run(self.lp.ruleset_agent(room, CX)), (CXA, None))
-
-
-class SoloTask(test_solo_review.Base):
-    def test_unknown_task_kind_is_said_as_needs_an_update_never_raw(self):
-        """Live test 2026-11-27: an agent on older code answered "unknown task kind 'solo_ruleset'"."""
-        self.enable()
-        job = self.job()
-        with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=True)) as ask:
-            self.answer(job, error="unknown task kind 'solo_ruleset'")
-        ask.assert_awaited_once()
-        self.assertIn("needs an update first", self.said[-1][0])
-        self.assertNotIn("unknown task kind", self.said[-1][0])
-
-    def test_a_late_unknown_task_kind_follows_the_switch_as_it_is_now(self):
-        """GPT re-check: an "on" ask answered after Solo review was switched off told them to switch it on again."""
-        self.enable()
-        job = self.job()
-        self.run_(self.lp.act(self.room, BETTY, intents.SOLO_OFF))
-        with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=True)):
-            self.answer(job, error="unknown task kind 'solo_ruleset'")
-        self.assertIn(pm_solo_rules.AGAIN_OFF, self.said[-1][0])
-        self.assertNotIn(pm_solo_rules.NOT_WANTED, self.said[-1][0])         # nothing was added: nothing to take out
-        self.assertEqual(self.tasks(solo_review.TASK_KIND)[-1]["task_id"], job["task_id"])   # no follow-up to it again
 
 
 if __name__ == "__main__":

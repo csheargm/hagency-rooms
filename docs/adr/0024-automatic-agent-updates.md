@@ -127,6 +127,10 @@ Accepted, 2026-11-27. Builds on ADR 0020 (versions and one-click updates).
     kind" gets the friendly words.
   - An agent on code before this change still posts its own "⚠️ … failed" line in the room. Only code
     after it can stop that.
+  - **New work isn't held while git and pip run** (a minute or two, once the agent is idle). A turn
+    that starts then runs on the code already loaded, as with ADR 0020's click, and finishes before the
+    restart. Holding and replaying incoming work would need a change to bridge.py's intake; that is a
+    follow-up (GPT final review).
   - One owner's agents on one computer share the install. One agent can update it while another still
     has work running. That work runs on the code it loaded, as with ADR 0020's click, and that agent
     restarts only when it is idle.

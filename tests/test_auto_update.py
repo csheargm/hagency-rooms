@@ -17,10 +17,15 @@ from nio import ToDeviceEvent
 from adapters.agents import agent_update
 from adapters.agents import self_update
 from common import code_report
+from common import intents
+from common import solo_review
 from common import version
 from server import auto_update
 from server import console_update
+from server import pm_solo_rules
+from tests import test_solo_review
 from tests.test_self_update import FakeBridge
+from tests.test_solo_review import BETTY
 from tests.test_versions import NEW, NODE, OLD, ROOT
 
 
@@ -169,6 +174,29 @@ class AgentWaits(unittest.TestCase):
             await b._gh_job
             self.assertTrue(b.idle())
         asyncio.run(go())
+
+
+class SoloTask(test_solo_review.Base):
+    def test_unknown_task_kind_is_said_as_needs_an_update_never_raw(self):
+        """Live test 2026-11-27: an agent on older code answered "unknown task kind 'solo_ruleset'"."""
+        self.enable()
+        job = self.job()
+        with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=True)) as ask:
+            self.answer(job, error="unknown task kind 'solo_ruleset'")
+        ask.assert_awaited_once()
+        self.assertIn("needs an update first", self.said[-1][0])
+        self.assertNotIn("unknown task kind", self.said[-1][0])
+
+    def test_a_late_unknown_task_kind_follows_the_switch_as_it_is_now(self):
+        """GPT re-check: an "on" ask answered after Solo review was switched off told them to switch it on again."""
+        self.enable()
+        job = self.job()
+        self.run_(self.lp.act(self.room, BETTY, intents.SOLO_OFF))
+        with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=True)):
+            self.answer(job, error="unknown task kind 'solo_ruleset'")
+        self.assertIn(pm_solo_rules.AGAIN_OFF, self.said[-1][0])
+        self.assertNotIn(pm_solo_rules.NOT_WANTED, self.said[-1][0])         # nothing was added: nothing to take out
+        self.assertEqual(self.tasks(solo_review.TASK_KIND)[-1]["task_id"], job["task_id"])   # no follow-up to it again
 
 
 @unittest.skipIf(NODE is None, "node not installed")

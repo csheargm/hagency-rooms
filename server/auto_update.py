@@ -92,7 +92,7 @@ def failed(loop, agent: str, word: str, now: float) -> None:
 def due(loop, a: dict, now: float, online: bool | None, any_time: bool = False) -> bool:
     """`a` should be asked now (any_time: will be, once its back-off and its owner's stagger allow)."""
     code = a.get(registry.CODE)
-    if (a["agent"] != registry.REMOTE or not code or not code.get(code_report.WAITS) or code["own"]
+    if (console_update.SERVER is None or a["agent"] != registry.REMOTE or not code or not code.get(code_report.WAITS) or code["own"]
             or console_update.is_hermes(a) or version.current(code, console_update.SERVER)):
         return False
     if (online if online is not None else loop.agent_online(a["localpart"])) is not True:
