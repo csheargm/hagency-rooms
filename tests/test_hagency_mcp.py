@@ -115,7 +115,7 @@ class Trust(unittest.TestCase):
         async def material(agent, t):
             return 7, 9, {"title": "t"}, "abc", "diff"
 
-        async def submit(agent, n, pr, head, verdict, text, repo):
+        async def submit(agent, n, pr, head, verdict, text, repo, solo=False):
             self.assertEqual(repo, github.REPO)       # GPT review 10: the call lost its repo argument
             return {"kind": "review", "issue": n, "pr": pr, "sha": head, "verdict": verdict.lower(), "line": "approved PR #9"}
         with mock.patch.object(core.tasks, "review_material", material), mock.patch.object(core.tasks, "submit_review", submit):

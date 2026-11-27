@@ -12,6 +12,7 @@ from adapters.agents import agents
 from common import github
 from common import room_state
 from common.redact import markup_safe as safe
+from server import routing
 from server.pm_paused import approve_steps, finish_merged, next_steps, num, requeue  # noqa: F401 - num: other modules import it from here
 
 log = logging.getLogger("loop")
@@ -153,7 +154,7 @@ class Progress:
             item.update(stage="reviewing", fix_sha=result.get("sha"))
             await self.dispatch(room_id, item, item["reviewer"],
                                 f"{item['reviewer']}: review PR #{item['pr']} again (after fixes) against #{num(key)}",
-                                {"kind": "review", "issue": num(key), "pr": item["pr"]})
+                                routing.check_task(item, num(key)))
             return
         item["sha"] = str(result["sha"])
         if result.get("verdict") == "approve":
@@ -207,6 +208,8 @@ class Progress:
                                "Nothing is paused here." if not paused else f"#{n} isn't paused. Paused here: {listed}.")
                 return
             item = self.state[key]
+        if item.get("no_checker"):            # paused only for want of a checker: back at that step (pm_solo.py)
+            return await self.check_again(room, key, item)
         if why := await requeue(self, key, item, repo):   # GitHub is asked outside the lock (pm_paused)
             await self.say(rid, why)
             return
@@ -253,7 +256,7 @@ class Progress:
             item["stage"] = "reviewing"       # the PR moved since it was approved: review what's there now
             await self.dispatch(room_id, item, item["reviewer"],
                                 f"{item['reviewer']}: review PR #{item['pr']} again (it changed) against #{num(key)}",
-                                {"kind": "review", "issue": num(key), "pr": item["pr"]})
+                                routing.check_task(item, num(key)))
         elif ok and lvl == "autonomous":
             item["stage"] = "merging"
             await self.dispatch(room_id, item, item["builder"], f"{item['builder']}: merge PR #{item['pr']}",
@@ -261,6 +264,9 @@ class Progress:
         elif ok and item["stage"] == "approved":
             item["stage"] = "ready"
             await self.say(room_id, f"PR #{item['pr']} ready — a person merges")
+        elif not ok and item.get("solo") is True and info.get("reviewDecision") == "REVIEW_REQUIRED" \
+                and item["stage"] in ("approved", "ready"):   # pm_solo.py: GitHub won't count your own agent's review
+            await self.past_review_rule(room_id, key, item, info, lvl)
         elif not ok and item["stage"] in ("approved", "ready") and info.get("reviewDecision") in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
             await self.stop(room_id, key, item, f"the repo's rules need a GitHub approval of PR #{item['pr']} from an "
                             "account other than the one that opened it", approve_steps(item["repo"], item["pr"]))

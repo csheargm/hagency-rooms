@@ -8,21 +8,16 @@ decides what is allowed:
 `!help`, `!status`, `!level …` still work as shortcuts for people who like commands.
 Mixed into loop.Loop (client, user_id, say, level, boards, agents_in, start_plan, file_plan).
 """
+import logging
 import re
 import time
 
 from nio import MatrixRoom, ReactionEvent, RoomMessageText
 
-from common import github
-from common import customize
-from common import intents
-import logging
-
-from server import pm_brain
-from server.pm_address import Addressing, without_quote  # noqa: F401 - without_quote: other modules import it from here
+from common import customize, github, intents, room_state
 from common.saved_dict import SavedDict
-from common import room_state
-from server import pm_paused
+from server import pm_brain, pm_paused
+from server.pm_address import Addressing, without_quote  # noqa: F401 - without_quote: other modules import it from here
 
 log = logging.getLogger("loop")
 CONFIRM_S = 300
@@ -45,6 +40,7 @@ HELP = ("Talk to me in plain words, for example:\n"
         "- **@pm show the plan**: the plan waiting for your 👍\n"
         "- **@pm send me my console link**: settings in a page (also the Hagency panel in this room)\n"
         "- **@pm retry #9**: a paused issue goes back in the queue (owner or maintainer)\n"
+        "- **@pm allow solo review**: testing alone? your other agent checks the work; 👍 to confirm (**@pm solo review off**)\n"
         "- **@pm this room works on owner/name**: the GitHub repo for this room (one room per repo); "
         "**@pm remove the repo** takes it off\n"
         "- **@pm make me a project room**, **@pm find a project**, **@pm ask to join owner/name**\n"
@@ -187,6 +183,8 @@ class Chat(Addressing):
                            "Say \"stop\" anytime." + await pm_paused.after_switch(self, rid, "autonomous"))
         elif intent == intents.WEB:          # ADR 0006: nothing to switch; say so instead of pretending
             await self.say(rid, WEB_ANSWER)
+        elif intent in intents.SOLO:         # pm_solo.py: on is asked with a 👍 (moderators); off is at once (anyone)
+            await self.solo(room, sender, intent, gen)
         elif intent == intents.CONSOLE:
             await self.send_console_link(room, sender)
         elif intent in FOLLOW_SETTINGS:      # the sender's own setting only (pm_follow.py)
@@ -236,6 +234,8 @@ class Chat(Addressing):
             await self.act(room, sender, p["intent"])
         elif p.get("kind") == "implicit":                       # pm_implicit.py: asked, as I wasn't named
             await self.do_implicit(room, sender, p, gen)
+        elif p.get("kind") == "solo":                           # pm_solo.py: solo review on (moderator re-checked above)
+            await self.solo_confirmed(room, sender)
         elif p.get("kind") == "bring":                          # pm_follow.py: "bring your agent? ✅"
             await self.invite_agent(room.room_id, p["agent"], "Your agent is on its way in.")
         else:                                 # a mode switch asked about with ✅ (ask_mode)

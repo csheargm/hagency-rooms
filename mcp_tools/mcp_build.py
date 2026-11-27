@@ -6,7 +6,7 @@ from pathlib import Path
 
 from common import github
 from mcp_tools import mcp_core as core
-from common import room_state
+from common import room_state, solo_review
 from adapters.agents import tasks
 from mcp_tools.mcp_core import AGENT, claim, mcp, report, safely
 
@@ -170,7 +170,8 @@ async def get_review(task_id: str) -> dict:
         t["head"] = head
         if len(diff) > tasks.MAX_DIFF_CHARS:
             return {"done": report(task_id, await tasks.submit_review(AGENT, n, pr, head, "REQUEST_CHANGES",
-                                                                      "Diff too large to review in full.", t["repo"])),
+                                                                      "Diff too large to review in full.", t["repo"],
+                                                                      t.get("solo") is True)),
                     "next": "Stop."}
         return {"instructions": tasks.review_prompt(n, pr, issue, diff),
                 "next": "Decide, then call submit_review(task_id, approve, reasons). approve=true only if "
@@ -191,7 +192,7 @@ async def submit_review(task_id: str, approve: bool, reasons: str) -> dict:
     async def step():
         verdict = "APPROVE" if approve else "REQUEST_CHANGES"
         result = await tasks.submit_review(AGENT, int(t["issue"]), int(t["pr"]), t["head"], verdict, reasons[:3000],
-                                             t["repo"])
+                                             t["repo"], t.get("solo") is True)   # solo review: a comment (ADR 0023)
         return {"done": report(task_id, result), "next": "Stop."}
     return await safely(task_id, "review", step)
 
@@ -201,6 +202,10 @@ def require_autonomous(t: dict) -> None:
     level = room_state.level_of(core.api("GET", core.room_path(t["_room"], f"/state/{github.LEVEL_EVENT}/"), token=core.token()))
     if level != "autonomous":
         raise tasks.TaskError(f"room is {level}, not autonomous")
+    if t.get("admin") is True:   # an admin merge (solo review, ADR 0023): only while @pm's own switch is on, read now
+        ev = core.api("GET", core.room_path(t["_room"], f"/state/{solo_review.SOLO_EVENT}/?format=event"), token=core.token())
+        if not solo_review.state_in([ev], core.PM_ID)["on"]:
+            raise tasks.TaskError("solo review is off in this room")
 
 
 @mcp.tool()

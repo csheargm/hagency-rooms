@@ -30,6 +30,7 @@ from server.loop_progress import GITHUB_STAGES, Progress, migrate, num
 from server.pm_paused import failure, no_reviewer_steps  # TODO(R4): loop.py is over 300 lines; split the result handling (on_result) out
 from server.pm_chat import Chat
 from server.pm_settings import Settings
+from server.pm_solo import SOLO_TASK, Solo   # solo review (ADR 0023): who checks when one person tests alone
 from server.pm_follow import Follow
 from common.saved_dict import SavedDict
 from server.pm_plan import Planner
@@ -38,7 +39,6 @@ from server.pm_understand import Understanding
 from server.pm_voice import Voice
 from server.pm_welcome import Welcome
 from server.pm_agents import MoreAgents
-from server import routing
 from server.status_board import Boards
 from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME, read_env
 from common.lifecycle import is_stale
@@ -58,7 +58,7 @@ class SendError(RuntimeError):
     """Matrix refused a message; the item keeps its stage and the watchdog retries later."""
 
 
-class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voice, Welcome, Presence, MoreAgents, Cards):
+class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voice, Welcome, Presence, MoreAgents, Cards, Solo):
     def __init__(self) -> None:
         self.user_id = f"@{github.PM_BOT}:{SERVER_NAME}"
         self.client = AsyncClient(HOMESERVER, self.user_id, device_id="PM_BOT")
@@ -183,8 +183,10 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
 
     async def on_result(self, room: MatrixRoom, sender: str, result: dict) -> None:
         kind = result.get("kind")
-        if kind in ("plan", "file_issues", "card"):     # answered once, to whoever asked: pm_plan.py, pm_cards.py
-            await (self.on_card_result if kind == "card" else self.on_plan_result)(room, sender, result)
+        once = {"plan": self.on_plan_result, "file_issues": self.on_plan_result, "card": self.on_card_result,
+                SOLO_TASK: self.on_solo_result}.get(kind)   # answered once, to whoever asked: pm_plan, pm_cards, pm_solo
+        if once:
+            await once(room, sender, result)
             return
         if room.room_id not in self.room_repos:     # before the first poll: read it (only @pm writes it)
             self.room_repos[room.room_id] = await room_state.repo_of(self.client, room.room_id)
@@ -195,15 +197,13 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
         if item["stage"] != EXPECTED_STAGE.get(kind) or result.get("task_id") not in item.get("task_ids", [item.get("task_id")]):
             return   # late/duplicate result for a step that's no longer current
         if sender != item.get("reviewer" if kind in CHECKER_KINDS else "builder") or (
-                kind in CHECKER_KINDS and sender not in routing.checkers_for([sender], item["builder"], ownership.owner_id)):
-            return   # only the agent the step was given to, and a checker only of ANOTHER person's work
+                kind in CHECKER_KINDS and not await self.may_check(room, key, item, sender)):
+            return   # only the agent the step was given to; a checker of ANOTHER person's work, or solo (pm_solo.py)
         if result.get("error"):
             await self.stop(room.room_id, key, item, failure(sender.split(":")[0][1:], kind, result["error"]))
         elif kind == "build" and result.get("already_done"):
             item["stage"] = "verifying"     # the builder's "nothing to do" needs a second agent's check
-            if await self.pick_reviewer(room, item, key, f"verify #{num(key)} is already done"):
-                await self.dispatch(room.room_id, item, item["reviewer"], f"{item['reviewer']}: verify #{num(key)} is already done",
-                                    {"kind": "verify", "issue": num(key)})
+            await self.ask_checker(room, item, key)
         elif kind == "verify":
             if result.get("verdict") == "approve":
                 item["stage"] = "confirmed_done"
@@ -216,10 +216,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
             if not await self.pr_is_builders(item, key):
                 await self.stop(room.room_id, key, item, f"PR #{item['pr']} isn't {item['builder']}'s branch")
                 return
-            if await self.pick_reviewer(room, item, key, f"review PR #{item['pr']}"):
-                await self.dispatch(room.room_id, item, item["reviewer"],
-                                    f"{item['reviewer']}: review PR #{item['pr']} against #{num(key)}",
-                                    {"kind": "review", "issue": num(key), "pr": item["pr"]})
+            await self.ask_checker(room, item, key)
         elif kind in ("review", "fix") and int(result["pr"]) == item["pr"]:
             await self.after_review_step(room.room_id, item, key, result)      # loop_progress.py
         elif kind == "merge":
@@ -227,13 +224,16 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
         self.save()
 
     async def pick_reviewer(self, room: MatrixRoom, item: dict, key: str, what: str) -> bool:
-        """Choose a DIFFERENT person's agent as the checker; stop the item if there is none."""
-        others = routing.checkers_for(routing.available(self.agents_in(room), self.agent_online), item["builder"], ownership.owner_id)
+        """Choose a DIFFERENT person's agent as checker (solo review: maybe the owner's other: pm_solo); else stop."""
+        others, solo = await self.checkers(room, item)
         if not others:
             steps = no_reviewer_steps(num(key), item["repo"], item["pr"]) if item.get("pr") and item.get("repo") else None
-            await self.stop(room.room_id, key, item, f"there's no second person's agent here to {what.split()[0]} it", steps)
+            item["no_checker"] = True       # "@pm retry #N" goes back to this step, PR kept (pm_solo.check_again)
+            who = "other agent of the builder's owner" if solo else "second person's agent"
+            await self.stop(room.room_id, key, item, f"there's no {who} here to {what.split()[0]} it",
+                            self.no_checker_steps(num(key), steps, solo))
             return False
-        item["reviewer"] = others[num(key) % len(others)]
+        item.update(reviewer=others[num(key) % len(others)], solo=solo)
         await self.say(room.room_id, f"{what.split()[0]} requested from {item['reviewer'].split(':')[0][1:]}")
         return True
 

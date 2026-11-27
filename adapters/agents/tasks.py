@@ -9,11 +9,9 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from adapters.agents import agents
+from adapters.agents import agents, own_account, planning, solo_github
 from adapters.agents.card_task import card   # panel cards (ADR 0019)
-from adapters.agents import own_account
 from common import github
-from adapters.agents import planning
 from common.redact import public_safe, room_safe
 from common.github import GitHubError, git, run, run_json
 
@@ -139,15 +137,15 @@ async def review(agent: str, backend: str, base: Path, task: dict) -> dict:
     if len(diff) > MAX_DIFF_CHARS:   # never approve what the reviewer couldn't fully see
         return await submit_review(agent, n, pr, head, "REQUEST_CHANGES", "Diff too large to review in full.", task["repo"])
     text = await agents.run_turn(backend, base / f"review-pr-{pr}", review_prompt(n, pr, issue, diff), fresh=True)
-    return await submit_review(agent, n, pr, head, parse_verdict(text), text, task["repo"])   # read-only turn
+    return await submit_review(agent, n, pr, head, parse_verdict(text), text, task["repo"], task.get("solo") is True)
 
 
-async def submit_review(agent: str, n: int, pr: int, head: str, verdict: str, text: str, repo: str) -> dict:
-    # Pinned to the commit that was reviewed: a later push isn't covered by this approval.
-    body = f"`{agent}` review:\n\n{public_safe(text)[:3000]}"
-    word = "approved" if verdict == "APPROVE" else "changes requested on"
+async def submit_review(agent: str, n: int, pr: int, head: str, verdict: str, text: str, repo: str, solo: bool = False) -> dict:
+    # Pinned to the commit reviewed (a later push isn't covered). Solo (ADR 0023): never a GitHub approval, a comment.
+    body = (own_account.AS_SOLO.format(verdict=verdict) if solo else "") + f"`{agent}` review:\n\n{public_safe(text)[:3000]}"
+    word = ("approved" if verdict == "APPROVE" else "changes requested on") + (" (solo review, as a comment)" if solo else "")
     try:
-        await run(["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", f"event={verdict}",
+        await run(["api", "-X", "POST", f"repos/{repo}/pulls/{pr}/reviews", "-f", f"event={'COMMENT' if solo else verdict}",
                    "-f", f"commit_id={head}", "-f", f"body={body}"], agent)
     except GitHubError as e:
         if "422" not in str(e) or not await own_account.opened_it(agent, pr, repo):
@@ -164,6 +162,8 @@ async def merge(agent: str, backend: str, base: Path, task: dict) -> dict:
     repo = _check_repo(task)
     n, pr = int(task["issue"]), int(task["pr"])
     sha = str(task["sha"])
+    if task.get("admin") is True:   # solo review (ADR 0023): past GitHub's review rule as the repo's admin
+        return await solo_github.admin_merge(agent, repo, n, pr, sha)
     ok, info = await github.merge_ready(pr, agent, repo)  # GitHub's verdict, re-checked here
     if not ok or info.get("headRefOid") != sha:
         raise TaskError(f"GitHub says PR #{pr} isn't ready at the reviewed commit: {info}")
@@ -277,7 +277,8 @@ async def file_issues(agent: str, backend: str, base: Path, task: dict) -> dict:
 
 
 HANDLERS = {"build": build, "review": review, "merge": merge, "verify": verify, "close": close,
-            "plan": plan, "file_issues": file_issues, "fix": fix, "card": card}
+            "plan": plan, "file_issues": file_issues, "fix": fix, "card": card,
+            solo_github.TASK_KIND: solo_github.ruleset}
 AUTONOMOUS_ONLY = {"merge", "close"}       # agent adapters re-check the room level before these
 
 

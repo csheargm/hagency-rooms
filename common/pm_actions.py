@@ -39,12 +39,16 @@ ACTIONS = {
     "follow_never": "the sender doesn't want their agent brought into rooms automatically",
     "web": "the sender wants to let (or stop) their own agent using the web: there is no such switch; it's explained",
     "console": "the sender wants the settings console / a link to change settings in a page",
+    "solo_review_on": ("the sender tests alone and wants their own other agents to review and verify each other's "
+                       "work when no other person's agent is here (e.g. 'no need for a second person')"),
+    "solo_review_off": "only another person's agent may review again (turn solo review off)",
     "none": "no action: just answer (questions, thanks, chit-chat, a requirement noted for later)",
 }
 INTENT_OF = {"stop": intents.OFF, "assist": intents.ASSIST, "autonomous": intents.AUTONOMOUS,
              "plan": intents.PLAN, "show_plan": intents.SHOW_PLAN, "status": intents.STATUS,
              "follow_always": intents.FOLLOW_ALWAYS, "follow_ask": intents.FOLLOW_ASK,
-             "follow_never": intents.FOLLOW_NEVER, "web": intents.WEB, "console": intents.CONSOLE}
+             "follow_never": intents.FOLLOW_NEVER, "web": intents.WEB, "console": intents.CONSOLE,
+             "solo_review_on": intents.SOLO_ON, "solo_review_off": intents.SOLO_OFF}
 TEXT_FIELDS = ("repo", "mode", "sender", "role", "waiting", "plan", "board", "replied", "text", "how")
 UNADDRESSED = ("This message did not name @pm ({how}). People here also talk to each other and to their own "
                "agents: if it is not meant for @pm, answer exactly {{\"action\": \"none\", \"reply\": \"\"}}.\n\n")

@@ -49,6 +49,7 @@ class AloneInARoom(unittest.TestCase):
         lp.say = mock.AsyncMock()
         lp.agents_in = lambda room: ["@g-agent:x"]
         lp.agent_online = lambda a: True
+        lp.solo_on = mock.AsyncMock(return_value=False)          # solo review off (the default, ADR 0023)
         item = {"repo": "csheargm/hagency-demo-sandbox", "pr": 167, "builder": "@g-agent:x", "agent": "@g-agent:x"}
         with mock.patch("server.ownership.owner_id", lambda a: a.replace("-agent", "")):
             picked = asyncio.run(lp.pick_reviewer(SimpleNamespace(room_id="!r"), item, "csheargm/hagency-demo-sandbox#166",
@@ -56,7 +57,10 @@ class AloneInARoom(unittest.TestCase):
         self.assertFalse(picked)
         said = lp.say.call_args.args[1]
         self.assertIn("[Review and merge it on GitHub](https://github.com/csheargm/hagency-demo-sandbox/pull/167)", said)
-        self.assertNotIn("retry", said)                       # GPT review: retry can't move a PR that's open
+        # GPT review: a plain retry can't move a PR that's open; since ADR 0023 retry goes back to the review step
+        # (pm_solo.check_again), so it is offered only together with solo review
+        self.assertIn('**@pm allow solo review**', said)
+        self.assertEqual(said.count("retry"), 1)
         self.assertNotIn("Make the issue clearer", said)
         self.assertNotIn(".log", said)
         self.assertEqual(item["stage"], "stopped")

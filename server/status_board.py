@@ -23,7 +23,7 @@ from server import console_personal
 from server import panel
 from server import pm_settings
 from server import project_rooms
-from common import room_state
+from common import room_state, solo_review
 
 log = logging.getLogger("loop")
 RECENT_S = 24 * 3600            # finished items stay on the board this long
@@ -43,12 +43,13 @@ def who(user_id: object) -> str:
     return safe(str(user_id).split(":")[0].lstrip("@")) if user_id else "—"   # agents name themselves
 
 
-def render(items: dict, level: str, queued: list[dict], now: float, repo: str = "") -> str:
-    """The board's markdown for one room (items: this room's loop-state entries by issue number)."""
+def render(items: dict, level: str, queued: list[dict], now: float, repo: str = "", solo: bool = False) -> str:
+    """The board's markdown for one room (items: this room's loop-state entries by issue number; solo: solo
+    review is on, ADR 0023)."""
     def title(key: str, item: dict) -> str:
         return f"#{num(key)} {safe(item.get('title', ''))}".rstrip()
 
-    lines = [f"📋 **Project status** — {repo or 'no repo yet'} · loop: **{level}**", ""]
+    lines = [f"📋 **Project status** — {repo or 'no repo yet'} · loop: **{level}**" + (" · solo review" if solo else ""), ""]
     active = [(k, v) for k, v in items.items() if v["stage"] in STEP_WORDS]
     lines += ["**Now**", ""] + ([f"- {title(k, v)} — {STEP_WORDS[v['stage']]} · {who(v.get('agent') or v.get('builder'))}"
                              f" · {ago(now - v.get('since', now))}" for k, v in sorted(active, key=lambda kv: num(kv[0]))]
@@ -99,7 +100,8 @@ class Boards:
                     await self.blank_board(room_id)               # pm_unbind.py
                 continue                      # not a project room (no repo yet)
             items = {k: v for k, v in self.state.items() if v.get("room") == room_id and v.get("repo") == repo}
-            text = render(items, await self.level(room_id), self.open_issues.get(room_id, []), now, repo)
+            text = render(items, await self.level(room_id), self.open_issues.get(room_id, []), now, repo,
+                          await solo_review.enabled(self.client, room_id))   # pm_solo.py
             board = self.boards.get(room_id, {})
             if board.get("text") == text:
                 if board.get("event_id") and not board.get("pinned"):   # e.g. posted before @pm was a moderator

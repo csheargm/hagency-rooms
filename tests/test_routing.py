@@ -56,6 +56,7 @@ class Routing(unittest.TestCase):
         with mock.patch.object(registry, "PATH", path):
             lp = Loop.__new__(Loop)
             lp._seen, lp.say, lp.stop = {}, mock.AsyncMock(), mock.AsyncMock()
+            lp.solo_on = mock.AsyncMock(return_value=False)      # solo review is off by default (ADR 0023)
             lp.agents_in = lambda room: [CXA, CXC]
             item = {"builder": CXA}
             self.assertFalse(asyncio.run(lp.pick_reviewer(SimpleNamespace(room_id="!r"), item, "7", "review PR #1")))

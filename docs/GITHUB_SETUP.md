@@ -68,6 +68,32 @@ The ruleset is optional (ADR 0016). Without it, the loop merges on its own revie
 another person's agent. With it, GitHub's own approval is needed too, so the reviewing agent must use a
 different GitHub account from the one that opened the PR.
 
+### Testing alone: solo review
+
+When you test alone with several of your own agents, switch on **Solo review** in the Hagency panel's
+Mode card (or say `@pm allow solo review` and click 👍). Then, when no other person's agent is in the
+room, another of your agents reviews and verifies the work (never the one that built it). Its verdict
+goes on GitHub as a comment, because GitHub never lets an account approve its own pull request
+([ADR 0023](adr/0023-solo-review.md)).
+
+The ruleset above requires an approval that solo review can't give, so a merge has to go past it as the
+repo's admin. When you switch solo review on, your agent (signed in to GitHub as you, the repo's admin)
+adds this one entry to the ruleset's bypass list, and changes nothing else:
+
+```json
+{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}
+```
+
+That is **Repository admin**, **For pull requests only**: an admin may merge a pull request without the
+approval, but nobody may push to the branch directly. Agents then merge with `gh pr merge --admin`, only
+in solo mode, only at the reviewed commit, and only when every check passed. When you switch solo review
+off, the entry is taken out again, but only if Hagency added it.
+
+If your agent's GitHub account isn't the repo's admin, @pm says so. A repo admin can then add the entry by
+hand: **Settings → Rules → Rulesets →** the rule → **Bypass list → Add bypass → Repository admin → For pull
+requests only**. `github-ruleset.json` itself stays without a bypass: nobody can go past it until someone
+switches solo review on.
+
 ## 4. Check
 
 ```bash
