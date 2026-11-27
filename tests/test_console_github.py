@@ -41,7 +41,7 @@ ctx.window = ctx; ctx.parent = ctx; ctx.addEventListener = () => {};
 vm.createContext(ctx); vm.runInContext(process.argv[3], ctx); vm.runInContext(process.argv[2], ctx);
 const later = f => setImmediate(() => setImmediate(() => setImmediate(f)));
 later(() => {
-  const html = els.controls.innerHTML, m = /<button data-a="github_signin" data-v="([^"]*)" data-g="([^"]*)">/.exec(html);
+  const html = els.controls.innerHTML, m = /<button data-a="github_signin" data-v="([^"]*)" data-g="([^"]*)"[^>]*>/.exec(html);
   if (m) {                                  // the person clicks it: every click listener the page added gets it
     const b = {dataset: {a: "github_signin", v: m[1], g: m[2]}};
     b.closest = s => s.startsWith("button[data-a]") ? b : null;
@@ -134,8 +134,8 @@ class EndToEnd(Flow):
         self.deliver(rest)                                  # its result, then its state
         done = self.panel()
         self.assertIn("GitHub: @octo-cat ✓", done["html"])
-        self.assertNotIn('data-a="github_signin"', done["html"])
-        self.assertEqual(done["posted"], [])
+        self.assertIn('class="quiet">Sign in again</button>', done["html"])   # a revoked token isn't a lock-out
+        self.assertEqual([b["action"] for b in done["posted"]], ["github_signin"])
         self.assertEqual(registry.find(CX, "cx-agent")[registry.GITHUB], {"state": "signed_in", "login": "octo-cat"})
         self.assertNotIn("gho_", json.dumps(self.said) + json.dumps(self.row()))
 
@@ -167,7 +167,7 @@ class Checks(Flow):
         self.assertEqual(self.click(), console_github.OLD_CODE)
         self.lp.client.to_device.assert_not_awaited()
 
-    def test_offline_or_already_signed_in_is_not_asked(self):
+    def test_offline_is_not_asked_and_signed_in_may_sign_in_again(self):
         self.start()
         self.online.clear()
         self.assertIn("offline", self.click())
@@ -175,8 +175,8 @@ class Checks(Flow):
         (self.gh.root / "cx-agent").mkdir(parents=True)
         (self.gh.root / "cx-agent" / "hosts.yml").write_text("github.com:\n    user: octo-cat\n")
         self.start()
-        self.assertIn("already signed in", self.click())
-        self.lp.client.to_device.assert_not_awaited()
+        self.assertEqual(self.click()["result"], "ok")     # its token may be revoked since: the agent checks (GPT re-check)
+        self.assertEqual(self.lp.client.to_device.await_count, 1)
 
     def test_one_click_a_minute_and_none_while_one_waits(self):
         self.start()

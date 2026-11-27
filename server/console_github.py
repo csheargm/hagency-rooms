@@ -85,7 +85,9 @@ def status(loop, a: dict) -> dict:
 
 
 async def request(loop, user: str, agent: str | None) -> str | dict:
-    """The owner's click: "ok" (with ASKED) once @pm has asked the agent, else why not (said in the panel)."""
+    """The owner's click: "ok" (with ASKED) once @pm has asked the agent, else why not (said in the panel).
+    Also when it says it is signed in ("Sign in again"): its token may have been revoked since it said so, and
+    the agent answers "already" only if GitHub still takes it (GPT re-check: the owner was locked out)."""
     found = registry.find(user, agent)
     if found is None or not registry.owns(user, found["localpart"]) or found["agent"] != registry.REMOTE:
         return NOT_YOURS
@@ -94,8 +96,6 @@ async def request(loop, user: str, agent: str | None) -> str | dict:
         return HERMES
     if said is None:
         return OLD_CODE
-    if said["state"] == "signed_in":
-        return "It's already signed in to GitHub."
     if loop.agent_online(lp) is not True:
         return "It's offline: start its computer, then click Sign in to GitHub."
     says, busy, _ = _phase(loop, lp)
@@ -126,13 +126,15 @@ async def send(loop, agent_id: str, ask: str) -> bool:
 
 def restarted(loop, agent: str | None, content: dict) -> None:
     """Its state report (pm_kind_reports). One from a start ("startup"; or no "id": an agent from before that
-    field) means a sign-in still waiting died with the old process (an update, a crash), so its dead code goes
-    and the button comes back (review, 2026-11-26), unless it names that very click (its first sync brought
-    it). One sent after a sign-in carries that click's "id" and ends nothing: a newer click stays (GPT review)."""
+    field) ends a click whose code its old process sent: that sign-in died with it (an update, a crash), so
+    the dead code goes and the button comes back (review, 2026-11-26), unless the report names that click.
+    A click with no code yet stays: the new process may take it on its next sync (GPT re-check: a click sent
+    as the agent started lost its code); if not, it ends as "didn't answer". A report sent after a sign-in
+    carries that click's "id" and ends nothing: a newer click stays (GPT review)."""
     if content.get("startup") is not True and "id" in content:
         return
     click = _clicks(loop).get(agent) if agent else None
-    if click is not None and click["result"] is None and click["id"] != content.get("id"):
+    if click is not None and click["result"] is None and click["code"] is not None and click["id"] != content.get("id"):
         _clicks(loop).pop(agent, None)
 
 

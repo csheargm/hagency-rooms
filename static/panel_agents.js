@@ -60,9 +60,11 @@ function codeHint(a) {
 const ghSeen = a => a.remote && (a.online === true || a.connected) && !!a.gh;
 function ghChip(a) {
   if (!ghSeen(a)) return "";
-  if (a.gh === "signed_in") return `<span class="chip">GitHub: ${a.gh_login ? "@" + esc(a.gh_login) : "signed in"} ✓</span>`;
-  return a.gh === "old" || a.online !== true || a.gh_busy ? ""
-    : `<button data-a="github_signin" data-v="" data-g="${esc(a.name)}">Sign in to GitHub</button>`;
+  const can = a.gh !== "old" && a.online === true && !a.gh_busy;
+  if (a.gh === "signed_in")             // its token may be revoked since: a quiet way to sign in again (GPT re-check)
+    return `<span class="chip">GitHub: ${a.gh_login ? "@" + esc(a.gh_login) : "signed in"} ✓</span>` +
+      (can ? ` <button data-a="github_signin" data-v="" data-g="${esc(a.name)}" class="quiet">Sign in again</button>` : "");
+  return can ? `<button data-a="github_signin" data-v="" data-g="${esc(a.name)}">Sign in to GitHub</button>` : "";
 }
 // The code with Copy, as on the GitHub card (panel_github.js: copyCode, its click handler, copiedUntil).
 const ghFieldId = a => "ghcode-" + a.name;

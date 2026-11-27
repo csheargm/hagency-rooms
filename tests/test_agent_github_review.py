@@ -14,6 +14,7 @@ from adapters.agents import agent_github
 from adapters.agents import agent_update
 from adapters.agents import bridge
 from common import github_login
+from server import console_github
 from tests import test_console_github as pm_side
 from tests.test_agent_github import AGENT, Base, FakeBridge, alive, now, request
 
@@ -118,16 +119,57 @@ class PmReadsTheReport(pm_side.Flow):
         self.deliver([(github_login.STATE_TYPE, None, content)])
         return self.row()["gh_busy"]
 
-    def test_only_a_start_ends_a_waiting_click_and_not_the_one_it_took_up(self):
+    def code_came(self):
+        ask = self.lp._gh_signins["cx-agent"]["id"]
+        self.deliver([(github_login.ANSWER_TYPE, None, {"id": ask, "code": "WDJB-MJHT"})])
+        return ask
+
+    def test_only_a_start_ends_a_click_whose_code_came_and_not_the_one_it_took_up(self):
         self.start()
         self.click()
-        ask = self.lp._gh_signins["cx-agent"]["id"]
+        ask = self.code_came()
         self.assertTrue(self.report({"state": "none", "id": "an-older-click"}))       # after a sign-in: ends nothing
         self.assertTrue(self.report({"state": "none", "startup": True, "id": ask}))   # its first sync took this one
-        self.assertFalse(self.report({"state": "none", "startup": True}))             # a start: the dead click goes
+        self.assertFalse(self.report({"state": "none", "startup": True}))             # a start: the dead code goes
         self.lp._gh_signins.clear()
         self.click()
+        self.code_came()
         self.assertFalse(self.report({"state": "none"}))    # an agent from before "startup": still a start
+
+    def test_a_click_sent_as_the_agent_started_keeps_its_code(self):
+        """GPT re-check: the click went out after the agent's first sync, its start report came to @pm after
+        the click, and @pm dropped the click; the agent took it on its next sync, and its code was refused."""
+        self.start()
+        self.click()                                        # the agent is starting: past its first sync
+        ask = self.lp._gh_signins["cx-agent"]["id"]
+        self.assertTrue(self.report({"state": "none", "startup": True}))   # its start report, after the click
+        self.code_came()                                    # its next sync took the click
+        self.assertEqual((self.row()["gh_code"], len(self.said)), ("WDJB-MJHT", 1))
+        self.assertEqual(self.lp._gh_signins["cx-agent"]["id"], ask)
+
+    def test_a_token_revoked_after_its_start_can_still_be_signed_in_again(self):
+        """GPT re-check: a cached signed_in hid the button and @pm refused the click, for good."""
+        folder = self.gh.root / "cx-agent"
+        folder.mkdir(parents=True)
+        (folder / "hosts.yml").write_text("github.com:\n    user: octo-cat\n")
+        self.start()                                        # signed in, as it said at its start
+        self.assertEqual(self.row()["gh"], "signed_in")
+        os.environ["FAKE_GH_API"] = "revoked"               # then revoked on GitHub
+        self.addCleanup(os.environ.pop, "FAKE_GH_API", None)
+        self.assertEqual(self.click()["result"], "ok")      # "Sign in again"
+        self.deliver(self.pm_asks_agent())
+        self.assertEqual(self.row()["gh_says"], console_github.SAYS["signed_in"])
+        self.assertTrue(self.gh.log.exists())               # gh's sign-in ran: not "already"
+
+    def test_sign_in_again_with_a_working_token_is_already(self):
+        folder = self.gh.root / "cx-agent"
+        folder.mkdir(parents=True)
+        (folder / "hosts.yml").write_text("github.com:\n    user: octo-cat\n")
+        self.start()
+        self.click()
+        self.deliver(self.pm_asks_agent())
+        self.assertEqual(self.row()["gh_says"], console_github.SAYS["already"])
+        self.assertFalse(self.gh.log.exists())
 
     def test_pm_keeps_only_known_fields(self):
         self.assertEqual(github_login.state({"state": "none", "startup": True, "id": "k1"}), {"state": "none", "login": None})
