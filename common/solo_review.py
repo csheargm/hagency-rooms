@@ -2,9 +2,10 @@
 agent adapter (adapters/agents/solo_github.py) read and write exactly these.
 
 A room's switch lives in its own Matrix state (SOLO_EVENT), written only by @pm after its checks, and it
-counts only if @pm wrote it (like the room's repo and mode: room_state.binding_in). Off by default. It names
-the repo it was switched on for: a room whose repo changed (or was removed) is off (review: consent is for that
-repo's rules), and @pm says what was left on the old repo (pm_solo.follow_repo).
+counts only if @pm wrote it (like the room's repo and mode: room_state.binding_in). ON by default (owner
+decision): a room that never set it is on ("default"), an explicit off stays off, and any other sender's event
+is off (fail closed). Its GitHub part (the admin bypass asked for, added or known) names its repo: it never
+carries over to another repo, and @pm says what was left on the old one (pm_solo_rules.follow_repo).
 """
 from nio import AsyncClient, RoomGetStateResponse
 
@@ -22,28 +23,51 @@ TAKE_OUT = ("On GitHub open **{repo} → Settings → Rules → Rulesets** and t
             "Bypass list of the review rule (Hagency added it there).")
 
 
-def content(on: bool, added: list[int] | None = None, repo: str | None = None, ok: bool = False) -> dict:
+def content(on: bool, added: list[int] | None = None, repo: str | None = None, ok: bool = False,
+            default: bool = False, asked: str | None = None) -> dict:
     """added: the rulesets whose admin bypass Hagency itself added (only those are taken out again); repo: the
-    repo it was switched on for; ok: GitHub's review rule is known to let repo admins merge past it."""
+    repo the GitHub part is about; ok: GitHub's review rule is known to let repo admins merge past it; default:
+    nobody chose on or off (on); asked: the repo whose bypass @pm already asked a 👍 for (asked once)."""
     return {"on": on is True, "bypass_added": sorted({int(i) for i in (added or [])}),
-            "repo": repo if isinstance(repo, str) else None, "ok": ok is True}
+            "repo": repo if isinstance(repo, str) else None, "ok": ok is True, "default": default is True,
+            "asked": asked if isinstance(asked, str) else None}
+
+
+def default_state() -> dict:
+    """A room that never set it: on, nobody's choice."""
+    return content(True, default=True)
 
 
 def state_in(events: list, pm: str) -> dict:
-    """The room's SOLO_EVENT content, only if @pm wrote it (anything else: off)."""
+    """The room's SOLO_EVENT content if @pm wrote it; none at all: the default (on); anyone else's or unparsable: off."""
     for ev in events:
-        if ev.get("type") == SOLO_EVENT and ev.get("state_key") == "" and ev.get("sender") == pm:
+        if isinstance(ev, dict) and ev.get("type") == SOLO_EVENT and ev.get("state_key") == "":
             c = ev.get("content")
-            if isinstance(c, dict):
-                added = c.get("bypass_added")
-                ids = [i for i in added if isinstance(i, int)] if isinstance(added, list) else []
-                return content(c.get("on") is True, ids, c.get("repo"), c.get("ok"))
-    return content(False)
+            if ev.get("sender") != pm or not isinstance(c, dict):
+                return content(False)
+            added = c.get("bypass_added")
+            ids = [i for i in added if isinstance(i, int)] if isinstance(added, list) else []
+            return content(c.get("on") is True, ids, c.get("repo"), c.get("ok"), c.get("default"), c.get("asked"))
+    return default_state()
+
+
+def event_state(ev: object, pm: str) -> dict:
+    """One GET of SOLO_EVENT (?format=event): never set (404 M_NOT_FOUND) is the default; any other error is off."""
+    if isinstance(ev, dict) and "_status" in ev:
+        return default_state() if ev.get("_status") == 404 and ev.get("errcode") == "M_NOT_FOUND" else content(False)
+    if not isinstance(ev, dict) or ev.get("type") != SOLO_EVENT or ev.get("state_key") != "":
+        return content(False)             # GPT review: a malformed answer is never "never set"
+    return state_in([ev], pm)
 
 
 def live(state: dict, bound_repo: str | None) -> bool:
-    """On, and for the room's repo as it is now."""
-    return state["on"] and bool(bound_repo) and state["repo"] == bound_repo
+    """On (by default or by choice) in a room with a repo. The bypass consent is per repo (bypass_ok)."""
+    return state["on"] and bool(bound_repo)
+
+
+def bypass_ok(state: dict, repo: str | None) -> bool:
+    """GitHub's review rule on `repo` is known to let repo admins merge past it (recorded for that very repo)."""
+    return state["ok"] and bool(repo) and state["repo"] == repo
 
 
 async def read(client: AsyncClient, room_id: str, strict: bool = False) -> dict:
@@ -64,10 +88,10 @@ async def enabled(client: AsyncClient, room_id: str) -> bool:
 
 
 async def still_allowed(client: AsyncClient, room_id: str, repo: str | None) -> bool:
-    """An admin merge into `repo` may still go ahead: the room is Autonomous and solo review is on for that very
-    repo, read now (review: another repo's consent never covers it)."""
+    """An admin merge into `repo` may still go ahead: the room is Autonomous, solo review is on, and `repo` is the
+    room's repo, read now (review: never into another repo)."""
     state = await read(client, room_id)
-    return live(state, state["bound"]) and state["repo"] == repo and await room_state.level(client, room_id) == "autonomous"
+    return live(state, state["bound"]) and state["bound"] == repo and await room_state.level(client, room_id) == "autonomous"
 
 
 PASSED = ("SUCCESS", "NEUTRAL", "SKIPPED")

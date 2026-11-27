@@ -199,8 +199,8 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
                 kind in CHECKER_KINDS and not await self.may_check(room, key, item, sender)):
             return   # only the agent the step was given to; a checker of ANOTHER person's work, or solo (pm_solo.py)
         if result.get("error"):
-            await self.stop(room.room_id, key, item, failure(sender.split(":")[0][1:], kind, result["error"]),
-                            self.merge_failed_steps(item, key, kind))   # pm_solo.py: an admin merge GitHub refused
+            await self.stopped_on_error(room, key, item, kind, result,   # pm_solo.py: an admin merge GitHub refused
+                                        failure(sender.split(":")[0][1:], kind, result["error"]))
         elif kind == "build" and result.get("already_done"):
             item["stage"] = "verifying"     # the builder's "nothing to do" needs a second agent's check
             await self.ask_checker(room, item, key)

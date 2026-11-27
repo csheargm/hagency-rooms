@@ -13,8 +13,9 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
   with no bypass actors. So even with a second agent's verdict, nothing could merge.
 
 ## Decision
-- **A per-room switch, off by default**: `xyz.hagencylabs.solo_review` room state, written only by @pm and
-  trusted only when @pm wrote it (`common/solo_review.py`), like the room's repo and mode.
+- **A per-room switch, on by default** (amended 2026-11-27, see below; first off by default):
+  `xyz.hagencylabs.solo_review` room state, written only by @pm and trusted only when @pm wrote it
+  (`common/solo_review.py`), like the room's repo and mode.
 - **Turning it on is a relaxation**: only the room owner or a maintainer; in chat always asked with a 👍
   (`@pm allow solo review`, or the owner AI's `solo_review_on` action), never from words alone; in the panel's
   Mode card the moderator's click is the confirmation. **Turning it off** is anyone's, at once (like stop):
@@ -33,7 +34,7 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
   anything else, e.g. a merge queue, leaves the merge to a person); when GitHub says this account may bypass
   every review ruleset there; and only while the agent adapter itself reads the switch as on. Assist tells the
   person to merge as the repo's admin.
-- **The ruleset is changed from Hagency, never by hand**: switching on asks the room owner's agent (it runs
+- **The ruleset is changed from Hagency, never by hand**: after its own 👍 (amendment below), @pm asks the room owner's agent (it runs
   `gh` as the owner, the repo's admin) to add `{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode":
   "pull_request"}` to each repository ruleset that requires a review on the default branch (GET/PUT
   `repos/{repo}/rulesets/{id}`, sending only `bypass_actors`: existing entries and every rule stay). An equal entry
@@ -76,3 +77,49 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
   the room owner's agent as the owner. Reviewed and kept on purpose.
 - Hermes agents (MCP tools) can't run the ruleset task yet; @pm says the agent couldn't, with the manual steps.
 - Supersedes ADR 0016's "always another person's agent" for rooms that switched solo review on.
+
+## Amendment 2026-11-27: on by default
+Owner decision: solo review is **on by default** for rooms. Kept: another person's agent is always preferred;
+anyone can switch it off at once; the GitHub consent stays tied to the room's repo.
+- **State**: no SOLO_EVENT at all ("never set", every existing room too) reads as on, with `default: true`.
+  An explicit off (anyone's) stays off, also across a repo change, until a moderator switches it on again with
+  a 👍 or a click. An event by anyone but @pm, an unparsable one, or an unreadable room is off (fail closed).
+  The agents' own single read (`mcp_build.require_autonomous`) counts only a 404 `M_NOT_FOUND` as never set
+  (`solo_review.event_state`).
+- **Per-repo consent is now the GitHub part only**: `repo`, `ok`, `bypass_added` and the new `asked` name the
+  repo they are about (`solo_review.bypass_ok`). On a repo change @pm drops them and names a bypass Hagency left
+  on the old repo (`pm_solo_rules.follow_repo`); on/off itself is kept. An admin merge still goes only into the
+  room's own repo (`still_allowed`, `mcp_build`).
+- **Safeguard: never a ruleset change just because the default is on.** @pm asks the room's owner (any
+  moderator may answer) ONCE per repo with a 👍, in the owner's words: "To merge with only your own agents,
+  Hagency needs to let repo admins merge past GitHub's review rule on <repo>. 👍 to allow." Only after that 👍
+  does it send the `solo_ruleset` task (`pm_solo_rules.offer_bypass` / `bypass_confirmed`). Asked: the first
+  time a solo merge needs the bypass (an Autonomous admin merge refused with `NO_BYPASS`, or Assist's "a person
+  merges" without a known bypass), when a repo is bound (at the next poll, after the bind's answer), and when a
+  moderator switches solo review on or says "allow solo review" while it is on. Not asked: when the bypass is
+  known (`ok` for this repo), when the repo's default branch has no review rule, when solo review is off, or a
+  second time for the same repo (only a person's own "allow solo review" asks again). A 👍 after a rebind or
+  after switching off changes nothing. "Switched on again while the bypass was being taken out" now asks again
+  instead of putting it back on its own.
+- **Known limit**: @pm's GitHub App is read-only and can't see a ruleset's bypass list, so a bypass a person
+  added by hand is "known" only once a ruleset task reported it (`already`); but an Autonomous admin merge that
+  GitHub lets through never triggers the ask. Assist may ask once although the
+  bypass is already there; the owner's agent then answers "already lets repo admins merge" and changes nothing.
+- GPT review of this change: every ruleset ask names the repo it was consented to / recorded for and is sent
+  only while that is still the room's repo (`ask_ruleset(expect=...)`); records are written only for the
+  room's own repo, checked under the switch's lock (`write_solo(for_repo=...)`); the 👍 counts only from a
+  joined moderator read now; a malformed single-event read is off; a record left for another repo (e.g. across
+  a restart) is dropped by the next offer instead of blocking it; the switch and binding are read again after
+  the owner's agent is chosen; a failed repo read in the poll never drops the current repo's record. The
+  question takes a 👍, a reply to that very message, or the panel's Approve (whose card shows the question),
+  never a stray unthreaded "yes". Rejected: the 👍 emoji alone — a threaded reply or the Approve click is
+  equally that person's own act on that very question.
+- **Agents on older code** (independent review): code from before this default reads only an explicit @pm
+  event, on and for the room's repo, so "never set" looked off to it and it refused an admin merge @pm had
+  sent ("solo review is off in this room"). Before a step the agent re-checks (an admin merge, the ruleset
+  task) and when a moderator switches it on, @pm writes the switch out as on for the room's repo
+  (`pm_solo_code.record_on`; an off is never written as on). An agent whose reported code predates solo review
+  itself (`code_report.TASK_SINCE["solo_step"]`) gets no solo check or admin merge: the room is told it needs
+  an update first, it is asked to update through the auto-update scheduler, and `@pm retry #N` goes on.
+- Readiness ("Check readiness"), the panel's Mode card and the pinned status read the same state, so a room
+  that never set it shows solo review on; the readiness check counts a bypass only for the repo it checks.

@@ -135,11 +135,22 @@ class Flow(unittest.TestCase):
         self.github["permission"] = (200, {"permission": "write"})
         self.assertIn(f"@{LOGIN} isn't an admin of {REPO}", self.check())
 
-    def test_solo_for_another_repo_never_counts(self):
+    def test_a_bypass_known_for_another_repo_never_counts(self):
         self.report(CXA)
         self.report(CX2)
         self.lp.client.solo(True, repo="csheargm/elsewhere")
-        self.assertIn(github_setup.SOLO_FIX, self.check())
+        said = self.check()
+        self.assertIn("doesn't let repo admins merge past it yet", said)   # solo is on; that bypass isn't this repo's
+        self.assertNotIn("is ready", said)
+
+    def test_never_set_is_solo_on_by_default(self):
+        """Owner decision: a room that never set solo review has it on; the readiness check says so."""
+        self.report(CXA)
+        self.report(CX2)
+        self.lp.client.events.pop(solo_review.SOLO_EVENT, None)
+        said = self.check()
+        self.assertIn("Solo review is on", said)
+        self.assertNotIn(github_setup.SOLO_FIX, said)
 
     def test_missing_label_gives_github_steps_only_then(self):
         self.report(CXA)

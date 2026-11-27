@@ -40,7 +40,8 @@ HELP = ("Talk to me in plain words, for example:\n"
         "- **@pm show the plan**: the plan waiting for your 👍\n"
         "- **@pm send me my console link**: settings in a page (also the Hagency panel in this room)\n"
         "- **@pm retry #9**: a paused issue goes back in the queue (owner or maintainer)\n"
-        "- **@pm allow solo review**: testing alone? your other agent checks the work; 👍 to confirm (**@pm solo review off**)\n"
+        "- **@pm solo review off**: only another person's agent checks the work (solo review is on by default: "
+        "your other agent checks it; **@pm allow solo review** and 👍 turns it back on)\n"
         "- **@pm this room works on owner/name**: the GitHub repo for this room (one room per repo); "
         "**@pm remove the repo** takes it off\n"
         "- **@pm make me a project room**, **@pm find a project**, **@pm ask to join owner/name**\n"
@@ -218,8 +219,8 @@ class Chat(Addressing):
         p, gen = self.pending.get(room.room_id), self.generation.get(room.room_id, 0)
         if not p or time.time() > p["until"]:
             return False
-        if p.get("kind") != "plan_request" and sender != p.get("by"):
-            return False              # only the person who asked confirms (a stray "yes" from anyone else doesn't)
+        if p.get("kind") != "plan_request" and sender != p.get("by") and p.get("moderators") is not True:
+            return False              # only the person asked confirms (or any moderator: pm_solo_rules.offer_bypass)
         if p.get("kind") not in ("bring", "setting", "implicit") and not await room_state.is_moderator(self.client, room, sender):
             return False              # authority re-checked now (your OWN agent needs none; implicit: act's own checks)
         if not self.still(room.room_id, gen, p):
@@ -235,7 +236,7 @@ class Chat(Addressing):
         elif p.get("kind") == "implicit":                       # pm_implicit.py: asked, as I wasn't named
             await self.do_implicit(room, sender, p, gen)
         elif p.get("kind") == "solo":                           # pm_solo.py: solo review on (moderator re-checked above)
-            await self.solo_confirmed(room, sender, p.get("repo"))
+            await self.solo_confirmed(room, sender, p.get("repo"), p.get("bypass") is True)   # or its GitHub bypass
         elif p.get("kind") == "bring":                          # pm_follow.py: "bring your agent? ✅"
             await self.invite_agent(room.room_id, p["agent"], "Your agent is on its way in.")
         else:                                 # a mode switch asked about with ✅ (ask_mode)
