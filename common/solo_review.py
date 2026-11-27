@@ -55,6 +55,8 @@ def event_state(ev: object, pm: str) -> dict:
     """One GET of SOLO_EVENT (?format=event): never set (404 M_NOT_FOUND) is the default; any other error is off."""
     if isinstance(ev, dict) and "_status" in ev:
         return default_state() if ev.get("_status") == 404 and ev.get("errcode") == "M_NOT_FOUND" else content(False)
+    if not isinstance(ev, dict) or ev.get("type") != SOLO_EVENT or ev.get("state_key") != "":
+        return content(False)             # GPT review: a malformed answer is never "never set"
     return state_in([ev], pm)
 
 

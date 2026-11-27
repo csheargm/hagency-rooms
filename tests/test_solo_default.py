@@ -71,7 +71,8 @@ class Default(Base):
         self.refused_merge()
         self.thumb(BETTY)                                             # not a moderator here
         self.assertEqual(self.tasks(solo_review.TASK_KIND), [])
-        with mock.patch("common.room_state.is_moderator", mock.AsyncMock(return_value=True)):
+        yes = mock.AsyncMock(return_value=True)
+        with mock.patch("common.room_state.is_moderator", yes), mock.patch("common.room_state.joined_moderator", yes):
             self.thumb(BETTY)                                         # a maintainer, not the owner asked
         self.assertEqual(len(self.tasks(solo_review.TASK_KIND)), 1)
 
@@ -125,12 +126,42 @@ class Default(Base):
         self.assertEqual(self.said[-1][0], ASK)
 
 
+class GptReview(Default):
+    """GPT review of the default-on change: every ruleset ask is for the repo consented to, read now."""
+
+    def test_a_rebind_between_the_thumb_and_the_task_sends_nothing(self):
+        self.run_(self.lp.ask_ruleset(self.room, CX, True, [], "o/old"))   # consented for o/old, bound to o/r
+        self.assertEqual(self.tasks(solo_review.TASK_KIND), [])
+        self.assertEqual(self.said[-1][0], pm_solo_rules.BYPASS_MOVED)
+
+    def test_a_late_record_for_another_repo_is_never_written(self):
+        err, _ = self.run_(self.lp.write_solo("!r", None, repo="o/old", asked="o/old", for_repo="o/old"))
+        self.assertEqual(err, pm_solo_rules.REPO_CHANGED)
+        self.assertNotIn(solo_review.SOLO_EVENT, self.lp.client.events)   # still never set
+
+    def test_a_stale_record_found_at_start_never_blocks_the_current_repos_ask(self):
+        self.run_(self.lp.write_solo("!r", None, repo=REPO, asked="o/old"))
+        self.lp.client.events[solo_review.SOLO_EVENT]["content"]["repo"] = "o/old"   # left from before a restart
+        self.run_(self.lp.follow_repo("!r", REPO))                    # first sight: no read here
+        self.assertTrue(self.run_(self.lp.offer_bypass("!r")))       # drops it, then asks for this repo
+        self.assertEqual((self.recorded()["repo"], self.recorded()["asked"]), (REPO, REPO))
+
+    def test_a_thumb_from_someone_no_longer_a_moderator_changes_nothing(self):
+        self.refused_merge()
+        with mock.patch("common.room_state.joined_moderator", mock.AsyncMock(return_value=False)):
+            self.thumb(CX)                                            # the cache still says moderator
+        self.assertEqual(self.tasks(solo_review.TASK_KIND), [])
+        self.assertEqual(self.said[-1][0], pm_solo_rules.NOT_MODERATOR)
+
+
 class Reads(unittest.TestCase):
     def test_one_event_read(self):
         """mcp_build's single GET: never set is on; any other failure is off (fail closed)."""
         self.assertTrue(solo_review.event_state({"_status": 404, "errcode": "M_NOT_FOUND"}, PM)["on"])
         self.assertFalse(solo_review.event_state({"_status": 403, "errcode": "M_FORBIDDEN"}, PM)["on"])
         self.assertFalse(solo_review.event_state({"_status": 500}, PM)["on"])
+        self.assertFalse(solo_review.event_state({}, PM)["on"])                  # GPT review: malformed is off
+        self.assertFalse(solo_review.event_state({"on": True}, PM)["on"])
         off = {"type": solo_review.SOLO_EVENT, "state_key": "", "sender": PM, "content": solo_review.content(False)}
         self.assertFalse(solo_review.event_state(off, PM)["on"])
         self.assertFalse(solo_review.state_in([{**off, "sender": CX, "content": {"on": True}}], PM)["on"])

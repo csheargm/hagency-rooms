@@ -75,6 +75,7 @@ class Base(unittest.TestCase):
                               ("common.room_state.is_moderator", mock.AsyncMock(side_effect=lambda c, r, u: u == CX)),
                               ("common.room_state.owners", mock.AsyncMock(return_value=[CX])),
                               ("common.room_state.owners_now", mock.AsyncMock(return_value=([CX], {CX}))),
+                              ("common.room_state.joined_moderator", mock.AsyncMock(side_effect=lambda c, r, u: u == CX)),
                               ("server.pm_solo_rules.cannot", lambda owner, agent: None),
                               ("common.code_report.runs_task", lambda code, kind: True)):   # older code: test_auto_update_flows
             # TODO(R4): this file is over 300 lines; split Merging (and Words) into test_solo_merging.py

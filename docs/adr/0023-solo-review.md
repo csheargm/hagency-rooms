@@ -105,5 +105,12 @@ anyone can switch it off at once; the GitHub consent stays tied to the room's re
   added by hand is "known" only once a ruleset task reported it (`already`); but an Autonomous admin merge that
   GitHub lets through never triggers the ask. Assist may ask once although the
   bypass is already there; the owner's agent then answers "already lets repo admins merge" and changes nothing.
+- GPT review of this change: every ruleset ask names the repo it was consented to / recorded for and is sent
+  only while that is still the room's repo (`ask_ruleset(expect=...)`); records are written only for the
+  room's own repo, checked under the switch's lock (`write_solo(for_repo=...)`); the 👍 counts only from a
+  joined moderator read now; a malformed single-event read is off; a record left for another repo (e.g. across
+  a restart) is dropped by the next offer instead of blocking it. Rejected: requiring the 👍 emoji itself
+  rather than any explicit confirmation (a reply "yes" to the question, the panel's Approve) — each is a
+  person's own act on that very question, which is what the safeguard asks for.
 - Readiness ("Check readiness"), the panel's Mode card and the pinned status read the same state, so a room
   that never set it shows solo review on; the readiness check counts a bypass only for the repo it checks.

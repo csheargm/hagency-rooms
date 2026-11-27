@@ -24,7 +24,7 @@ from server.pm_chat import ONLY_MODERATORS
 from server.pm_implicit import TO_CONFIRM
 from server.pm_paused import no_reviewer_steps, num
 from server.pm_settings import NEED_POWER
-from server.pm_solo_rules import KEEP, UNREADABLE, SoloRules
+from server.pm_solo_rules import KEEP, REPO_CHANGED, UNREADABLE, SoloRules
 
 SOLO_TASK = solo_review.TASK_KIND
 QUESTION = ("Turn on **solo review**? When no other person's agent is here, another of the builder's owner's own "
@@ -84,16 +84,19 @@ class Solo(SoloRules):
         return await self.solo_confirmed(room, user) or "ok"
 
     async def write_solo(self, rid: str, on: bool | None, change=None, repo=KEEP, ok: bool | None = None,
-                         asked=KEEP) -> tuple[str | None, dict | None]:
+                         asked=KEEP, for_repo: str | None = None) -> tuple[str | None, dict | None]:
         """Read and write the switch under one lock: (an error line or None, the state before). on/ok None and
         repo/asked KEEP keep them; an on/off given is a person's choice (no longer the default); change: recorded
-        rulesets → new ones. An unreadable room is never written (review: the fail-closed "off, nothing
-        recorded" read would erase the record)."""
+        rulesets → new ones; for_repo: written only while that is the room's repo and the record's (GPT review:
+        never another repo's GitHub part). An unreadable room is never written (review: the fail-closed "off,
+        nothing recorded" read would erase the record)."""
         async with self.__dict__.setdefault("_solo_lock", asyncio.Lock()):
             try:
                 before = await solo_review.read(self.client, rid, strict=True)
             except room_state.StateUnreadable:
                 return UNREADABLE, None
+            if for_repo and (before["bound"] != for_repo or before["repo"] not in (None, for_repo)):
+                return REPO_CHANGED, before
             added = set(before["bypass_added"])
             resp = await self.client.room_put_state(rid, solo_review.SOLO_EVENT, solo_review.content(
                 before["on"] if on is None else on, sorted(change(added) if change else added),
