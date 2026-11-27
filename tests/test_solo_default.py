@@ -146,6 +146,24 @@ class GptReview(Default):
         self.assertTrue(self.run_(self.lp.offer_bypass("!r")))       # drops it, then asks for this repo
         self.assertEqual((self.recorded()["repo"], self.recorded()["asked"]), (REPO, REPO))
 
+    def test_a_failed_repo_read_in_the_poll_never_erases_the_bypass_record(self):
+        """GPT re-check: the poll's repo_of gives None on a failed read; the record of o/r must stay."""
+        self.answer_known_bypass()
+        self.run_(self.lp.follow_repo("!r", REPO))
+        self.run_(self.lp.follow_repo("!r", None))                    # o/r is still bound
+        self.assertTrue(solo_review.bypass_ok(self.recorded(), REPO))
+
+    def test_switched_off_while_the_agent_was_chosen_sends_nothing(self):
+        real = self.lp.ruleset_agent
+
+        async def slow(room, sender):         # someone says "solo review off" meanwhile
+            await self.lp.write_solo("!r", False)
+            return await real(room, sender)
+        self.lp.ruleset_agent = slow
+        self.run_(self.lp.ask_ruleset(self.room, CX, True, [], REPO))
+        self.assertEqual(self.tasks(solo_review.TASK_KIND), [])
+        self.assertEqual(self.said[-1][0], pm_solo_rules.BYPASS_OFF)
+
     def test_a_thumb_from_someone_no_longer_a_moderator_changes_nothing(self):
         self.refused_merge()
         with mock.patch("common.room_state.joined_moderator", mock.AsyncMock(return_value=False)):

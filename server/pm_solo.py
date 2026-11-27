@@ -84,18 +84,21 @@ class Solo(SoloRules):
         return await self.solo_confirmed(room, user) or "ok"
 
     async def write_solo(self, rid: str, on: bool | None, change=None, repo=KEEP, ok: bool | None = None,
-                         asked=KEEP, for_repo: str | None = None) -> tuple[str | None, dict | None]:
+                         asked=KEEP, for_repo: str | None = None, stale: str | None = None
+                         ) -> tuple[str | None, dict | None]:
         """Read and write the switch under one lock: (an error line or None, the state before). on/ok None and
         repo/asked KEEP keep them; an on/off given is a person's choice (no longer the default); change: recorded
         rulesets → new ones; for_repo: written only while that is the room's repo and the record's (GPT review:
-        never another repo's GitHub part). An unreadable room is never written (review: the fail-closed "off,
+        never another repo's GitHub part); stale: only while the record is still that repo's and it isn't the
+        room's repo (a drop never erases the current repo's record). An unreadable room is never written (review: the fail-closed "off,
         nothing recorded" read would erase the record)."""
         async with self.__dict__.setdefault("_solo_lock", asyncio.Lock()):
             try:
                 before = await solo_review.read(self.client, rid, strict=True)
             except room_state.StateUnreadable:
                 return UNREADABLE, None
-            if for_repo and (before["bound"] != for_repo or before["repo"] not in (None, for_repo)):
+            if (for_repo and (before["bound"] != for_repo or before["repo"] not in (None, for_repo))
+                    or stale and (before["repo"] != stale or before["bound"] == stale)):
                 return REPO_CHANGED, before
             added = set(before["bypass_added"])
             resp = await self.client.room_put_state(rid, solo_review.SOLO_EVENT, solo_review.content(

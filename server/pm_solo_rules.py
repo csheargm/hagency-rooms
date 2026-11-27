@@ -77,12 +77,17 @@ class SoloRules:
         the room's (GPT review: a rebind in between never gets the task). Never silent: what can't be done is
         said, with what to change."""
         rid = room.room_id
-        repo = await room_state.repo_of(self.client, rid)
-        if repo != expect:                    # solo is only switched on with a repo; its removal says what's left
-            if repo and on:
-                await self.say(rid, BYPASS_MOVED)
-            return
         agent, old = await self.ruleset_agent(room, sender)
+        try:                                  # read after the agent is chosen (GPT review: a switch-off meanwhile)
+            state = await solo_review.read(self.client, rid, strict=True)
+        except room_state.StateUnreadable:
+            await self.say(rid, UNREADABLE)
+            return
+        repo = state["bound"]
+        if repo != expect or (on and not solo_review.live(state, repo)):   # solo is only on with a repo; its
+            if repo and on:                                                 # removal says what's left
+                await self.say(rid, BYPASS_MOVED if repo != expect else BYPASS_OFF)
+            return
         if agent is None and old:             # an owner's agent is here, on code from before the task
             await self.needs_update(rid, *old, on, bool(ids))
             return
@@ -109,7 +114,9 @@ class SoloRules:
     async def left_on(self, rid: str, state: dict, lead: str = "") -> None:
         """Say that the bypass stays on the old repo, and forget that repo's GitHub part (nothing here can reach
         that repo anymore)."""
-        err, _ = await self.write_solo(rid, None, lambda s: set(), repo=None, ok=False, asked=None)
+        err, _ = await self.write_solo(rid, None, lambda s: set(), repo=None, ok=False, asked=None, stale=state["repo"])
+        if err == REPO_CHANGED:               # the record is the room's own repo's again: nothing left to name
+            return
         where = state["repo"] or "the room's earlier repo"
         await self.say(rid, lead + (f"{err} " if err else "") + f"Hagency's admin bypass is still in the review rule "
                        f"on {where}. " + solo_review.TAKE_OUT.format(repo=where))
@@ -122,9 +129,11 @@ class SoloRules:
         seen = self.__dict__.setdefault("_solo_seen", {})
         if rid in seen and seen[rid] != repo:   # first sight (a start): offer_bypass drops a stale record itself
             try:
-                await self.drop_other_repo(rid, await solo_review.read(self.client, rid, strict=True), repo)
+                state = await solo_review.read(self.client, rid, strict=True)
             except room_state.StateUnreadable:
                 return                        # asked again at the next poll
+            await self.drop_other_repo(rid, state, state["bound"])   # GPT review: the binding of this read, never
+            repo = state["bound"]                                    # the poll's (None on a failed read)
         seen[rid] = repo
         by, bound = self.__dict__.setdefault("_solo_bound", {}).pop(rid, (None, None))
         if repo and bound == repo:
@@ -138,7 +147,8 @@ class SoloRules:
         if state["bypass_added"]:
             await self.left_on(rid, state, f"This room's repo changed, so what solo review set up on GitHub for "
                                            f"{state['repo']} doesn't carry over. ")
-        elif (err := (await self.write_solo(rid, None, repo=None, ok=False, asked=None))[0]):
+        elif (err := (await self.write_solo(rid, None, repo=None, ok=False, asked=None, stale=state["repo"]))[0]) \
+                and err != REPO_CHANGED:
             await self.say(rid, err)
         return True
 
