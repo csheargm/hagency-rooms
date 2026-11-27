@@ -180,3 +180,11 @@ class PmReadsTheReport(pm_side.Flow):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Deadlines(unittest.TestCase):
+    def test_pm_waits_longer_than_the_agents_worst_case_including_the_token_check(self):
+        """GPT re-check: the 15 s token probe ran before the sign-in, so a valid code could arrive after @pm gave up."""
+        from common import github_login, kind_report
+        worst = github_login.PROBE_S + github_login.HELP_S + github_login.CODE_WAIT_S + kind_report.SEND_TIMEOUT_S
+        self.assertGreater(github_login.PM_CODE_WAIT_S, worst)

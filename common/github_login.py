@@ -29,11 +29,12 @@ STATE_TYPE = "xyz.hagencylabs.agent.github.state"      # agent → @pm: {"state"
                                                        # "startup" (+ "id" of a click it runs), else "id" of its click
 RESULTS = ("signed_in", "failed", "timeout", "no_gh", "too_old_gh", "already")
 STATES = ("signed_in", "none", "no_gh")
-# How long each side waits for gh's code. @pm waits longer than the agent's worst case (its --help, its wait
-# for the code, the send), so a code the agent sent is never refused as late (review, 2026-11-26).
+# How long each side waits for gh's code. @pm waits longer than the agent's worst case (its token check, its
+# --help, its wait for the code, the send), so a code the agent sent is never refused as late (review, 2026-11-26).
 HELP_S = 30                                   # `gh auth login --help`, and gh's exit after the sign-in
+PROBE_S = 15                                  # the agent's check that its saved token still works
 CODE_WAIT_S = 60                              # gh prints its code at once; nothing by then: it failed
-PM_CODE_WAIT_S = HELP_S + CODE_WAIT_S + 2 * kind_report.SEND_TIMEOUT_S
+PM_CODE_WAIT_S = PROBE_S + HELP_S + CODE_WAIT_S + 2 * kind_report.SEND_TIMEOUT_S
 
 
 def folder(agent: str) -> Path:
