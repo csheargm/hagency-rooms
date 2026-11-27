@@ -86,7 +86,19 @@ def files(values: dict) -> dict[str, str]:
     """{file name in OUT: its text}: the filled-in page and the images."""
     out = {"home.html": home_page(values["SERVER_NAME"])}
     out.update({name: (SOURCE / name).read_text() for name in STATIC})
+    out[DOCK_JS] = dock_script(values["SERVER_NAME"])
     return out
+
+
+def dock_script(server_name: str) -> str:
+    """panel-dock.js with @pm's ID and the panel's URL template, as JS strings: it re-docks only the widget
+    @pm added at exactly that URL (GPT review)."""
+    script = (SOURCE / DOCK_JS).read_text()
+    for placeholder, value in ((f'"{PM_PLACEHOLDER}"', pm_id(server_name)), ('"__PANEL_TEMPLATE__"', PANEL_TEMPLATE)):
+        if placeholder not in script:
+            raise SystemExit(f"✗ {SOURCE / DOCK_JS} has no {placeholder}: the panel button would never show")
+        script = script.replace(placeholder, json.dumps(value))
+    return script
 
 
 def config_text(values: dict) -> str:

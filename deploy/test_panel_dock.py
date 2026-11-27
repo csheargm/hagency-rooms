@@ -30,19 +30,25 @@ style="height:40px;width:600px"></div><div class="mx_PinnedMessageBanner" style=
 <pre id="result"></pre><script>
 const SCENARIO = __SCENARIO__, moves = [], errors = [];
 window.addEventListener("error", e => errors.push(String(e.message)));
-const room = {roomId: "!r"};
-const mine = {id: "hagency", url: location.origin + "/panel?room=$matrix_room_id"};
-const theirs = {id: "hagency", url: "https://evil.example/panel?room=$matrix_room_id"};
-let right = SCENARIO === "foreign" ? [theirs] : [mine];
-if (SCENARIO !== "no_element") window.mxSdkContext = {client: {getRoom: id => id === "!r" ? room : null},
-  roomViewStore: {getRoomId: () => "!r"},
-  widgetLayoutStore: {getContainerWidgets: (r, c) => c === "right" ? right : [],
+const rooms = {"!r": {roomId: "!r"}, "!other": {roomId: "!other"}};
+let onScreen = "!r";
+const panel = (url, creatorUserId) => ({id: "hagency", url, creatorUserId});
+const URL_ = location.origin + "/panel?room=$matrix_room_id", PM = "@pm:m";
+const right = {mine: panel(URL_, PM), switched: panel(URL_, PM), full: panel(URL_, PM),
+  foreign: panel("https://evil.example/panel?room=$matrix_room_id", PM),
+  lookalike: panel(location.origin + "/panel?room=$matrix_room_id&x=1", PM), not_pm: panel(URL_, "@eve:m")};
+let widgets = SCENARIO in right ? [right[SCENARIO]] : [right.mine];
+if (SCENARIO !== "no_element") window.mxSdkContext = {client: {getRoom: id => rooms[id] || null},
+  roomViewStore: {getRoomId: () => onScreen},
+  widgetLayoutStore: {getContainerWidgets: (r, c) => c === "right" ? widgets : [],   // both rooms: minimised
     canAddToContainer: () => SCENARIO !== "full",
-    moveToContainer: (r, app, c) => { moves.push([r.roomId, app.id, c]); right = right.filter(w => w !== app); }}};
+    moveToContainer: (r, app, c) => { moves.push([r.roomId, app.id, c]); widgets = widgets.filter(w => w !== app); }}};
 const b = () => document.getElementById("hagency-dock");
 const seen = () => !!b() && !b().hidden;
 setTimeout(() => {
-  const out = {before: seen(), title: b() ? b().title : "", top: b() ? b().style.top : ""};
+  const out = {before: seen(), title: b() ? b().title : "", top: b() ? b().style.top : "",
+               name: b() ? b().textContent : "", disabled: b() ? b().getAttribute("aria-disabled") : ""};
+  if (SCENARIO === "switched") onScreen = "!other";   // another room opened; the button is still the old one's
   if (b()) b().click();
   setTimeout(() => {
     Object.assign(out, {moves, after: seen(), errors});
@@ -57,16 +63,22 @@ class Wiring(unittest.TestCase):
         conf = (HERE / "element-nginx.conf").read_text()
         self.assertIn(f'<script src="{element_home.PREFIX}/{element_home.DOCK_JS}" defer></script></head>', conf)
         self.assertIn(element_home.DOCK_JS, element_home.STATIC)              # written out, and Caddy routes STATIC
-        self.assertIn("moveToContainer", element_home.files({"ROOMS_DOMAIN": "r", "MATRIX_DOMAIN": "m",
-                                                             "SERVER_NAME": "m"})[element_home.DOCK_JS])
+        script = element_home.files({"ROOMS_DOMAIN": "r", "MATRIX_DOMAIN": "m", "SERVER_NAME": "m"})[element_home.DOCK_JS]
+        self.assertIn('PM = "@pm:m", PANEL_URL = location.origin + "/panel?room=$matrix_room_id"', script)
+        self.assertNotIn("__", script.split("PANEL_URL")[1].split(";")[0])     # every placeholder filled in
         names = [n for n, _ in health.checks("https://r", "https://m", "https://r", "m", "m", public=True)]
         self.assertIn("Element loads the Hagency panel button (ADR 0026)", names)
 
     def test_it_only_ever_moves_our_own_panel_to_the_top(self):
         src = (element_home.SOURCE / element_home.DOCK_JS).read_text()
         self.assertEqual(re.findall(r'moveToContainer\([^)]*\)', src), ['moveToContainer(now.room, now.app, "top")'])
-        self.assertIn('u.origin === location.origin && u.pathname === PANEL_PATH', src)
+        self.assertIn("w.id === WIDGET_ID && w.url === PANEL_URL && w.creatorUserId === PM", src)
         self.assertNotIn("innerHTML", src)                                     # nothing from a room is drawn as HTML
+
+
+class Quiet(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args):          # the test's own page requests: not worth a line each
+        pass
 
 
 @unittest.skipIf(CHROME is None, "Chrome not installed")
@@ -74,9 +86,8 @@ class InABrowser(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.folder = tempfile.TemporaryDirectory()
-        shutil.copy(element_home.SOURCE / element_home.DOCK_JS, cls.folder.name)
-        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=cls.folder.name)
-        handler.log_message = lambda *a: None
+        (Path(cls.folder.name) / element_home.DOCK_JS).write_text(element_home.dock_script("m"))   # as deployed
+        handler = functools.partial(Quiet, directory=cls.folder.name)
         cls.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -99,17 +110,26 @@ class InABrowser(unittest.TestCase):
         return json.loads(found.group(1).replace("&quot;", '"').replace("&amp;", "&"))
 
     def test_a_minimised_panel_gets_a_button_that_puts_it_back(self):
-        out = self.run_page("minimised")
+        out = self.run_page("mine")
         self.assertTrue(out["before"])
         self.assertEqual(out["title"], "Put the Hagency panel back above the chat (it was minimised).")
+        self.assertEqual((out["name"], out["disabled"]), ("▾ Hagency panel", "false"))
         self.assertEqual(out["top"], "84px")           # under the header and pinned banner: 8 + 40 + 30, then 6
         self.assertEqual(out["moves"], [["!r", "hagency", "top"]])
         self.assertFalse(out["after"])                                         # back on top: the button goes
         self.assertEqual(out["errors"], [])
 
     def test_another_page_under_our_widget_id_gets_no_button(self):
-        out = self.run_page("foreign")
-        self.assertEqual((out["before"], out["moves"], out["errors"]), (False, [], []))
+        """GPT review: a member who may write widgets could put a lookalike under our ID; only @pm's, at our URL."""
+        for scenario in ("foreign", "lookalike", "not_pm"):
+            out = self.run_page(scenario)
+            self.assertEqual((out["before"], out["moves"], out["errors"]), (False, [], []), scenario)
+
+    def test_a_click_after_switching_rooms_moves_nothing(self):
+        """GPT review: the button drawn for one room never re-docks the next one's panel."""
+        out = self.run_page("switched")
+        self.assertTrue(out["before"])
+        self.assertEqual((out["moves"], out["errors"]), ([], []))
 
     def test_without_elements_stores_nothing_shows_and_nothing_breaks(self):
         out = self.run_page("no_element")
@@ -119,6 +139,7 @@ class InABrowser(unittest.TestCase):
         out = self.run_page("full")
         self.assertTrue(out["before"])
         self.assertIn("top area is full", out["title"])
+        self.assertEqual(out["disabled"], "true")
         self.assertEqual(out["moves"], [])
 
 

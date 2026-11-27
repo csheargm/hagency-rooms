@@ -28,8 +28,12 @@ Accepted, 2026-11-27.
 ## Decision
 Option 3. `deploy/element_page/panel-dock.js`, linked into Element's `index.html` by
 `element-nginx.conf` (the same `sub_filter` as `element-fixes.css`) and served by Caddy at `/hagency/`.
-- Only our own panel: widget id `hagency` whose page is this origin's `/panel`.
-- The person's own layout, in that room only. Others' layouts and the room's state are untouched.
+- Only our own panel: widget id `hagency`, added by @pm (Element's `creatorUserId` is the state event's
+  sender), at exactly this origin's panel URL template. `element_home.dock_script` fills both in. A member
+  who may write widgets can't get a lookalike re-docked.
+- The button is bound to the room it was drawn for. A click after switching rooms moves nothing.
+- The person's own layout, in that room only. Others' layouts and the room's state are untouched. As with
+  Element's pin, a maximised widget in that room goes back to the side (`moveToContainer` to top, v1.12.35).
 - Element internals that change in a later version: the button isn't shown, nothing else breaks. Element's
   own path stays the fallback. The panel's footer names it, and so does this ADR.
 - No `innerHTML`; nothing from a room is drawn.
