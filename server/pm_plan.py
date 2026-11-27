@@ -79,8 +79,10 @@ class Planner:
         events = api("GET", path, token=self.client.access_token).get("chunk", [])
         lines = []
         for ev in reversed(events):
-            content = ev.get("content", {})
-            body = content.get("body", "")
+            content = ev.get("content")
+            body = content.get("body", "") if isinstance(content, dict) else ""
+            if not isinstance(body, str):     # anyone can send a malformed event: never let it stop the reading
+                continue
             if (not include_self and ev.get("sender") == self.user_id and FILED_RE.match(body)
                     and "format" in content):     # a model's reply is sent plain (say(plain=True)): never this line
                 lines = []                    # filed already: only what was said since is a new ask (live test)
