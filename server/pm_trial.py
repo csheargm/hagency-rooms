@@ -17,9 +17,8 @@ from server import trial_models
 
 log = logging.getLogger("loop")
 TRIAL = "🧪"
-# "try the server agent", "server agent" alone; "trial": its old name
-TRIAL_RE = re.compile(r"\b(try|use|start|want|give me|get)\b.{0,20}\b(trial|server agent)\b"
-                      r"|^\W*(trial( agent)?|server agent)\W*$", re.I)
+# "try the server agent"; "trial" (alone too): its old name. "server agent" alone is pm_first.SERVER_ON (GPT review)
+TRIAL_RE = re.compile(r"\b(try|use|start|want|give me|get)\b.{0,20}\b(trial|server agent)\b|^\W*trial( agent)?\W*$", re.I)
 LINE = ("\n\nOr right away: 🧪 **Server agent (free, limited)**, a shared AI this server runs for everyone, for talking "
         "only (questions, ideas, reading a pull request). Click 🧪 below, or type \"try the server agent\".")
 READY = ("🧪 Your server agent is ready: accept its chat invite, **Server agent**, under Invites (top left), and "

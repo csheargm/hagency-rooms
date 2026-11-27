@@ -53,7 +53,7 @@ class OwnerWithAgents(TrialBase):
 
     def test_typing_try_the_server_agent_starts_it_and_a_mention_in_passing_explains_it(self):
         self.lp._welcomes[NEW] = {"dm": "!dm", "offer": "$offer", "done": []}
-        for words in ("What is the server agent?", "house agent"):     # GPT review: never enrolled in passing
+        for words in ("What is the server agent?", "house agent", "server agent"):     # GPT review: never enrolled in passing
             self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, words))))
             self.assertEqual(said_to(self, "!dm")[-1], pm_first.SERVER_ON)
         self.run_(self.lp.on_welcome_reaction(DM, reaction(NEW, "🏠")))   # an old offer's 🏠: no more "not here yet"
