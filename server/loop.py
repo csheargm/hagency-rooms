@@ -200,7 +200,8 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
                 kind in CHECKER_KINDS and not await self.may_check(room, key, item, sender)):
             return   # only the agent the step was given to; a checker of ANOTHER person's work, or solo (pm_solo.py)
         if result.get("error"):
-            await self.stop(room.room_id, key, item, failure(sender.split(":")[0][1:], kind, result["error"]))
+            await self.stop(room.room_id, key, item, failure(sender.split(":")[0][1:], kind, result["error"]),
+                            self.merge_failed_steps(item, key, kind))   # pm_solo.py: an admin merge GitHub refused
         elif kind == "build" and result.get("already_done"):
             item["stage"] = "verifying"     # the builder's "nothing to do" needs a second agent's check
             await self.ask_checker(room, item, key)
@@ -231,7 +232,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
             item["no_checker"] = True       # "@pm retry #N" goes back to this step, PR kept (pm_solo.check_again)
             who = "other agent of the builder's owner" if solo else "second person's agent"
             await self.stop(room.room_id, key, item, f"there's no {who} here to {what.split()[0]} it",
-                            self.no_checker_steps(num(key), steps, solo))
+                            self.no_checker_steps(num(key), steps, solo, room, item))
             return False
         item.update(reviewer=others[num(key) % len(others)], solo=solo)
         await self.say(room.room_id, f"{what.split()[0]} requested from {item['reviewer'].split(':')[0][1:]}")

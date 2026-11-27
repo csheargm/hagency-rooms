@@ -9,7 +9,7 @@ from unittest import mock
 
 from nio import RoomGetStateResponse
 
-from common import intents, pm_actions, solo_review
+from common import github, intents, pm_actions, room_state, solo_review
 from server import pm_solo, routing
 from server.loop import Loop
 
@@ -28,8 +28,16 @@ class FakeClient:
     def __init__(self):
         self.events: dict[str, dict] = {}
         self.room_send = mock.AsyncMock()
+        self.unreadable = False
+        self.bind(REPO)
+
+    def bind(self, repo):
+        content = room_state.content("assist", repo) if repo else room_state.unbound()
+        self.events[github.LEVEL_EVENT] = {"type": github.LEVEL_EVENT, "state_key": "", "sender": PM, "content": content}
 
     async def room_get_state(self, rid):
+        if self.unreadable:
+            return SimpleNamespace(status_code="M_UNKNOWN")      # a 5xx / timeout: not a state response
         return RoomGetStateResponse(list(self.events.values()), rid)
 
     async def room_put_state(self, rid, kind, content, state_key=""):
@@ -248,6 +256,57 @@ class Room(Base):
             self.run_(self.lp.retry(self.room, CX, 7))
         self.assertEqual((item["stage"], item["no_checker"]), ("stopped", True))
 
+    def test_an_unreadable_room_is_never_written(self):
+        """Review: the fail-closed read ("off, nothing recorded") was written back, erasing the bypass record."""
+        self.enable()
+        self.answer(self.job(), on=True, changed=[42], already=[])
+        self.lp.client.unreadable = True
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
+        self.assertIn("couldn't read this room's settings", self.said[-1][0])
+        self.lp.client.unreadable = False
+        self.assertEqual((self.recorded()["on"], self.recorded()["bypass_added"]), (True, [42]))
+
+    def test_solo_review_needs_the_rooms_repo_first(self):
+        self.lp.client.bind(None)
+        self.enable()
+        self.assertIn("Pick this room's GitHub repo first", self.said[-1][0])
+        self.assertFalse(self.recorded()["on"])
+
+    def test_a_new_repo_never_inherits_solo_review_and_the_old_bypass_is_named(self):
+        self.enable()
+        self.answer(self.job(), on=True, changed=[42], already=[])
+        self.run_(self.lp.follow_repo("!r", REPO))            # first sight
+        self.lp.client.bind("o/other")
+        self.assertFalse(self.run_(self.lp.solo_on("!r")))     # off for the new repo at once
+        self.run_(self.lp.follow_repo("!r", "o/other"))
+        said = self.said[-1][0]
+        self.assertIn("solo review is off now", said)
+        self.assertIn(f"{REPO} → Settings → Rules", said)
+        self.assertEqual((self.recorded()["on"], self.recorded()["bypass_added"]), (False, []))
+
+    def test_solo_off_after_the_repo_was_removed_says_whats_left(self):
+        self.enable()
+        self.answer(self.job(), on=True, changed=[42], already=[])
+        asks = len(self.tasks(solo_review.TASK_KIND))
+        self.lp.client.bind(None)
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
+        self.assertIn(f"still in the review rule on {REPO}", self.said[-1][0])
+        self.assertEqual(len(self.tasks(solo_review.TASK_KIND)), asks)   # nothing sent where it can't go
+        self.assertEqual(self.recorded()["bypass_added"], [])
+
+    def test_a_removal_drops_deleted_rulesets_from_the_record(self):
+        self.enable()
+        self.answer(self.job(), on=True, changed=[11, 42], already=[])
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
+        self.answer(self.job(), on=False, changed=[42], gone=[11], already=[])
+        self.assertEqual(self.recorded()["bypass_added"], [])
+
+    def test_an_offline_second_agent_is_named_not_called_missing(self):
+        self.enable()
+        self.lp.agent_online = lambda a: a != "cx-codex-agent"
+        self.built()
+        self.assertIn("cx-codex-agent is offline", self.said[-1][0])
+
     def test_from_the_panel_on_needs_a_moderator_off_does_not(self):
         self.assertIn("only the room owner", self.run_(self.lp.solo_from_panel(self.room, BETTY, "on")))
         self.assertEqual(self.run_(self.lp.solo_from_panel(self.room, CX, "on")), "ok")
@@ -283,10 +342,54 @@ class Merging(Base):
         merge = self.tasks("merge")[-1]
         self.assertEqual((item["stage"], merge["admin"], merge["sha"]), ("merging", True, "abc"))
 
+    def approved_with_bypass(self, lvl, already=True):
+        self.enable()
+        self.answer(self.job(), on=True, changed=[], already=[42] if already else [])
+        item = self.built()
+        item.update(stage="approved", sha="abc")
+        info = {"state": "OPEN", "mergeable": "MERGEABLE", "headRefOid": "abc", "reviewDecision": "REVIEW_REQUIRED"}
+        with mock.patch("common.github.merge_ready", mock.AsyncMock(return_value=(False, info))):
+            self.run_(self.lp.advance("!r", KEY, item, lvl))
+        return item
+
     def test_assist_tells_the_person_how_to_merge(self):
-        item = self.approved("assist")
+        item = self.approved_with_bypass("assist")
         self.assertEqual(item["stage"], "ready")
         self.assertIn("Merge without waiting for requirements", self.said[-1][0])
+
+    def test_assist_without_the_bypass_says_how_to_add_it_not_a_button_that_isnt_there(self):
+        item = self.approved_with_bypass("assist", already=False)
+        self.assertEqual(item["stage"], "ready")
+        self.assertNotIn("Merge without waiting", self.said[-1][0])
+        self.assertIn("Bypass list", self.said[-1][0])
+
+    def test_approved_in_solo_then_switched_off_pauses_for_another_persons_check(self):
+        """Review: it still took the admin-merge path, and its pause couldn't be retried."""
+        self.enable()
+        item = self.built()
+        item.update(stage="approved", sha="abc")
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
+        info = {"state": "OPEN", "mergeable": "MERGEABLE", "headRefOid": "abc", "reviewDecision": "REVIEW_REQUIRED"}
+        with mock.patch("common.github.merge_ready", mock.AsyncMock(return_value=(False, info))):
+            self.run_(self.lp.advance("!r", KEY, item, "autonomous"))
+        self.assertEqual((item["stage"], item["no_checker"]), ("stopped", True))
+        self.assertEqual(self.tasks("merge"), [])
+        self.agents = [CXA, CXC, BA]
+        self.run_(self.lp.retry(self.room, CX, 7))
+        self.assertEqual((item["stage"], item["reviewer"]), ("reviewing", BA))
+
+    def test_a_refused_admin_merge_says_how_to_fix_it_and_retry_merges_again(self):
+        item = self.approved("autonomous")
+        self.run_(self.lp.on_result(self.room, CXA, {"kind": "merge", "issue": 7, "pr": 9, "task_id": item["task_id"],
+                                                     "error": solo_review.NO_BYPASS}))
+        paused = self.said[-1][0]
+        self.assertEqual(item["stage"], "stopped")
+        self.assertIn("Bypass list", paused)
+        self.assertIn("Review and merge it on GitHub", paused)
+        self.assertNotIn("Make the issue clearer", paused)
+        self.run_(self.lp.retry(self.room, CX, 7))
+        self.assertEqual(item["stage"], "approved")          # the merge is tried again; the PR is kept
+        self.assertIs(self.lp.state[KEY], item)
 
     def test_a_red_check_never_merges(self):
         self.enable()

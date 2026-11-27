@@ -2,7 +2,9 @@
 agent adapter (adapters/agents/solo_github.py) read and write exactly these.
 
 A room's switch lives in its own Matrix state (SOLO_EVENT), written only by @pm after its checks, and it
-counts only if @pm wrote it (like the room's repo and mode: room_state.binding_in). Off by default.
+counts only if @pm wrote it (like the room's repo and mode: room_state.binding_in). Off by default. It names
+the repo it was switched on for: a room whose repo changed (or was removed) is off (review: consent is for that
+repo's rules), and @pm says what was left on the old repo (pm_solo.follow_repo).
 """
 from nio import AsyncClient, RoomGetStateResponse
 
@@ -15,13 +17,16 @@ ADMIN_BYPASS = {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "p
 NO_BYPASS = "GitHub's review rule doesn't let this account merge past it"   # in a failed merge's error
 BYPASS_STEPS = ("**To let it merge:** on GitHub open **{repo} → Settings → Rules → Rulesets**, open the rule that "
                 "requires a pull request review, and under **Bypass list** add **Repository admin** with "
-                "**For pull requests only**. Or switch Solo review off and on again in the panel: the room owner's "
-                "agent adds it for you when its GitHub account is the repo's admin.")
+                "**For pull requests only**.")
+TAKE_OUT = ("On GitHub open **{repo} → Settings → Rules → Rulesets** and take **Repository admin** out of the "
+            "Bypass list of the review rule (Hagency added it there).")
 
 
-def content(on: bool, added: list[int] | None = None) -> dict:
-    """added: the rulesets whose admin bypass Hagency itself added (only those are taken out again)."""
-    return {"on": on is True, "bypass_added": sorted({int(i) for i in (added or [])})}
+def content(on: bool, added: list[int] | None = None, repo: str | None = None, ok: bool = False) -> dict:
+    """added: the rulesets whose admin bypass Hagency itself added (only those are taken out again); repo: the
+    repo it was switched on for; ok: GitHub's review rule is known to let repo admins merge past it."""
+    return {"on": on is True, "bypass_added": sorted({int(i) for i in (added or [])}),
+            "repo": repo if isinstance(repo, str) else None, "ok": ok is True}
 
 
 def state_in(events: list, pm: str) -> dict:
@@ -32,20 +37,30 @@ def state_in(events: list, pm: str) -> dict:
             if isinstance(c, dict):
                 added = c.get("bypass_added")
                 ids = [i for i in added if isinstance(i, int)] if isinstance(added, list) else []
-                return content(c.get("on") is True, ids)
+                return content(c.get("on") is True, ids, c.get("repo"), c.get("ok"))
     return content(False)
 
 
-async def read(client: AsyncClient, room_id: str) -> dict:
-    """This room's solo review state now; unreadable reads as off (fail closed)."""
+def live(state: dict, bound_repo: str | None) -> bool:
+    """On, and for the room's repo as it is now."""
+    return state["on"] and bool(bound_repo) and state["repo"] == bound_repo
+
+
+async def read(client: AsyncClient, room_id: str, strict: bool = False) -> dict:
+    """This room's solo review state now, with "bound": the room's repo from the same read. Unreadable: off (fail
+    closed), or with strict, room_state.StateUnreadable (never the base of a write: review)."""
     r = await client.room_get_state(room_id)
     if not isinstance(r, RoomGetStateResponse):
-        return content(False)
-    return state_in(r.events, room_state.pm_id(client))
+        if strict:
+            raise room_state.StateUnreadable(f"couldn't read {room_id}'s state: {r}")
+        return {**content(False), "bound": None}
+    pm = room_state.pm_id(client)
+    return {**state_in(r.events, pm), "bound": room_state.repo_in(room_state.binding_in(r.events, pm))}
 
 
 async def enabled(client: AsyncClient, room_id: str) -> bool:
-    return (await read(client, room_id))["on"]
+    state = await read(client, room_id)
+    return live(state, state["bound"])
 
 
 async def still_allowed(client: AsyncClient, room_id: str) -> bool:

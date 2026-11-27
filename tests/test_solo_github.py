@@ -24,15 +24,20 @@ class FakeGitHub:
                 rs["bypass_actors"] = list(bypass or [])
         self.rules = [{"type": "pull_request", "ruleset_id": 42, "ruleset_source_type": source},
                       {"type": "deletion", "ruleset_id": 42}, *extra_rules]
-        self.puts, self.ran, self.pr, self.branch = [], [], {}, {"protected": False}
+        self.puts, self.ran, self.pr, self.protection = [], [], {}, None   # None: no classic protection (404)
+        self.missing: set[int] = set()                                       # rulesets deleted on GitHub
 
     async def run_json(self, args, agent=None):
         if args[:2] == ["repo", "view"]:
             return {"defaultBranchRef": {"name": "main"}}
         if args[1] == f"repos/{REPO}/rules/branches/main?per_page=100":
             return self.rules
-        if args[1] == f"repos/{REPO}/branches/main":
-            return self.branch
+        if args[1] == f"repos/{REPO}/branches/main/protection":
+            if self.protection is None:
+                raise solo_github.GitHubError("gh: Branch not protected (HTTP 404)")
+            return self.protection
+        if args[1].startswith(f"repos/{REPO}/rulesets/") and int(args[1].rsplit("/", 1)[1]) in self.missing:
+            raise solo_github.GitHubError("gh: Not Found (HTTP 404)")
         if args[1].startswith(f"repos/{REPO}/rulesets/"):
             return self.rulesets[int(args[1].rsplit("/", 1)[1])]
         if args[:2] == ["pr", "view"]:
@@ -98,6 +103,13 @@ class Ruleset(unittest.TestCase):
                 self.go(gh, {"on": True})
             self.assertEqual(gh.puts, [])
 
+    def test_a_deleted_ruleset_never_blocks_the_others(self):
+        """Review: one stale id (deleted, or the room's earlier repo) stopped every later removal."""
+        gh = FakeGitHub(bypass=[solo_review.ADMIN_BYPASS])
+        gh.missing = {11}
+        out = self.go(gh, {"on": False, "rulesets": [11, 42]})
+        self.assertEqual((out["changed"], out["gone"], "error" in out), ([42], [11], False))
+
     def test_a_failure_part_way_still_reports_what_changed(self):
         gh = FakeGitHub(bypass=[solo_review.ADMIN_BYPASS])
         del gh.rulesets[43]["bypass_actors"]                    # 43 isn't readable: after 42 was changed
@@ -142,12 +154,30 @@ class AdminMerge(unittest.TestCase):
 
     def test_a_check_classic_protection_requires_must_be_there(self):
         gh = FakeGitHub()
-        gh.branch = {"protected": True, "protection": {"required_status_checks": {"contexts": ["deploy"]}}}
+        gh.protection = {"required_status_checks": {"contexts": ["deploy"]}}
         with self.assertRaisesRegex(ValueError, "require hasn't passed"):
             self.merge(gh)
-        gh.branch["protection"]["required_status_checks"] = {"checks": [{"context": "ci", "app_id": 15368}]}
+        gh.protection["required_status_checks"] = {"checks": [{"context": "ci", "app_id": 15368}]}
         with self.assertRaisesRegex(ValueError, "one particular app"):
             self.merge(gh)
+
+    def test_classic_protection_beyond_reviews_and_checks_is_a_persons_merge(self):
+        """Review: --admin also skips classic signed commits, resolved conversations and push limits."""
+        for prot, word in (({"required_signatures": {"enabled": True}}, "signed commits"),
+                           ({"required_conversation_resolution": {"enabled": True}}, "resolved conversations"),
+                           ({"restrictions": {"users": [], "teams": []}}, "who may push"),
+                           ({"required_pull_request_reviews": {"required_approving_review_count": 1},
+                             "required_signatures": {"enabled": False}}, None)):
+            gh = FakeGitHub()
+            gh.protection = prot
+            with self.subTest(word=word):
+                if word is None:
+                    self.merge(gh)
+                    self.assertIn("--admin", gh.ran[-1])
+                else:
+                    with self.assertRaisesRegex(ValueError, word):
+                        self.merge(gh)
+                    self.assertEqual(gh.ran, [])
 
     def test_switched_off_while_the_checks_ran_it_doesnt_merge(self):
         gh = FakeGitHub()

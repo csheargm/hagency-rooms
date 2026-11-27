@@ -59,6 +59,7 @@ class Progress:
         issues_of: dict[str, list] = {}               # one GitHub call per repo per poll
         for room_id, room in list(self.client.rooms.items()):   # a room joined mid-tick waits for the next one
             repo = await room_state.repo_of(self.client, room_id)
+            await self.follow_repo(room_id, repo)   # pm_solo_rules.py: a new repo (or none) never inherits solo review
             if repo is None:
                 self.room_repos.pop(room_id, None)
                 self.open_issues.pop(room_id, None)
@@ -208,7 +209,7 @@ class Progress:
                                "Nothing is paused here." if not paused else f"#{n} isn't paused. Paused here: {listed}.")
                 return
             item = self.state[key]
-        if item.get("no_checker"):            # paused only for want of a checker: back at that step (pm_solo.py)
+        if item.get("no_checker") or item.get("resume"):   # pm_solo.py: back at the check, or the merge, PR kept
             return await self.check_again(room, key, item)
         if why := await requeue(self, key, item, repo):   # GitHub is asked outside the lock (pm_paused)
             await self.say(rid, why)

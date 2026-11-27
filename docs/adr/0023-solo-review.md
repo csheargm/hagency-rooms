@@ -59,7 +59,20 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
   read too. The agent asks the room again (Autonomous, solo on) right before `--admin`, after waiting for checks.
 - A ruleset answer that reaches @pm while it is restarting is lost like any agent result then; the bypass is
   then still on GitHub but not recorded, and a person takes it out there.
-- If the room's repo changes while a bypass is recorded, its removal is refused (tasks are for the room's own
-  repo), and @pm says to take it out by hand.
+- **Consent is per repo**: the switch names the repo it was switched on for, and counts only while that is the
+  room's repo (`solo_review.live`; also re-read by the agent adapters). It is switched on only once the room has
+  a repo. When the repo changes or is removed, @pm switches it off and names the admin bypass Hagency left on the
+  old repo, with how to take it out by hand (an agent only works on the room's own repo). A change made while @pm
+  was down is not announced, but the switch is still off for the new repo, and "solo review off" still names it.
+- An unreadable room state is never the base of a write (the fail-closed "off, nothing recorded" read would
+  erase the record). A recorded ruleset that no longer exists is dropped from the record, and never blocks the
+  removal of the others.
+- An item checked in solo mode whose switch is off by merge time pauses for another person's check (`retry`
+  goes back to the review). An admin merge GitHub refuses pauses with how to let it merge, and `retry` tries the
+  merge again. Assist's "merge past the rules" advice is given only when the rule is known to let admins past.
+- Classic branch protection is read too (`branches/{b}/protection`): signed commits, resolved conversations,
+  push limits, a locked branch or blocked creations make the merge a person's.
+- A maintainer may switch it on, like every other owner-level setting here (ADR 0002); the bypass is added by
+  the room owner's agent as the owner. Reviewed and kept on purpose.
 - Hermes agents (MCP tools) can't run the ruleset task yet; @pm says the agent couldn't, with the manual steps.
 - Supersedes ADR 0016's "always another person's agent" for rooms that switched solo review on.

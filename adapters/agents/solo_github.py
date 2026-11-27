@@ -78,8 +78,14 @@ async def _put_bypass(agent: str, repo: str, rid: int, actors: list[dict]) -> No
 
 
 async def _change_one(agent: str, repo: str, rid: int, on: bool) -> str:
-    """"changed", "already" or "" for one ruleset (raises ValueError with what is wrong)."""
-    rs = await run_json(["api", f"repos/{repo}/rulesets/{rid}"], agent)
+    """"changed", "already" or "" (nothing of Hagency's there: "gone" when taking it out) for one ruleset; raises
+    ValueError with what is wrong."""
+    try:
+        rs = await run_json(["api", f"repos/{repo}/rulesets/{rid}"], agent)
+    except GitHubError as e:
+        if not on and "404" in str(e):        # deleted on GitHub (or not this repo's): nothing left to take out
+            return "gone"
+        raise
     if not isinstance(rs, dict) or not isinstance(rs.get("bypass_actors"), list):   # shown to admins only
         raise ValueError(NOT_ADMIN.format(repo=repo, why="the ruleset's bypass list isn't readable"))
     actors = [{k: a.get(k) for k in ACTOR_FIELDS} for a in rs["bypass_actors"] if isinstance(a, dict)]
@@ -87,33 +93,39 @@ async def _change_one(agent: str, repo: str, rid: int, on: bool) -> str:
         return "already"
     if on and (more := beyond_review(rs.get("rules") or [], checks_ok=False)):   # GPT review: a bypass covers the WHOLE ruleset
         raise ValueError(f"the ruleset \"{rs.get('name', rid)}\" on {repo} also requires {', '.join(more)}, which a "
-                         "bypass would skip too. Put the review rule in a ruleset of its own, then switch solo review on again")
+                         "bypass would skip too. Put the review rule in a ruleset of its own, then switch solo review "
+                         "off and on again")
     if not on and ADMIN_BYPASS not in actors:
-        return ""
+        return "gone"
     await _put_bypass(agent, repo, rid, [*actors, ADMIN_BYPASS] if on else [a for a in actors if a != ADMIN_BYPASS])
     return "changed"
 
 
 async def ruleset(agent: str, backend: str, base, task: dict) -> dict:
     """On: let repo admins merge past every review ruleset on the default branch. Off: take Hagency's entry out of
-    exactly the rulesets @pm recorded (GPT review: also one that no longer applies to the branch). A failure part
-    way still reports what was changed, so @pm keeps track of it."""
+    exactly the rulesets @pm recorded (GPT review: also one that no longer applies to the branch). One ruleset that
+    fails never stops the others (review: a deleted one blocked every later removal); what was done is reported
+    with the errors, so @pm keeps track of it."""
     repo, on = _repo(task), task.get("on") is True
     if on:
         targets = await review_rulesets(agent, repo)
     else:
         targets = [(i, "Repository") for i in task.get("rulesets") or [] if isinstance(i, int)]
-    done: dict[str, list[int]] = {"changed": [], "already": []}
-    try:
-        for rid, source in targets:
+    done: dict[str, list[int]] = {"changed": [], "already": [], "gone": []}
+    errors: list[str] = []
+    for rid, source in targets:
+        try:
             if source != "Repository":
                 raise ValueError(ORG_RULE.format(repo=repo))
             if outcome := await _change_one(agent, repo, rid, on):
                 done[outcome].append(rid)
-    except (ValueError, GitHubError) as e:
-        if not done["changed"]:
-            raise
-        return {"kind": TASK_KIND, "on": on, **done, "error": str(e)[:300], "line": f"⚠️ changed only part of {repo}'s rules"}
+        except (ValueError, GitHubError) as e:
+            errors.append(str(e)[:300])
+    if errors and not any(done.values()):
+        raise ValueError("; ".join(dict.fromkeys(errors)))
+    if errors:
+        return {"kind": TASK_KIND, "on": on, **done, "error": "; ".join(dict.fromkeys(errors))[:600],
+                "line": f"⚠️ changed only part of {repo}'s rules"}
     word = "let repo admins merge past" if on else "took the admin bypass out of"
     return {"kind": TASK_KIND, "on": on, **done, "line": f"{word} {len(done['changed'])} review rule(s) on {repo}"
             if done["changed"] else f"no review rule to change on {repo}"}
@@ -155,10 +167,31 @@ def required_checks_passed(rules: list[dict], rollup: object, classic: list[str]
     return all(name in ran and checks_state([ran[name]]) == "passed" for name in [*needed, *classic])
 
 
+CLASSIC_EXTRA = {"required_signatures": "signed commits", "required_conversation_resolution": "resolved conversations",
+                 "lock_branch": "a locked branch", "block_creations": "blocked creations"}
+
+
+async def classic_protection(agent: str, repo: str, branch: str) -> dict:
+    """The branch's classic protection ({} when it has none). Unreadable (not admin): ValueError."""
+    try:
+        info = await run_json(["api", f"repos/{repo}/branches/{urllib.parse.quote(branch, safe='')}/protection"], agent)
+    except GitHubError as e:
+        if "404" in str(e):                   # "Branch not protected": rulesets only (or nothing)
+            return {}
+        raise ValueError(f"couldn't read {repo}'s branch protection, so a person merges ({str(e)[:120]})") from e
+    return info if isinstance(info, dict) else {}
+
+
 async def classic_checks(agent: str, repo: str, branch: str) -> list[str]:
-    """The checks classic branch protection requires on the branch (none when it isn't protected that way)."""
-    info = await run_json(["api", f"repos/{repo}/branches/{urllib.parse.quote(branch, safe='')}"], agent)
-    req = ((info.get("protection") or {}).get("required_status_checks") or {}) if isinstance(info, dict) else {}
+    """The checks classic branch protection requires on the branch. Raises ValueError when it also requires what
+    --admin would skip beyond reviews and checks (review: signed commits, resolved conversations, push limits)."""
+    prot = await classic_protection(agent, repo, branch)
+    extra = [word for key, word in CLASSIC_EXTRA.items() if isinstance(prot.get(key), dict) and prot[key].get("enabled")]
+    extra += ["limits on who may push"] if prot.get("restrictions") else []
+    if extra:
+        raise ValueError(f"{repo}'s branch protection also requires {', '.join(extra)}, which --admin would skip; "
+                         "a person merges")
+    req = prot.get("required_status_checks") or {}
     checks = [c for c in req.get("checks") or [] if isinstance(c, dict)]
     if any(c.get("app_id") not in (None, -1) for c in checks):     # GPT review: a namesake from another app
         raise ValueError(f"{repo}'s branch protection requires checks from one particular app; a person merges")

@@ -21,6 +21,8 @@ from server.pm_cards import cannot, local
 KEEP_JOBS_S = 7 * 24 * 3600   # an unanswered ask is forgotten after this
 NO_OWNER_AGENT = "No agent of the room owner's is here to update GitHub's review rule on {repo}. "
 NOT_WANTED = "If you don't want it anymore, take **Repository admin** out of the rule's Bypass list on GitHub."
+AGAIN = (" Or bring the room owner's agent into the room and switch Solo review off and on again: it adds it for you "
+         "when its GitHub account is the repo's admin.")
 
 
 class SoloRules:
@@ -47,21 +49,59 @@ class SoloRules:
         """Ask the room owner's agent to let admins merge past the review rule (on), or to take the entries
         Hagency added (ids) out again. Never silent: what can't be done is said, with what to change."""
         rid = room.room_id
-        repo = self.room_repos.get(rid) or await room_state.repo_of(self.client, rid)
-        if not repo:
-            return                            # nothing on GitHub yet; a merge says what to change if needed
+        repo = await room_state.repo_of(self.client, rid)
+        if not repo:                          # solo is only switched on with a repo; its removal says what's left
+            return
         agent = await self.ruleset_agent(room, sender)
         if agent is None:
             await self.say(rid, NO_OWNER_AGENT.format(repo=repo)
-                           + (solo_review.BYPASS_STEPS.format(repo=repo) if on else NOT_WANTED))
+                           + (solo_review.BYPASS_STEPS.format(repo=repo) + AGAIN if on else NOT_WANTED))
             return
         jobs, task_id, now = self.solo_jobs(), uuid.uuid4().hex, time.time()
         for old in [t for t, j in jobs.items() if now - j.get("at", 0) > KEEP_JOBS_S]:
             jobs.pop(old, None)
-        jobs[task_id] = {"room": rid, "agent": agent, "on": on, "by": sender, "at": now}
+        jobs[task_id] = {"room": rid, "agent": agent, "on": on, "by": sender, "at": now, "repo": repo}
         what = "let repo admins merge past" if on else "take the admin bypass Hagency added out of"
         await self.say(rid, f"{agent}: {what} GitHub's review rule on {repo}", agent,
                        {"kind": solo_review.TASK_KIND, "task_id": task_id, "repo": repo, "on": on, "rulesets": ids})
+
+    async def take_out(self, room: MatrixRoom, sender: str, state: dict) -> None:
+        """Hagency's recorded bypass out again: by the owner's agent while it is still the room's repo, else said
+        plainly with how to do it by hand (review: a removed or changed repo left it silently)."""
+        if state["repo"] and state["repo"] == state["bound"]:
+            await self.ask_ruleset(room, sender, False, state["bypass_added"])
+        else:
+            await self.left_on(room.room_id, state)
+
+    async def left_on(self, rid: str, state: dict, lead: str = "") -> None:
+        """Say that the bypass stays on the old repo, and forget it (nothing here can reach that repo anymore)."""
+        err, _ = await self.write_solo(rid, None, lambda s: set(), ok=False)
+        where = state["repo"] or "the room's earlier repo"
+        await self.say(rid, lead + (f"{err} " if err else "") + f"Hagency's admin bypass is still in the review rule "
+                       f"on {where}. " + solo_review.TAKE_OUT.format(repo=where))
+
+    async def follow_repo(self, rid: str, repo: str | None) -> None:
+        """loop_progress.tick, when a room's repo is new to me: solo review was switched on for another repo (or
+        the repo was removed), so it is off now, and what Hagency left on the old repo is said (review: a new repo
+        must never inherit solo review without its own 👍)."""
+        seen = self.__dict__.setdefault("_solo_seen", {})
+        if rid not in seen or seen[rid] == repo:   # first sight (a start): nothing changed that I saw. The switch
+            seen[rid] = repo                         # itself counts only for its own repo (solo_review.live), and
+            return                                   # solo off still says what's left (take_out)
+        try:
+            state = await solo_review.read(self.client, rid, strict=True)
+        except room_state.StateUnreadable:
+            return                            # asked again at the next poll
+        seen[rid] = repo
+        if not state["repo"] or state["repo"] == repo or not (state["on"] or state["bypass_added"]):
+            return
+        lead = f"This room's repo changed (solo review was on for {state['repo']}), so solo review is off now. "
+        if not state["bypass_added"]:
+            err, _ = await self.write_solo(rid, False, repo=None, ok=False)
+            await self.say(rid, err or lead)
+            return
+        err, _ = await self.write_solo(rid, False, ok=False)
+        await self.left_on(rid, state, lead if not err else f"{err} ")
 
     async def on_solo_result(self, room: MatrixRoom, sender: str, result: dict) -> None:
         """The asked agent's answer, however late: what it changed is recorded (also on a partial failure),
@@ -70,16 +110,21 @@ class SoloRules:
         job = self.solo_jobs().get(task_id)
         if not job or job["room"] != rid or job["agent"] != sender:
             return
-        repo = self.room_repos.get(rid) or await room_state.repo_of(self.client, rid) or "the repo"
-        changed = {i for i in result.get("changed") or [] if isinstance(i, int)}
-        err, now = await self.write_solo(rid, None, (lambda s: s | changed) if job["on"] else (lambda s: s - changed))
+        repo = job.get("repo") or "the repo"
+        changed = ids_in(result, "changed")
+        gone = changed | ids_in(result, "gone")   # off: one deleted on GitHub (or not there) drops from the record too
+        ok = job["on"] and bool(changed or ids_in(result, "already"))
+        err, now = await self.write_solo(rid, None, (lambda s: s | changed) if job["on"] else (lambda s: s - gone),
+                                         ok=ok if job["on"] else False)
         if err:                               # the ask stays on record: GitHub was changed, and that must be said
             await self.say(rid, f"{err} (I couldn't note which review rules Hagency changed on {repo}: "
                                 f"{sorted(changed) or 'none'}.)")
             return
         self.solo_jobs().pop(task_id, None)
-        recorded = sorted(set(now["bypass_added"]) | changed if job["on"] else set(now["bypass_added"]) - changed)
-        if job["on"] and not now["on"] and recorded:   # switched off while it was added: take it out again
+        recorded = sorted(set(now["bypass_added"]) | changed if job["on"] else set(now["bypass_added"]) - gone)
+        if job.get("repo") != now["bound"]:   # the room's repo changed meanwhile: pm_solo.follow_repo says what's left
+            pass
+        elif job["on"] and not now["on"] and recorded:   # switched off while it was added: take it out again
             await self.ask_ruleset(room, job.get("by", sender), False, recorded)
         elif not job["on"] and now["on"]:             # switched on again while it was taken out: put it back
             await self.ask_ruleset(room, job.get("by", sender), True, [])
@@ -89,6 +134,10 @@ class SoloRules:
                                 + (solo_review.BYPASS_STEPS.format(repo=repo) if job["on"] else NOT_WANTED))
         else:
             await self.say(rid, ruleset_line(repo, job["on"], bool(changed), bool(result.get("already"))))
+
+
+def ids_in(result: dict, key: str) -> set[int]:
+    return {i for i in result.get(key) or [] if isinstance(i, int)}
 
 
 def ruleset_line(repo: str, on: bool, changed: bool, already: bool) -> str:

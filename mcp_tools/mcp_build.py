@@ -199,12 +199,13 @@ async def submit_review(task_id: str, approve: bool, reasons: str) -> dict:
 
 def require_autonomous(t: dict) -> None:
     """Merging and closing happen only while the room is Autonomous, re-read from the room now."""
-    level = room_state.level_of(core.api("GET", core.room_path(t["_room"], f"/state/{github.LEVEL_EVENT}/"), token=core.token()))
+    binding = core.api("GET", core.room_path(t["_room"], f"/state/{github.LEVEL_EVENT}/"), token=core.token())
+    level = room_state.level_of(binding)
     if level != "autonomous":
         raise tasks.TaskError(f"room is {level}, not autonomous")
     if t.get("admin") is True:   # an admin merge (solo review, ADR 0023): only while @pm's own switch is on, read now
         ev = core.api("GET", core.room_path(t["_room"], f"/state/{solo_review.SOLO_EVENT}/?format=event"), token=core.token())
-        if not solo_review.state_in([ev], core.PM_ID)["on"]:
+        if not solo_review.live(solo_review.state_in([ev], core.PM_ID), room_state.repo_in(binding)):
             raise tasks.TaskError("solo review is off in this room")
 
 
