@@ -90,6 +90,7 @@ class Ruleset(unittest.TestCase):
     def test_no_bypass_on_a_ruleset_that_holds_more_than_the_review(self):
         """GPT review: a bypass covers the whole ruleset, so one with a merge queue or required threads is left alone."""
         for rules in ([{"type": "pull_request"}, {"type": "merge_queue"}],
+                      [{"type": "pull_request"}, {"type": "required_status_checks"}],
                       [{"type": "pull_request", "parameters": {"required_review_thread_resolution": True}}]):
             gh = FakeGitHub()
             gh.rulesets[42]["rules"] = rules
@@ -143,6 +144,9 @@ class AdminMerge(unittest.TestCase):
         gh = FakeGitHub()
         gh.branch = {"protected": True, "protection": {"required_status_checks": {"contexts": ["deploy"]}}}
         with self.assertRaisesRegex(ValueError, "require hasn't passed"):
+            self.merge(gh)
+        gh.branch["protection"]["required_status_checks"] = {"checks": [{"context": "ci", "app_id": 15368}]}
+        with self.assertRaisesRegex(ValueError, "one particular app"):
             self.merge(gh)
 
     def test_switched_off_while_the_checks_ran_it_doesnt_merge(self):

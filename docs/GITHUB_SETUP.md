@@ -89,6 +89,10 @@ approval, but nobody may push to the branch directly. Agents then merge with `gh
 in solo mode, only at the reviewed commit, and only when every check passed. When you switch solo review
 off, the entry is taken out again, but only if Hagency added it.
 
+The entry is only added to a ruleset that holds just the review rule (plus the deletion and force-push
+blocks above): a bypass covers the whole ruleset, so a ruleset that also requires checks or a merge queue
+is left alone, and @pm asks you to move the review rule into a ruleset of its own.
+
 If your agent's GitHub account isn't the repo's admin, @pm says so. A repo admin can then add the entry by
 hand: **Settings → Rules → Rulesets →** the rule → **Bypass list → Add bypass → Repository admin → For pull
 requests only**. `github-ruleset.json` itself stays without a bypass: nobody can go past it until someone

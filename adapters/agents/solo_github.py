@@ -85,7 +85,7 @@ async def _change_one(agent: str, repo: str, rid: int, on: bool) -> str:
     actors = [{k: a.get(k) for k in ACTOR_FIELDS} for a in rs["bypass_actors"] if isinstance(a, dict)]
     if on and any(is_admin_bypass(a) for a in actors):
         return "already"
-    if on and (more := beyond_review(rs.get("rules") or [])):   # GPT review: a bypass covers the WHOLE ruleset
+    if on and (more := beyond_review(rs.get("rules") or [], checks_ok=False)):   # GPT review: a bypass covers the WHOLE ruleset
         raise ValueError(f"the ruleset \"{rs.get('name', rid)}\" on {repo} also requires {', '.join(more)}, which a "
                          "bypass would skip too. Put the review rule in a ruleset of its own, then switch solo review on again")
     if not on and ADMIN_BYPASS not in actors:
@@ -128,9 +128,11 @@ async def can_bypass(agent: str, repo: str, rules: list[dict]) -> bool:
     return True
 
 
-def beyond_review(rules: list) -> list[str]:
-    """What --admin (or an admin bypass) would skip besides the approval itself; [] when nothing (GPT review)."""
-    more = sorted({str(r.get("type")) for r in rules if isinstance(r, dict)} - SAFE_RULES)
+def beyond_review(rules: list, checks_ok: bool = True) -> list[str]:
+    """What --admin (or an admin bypass) would skip besides the approval itself; [] when nothing (GPT review).
+    checks_ok False: required checks count too (a bypass would let an admin merge past red CI by hand)."""
+    allowed = SAFE_RULES if checks_ok else SAFE_RULES - {"required_status_checks"}
+    more = sorted({str(r.get("type")) for r in rules if isinstance(r, dict)} - allowed)
     for r in rules:
         params = (r.get("parameters") or {}) if isinstance(r, dict) else {}
         if r.get("type") == "pull_request" and params.get("required_review_thread_resolution") is True:
@@ -157,7 +159,10 @@ async def classic_checks(agent: str, repo: str, branch: str) -> list[str]:
     """The checks classic branch protection requires on the branch (none when it isn't protected that way)."""
     info = await run_json(["api", f"repos/{repo}/branches/{urllib.parse.quote(branch, safe='')}"], agent)
     req = ((info.get("protection") or {}).get("required_status_checks") or {}) if isinstance(info, dict) else {}
-    return [*(req.get("contexts") or []), *(c.get("context") for c in req.get("checks") or [] if isinstance(c, dict))]
+    checks = [c for c in req.get("checks") or [] if isinstance(c, dict)]
+    if any(c.get("app_id") not in (None, -1) for c in checks):     # GPT review: a namesake from another app
+        raise ValueError(f"{repo}'s branch protection requires checks from one particular app; a person merges")
+    return [*(req.get("contexts") or []), *(c.get("context") for c in checks)]
 
 
 async def _ready_pr(agent: str, repo: str, pr: int) -> dict:

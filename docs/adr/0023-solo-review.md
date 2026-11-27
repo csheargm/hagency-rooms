@@ -53,7 +53,8 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
   directly). `docs/github-ruleset.json` itself keeps no bypass.
 - GitHub's ruleset API has no compare-and-set: the PUT sends the bypass list read a moment before, so a bypass
   entry someone edits on GitHub in that same moment could be undone. A bypass is only added to a ruleset whose
-  rules are the review plus ones a squash merge meets anyway (a bypass covers the whole ruleset); otherwise the
+  rules are the review plus ones a squash merge meets anyway, never required checks (a bypass covers the whole
+  ruleset, and a person could then merge past red CI by hand); otherwise the
   owner is told to give the review rule a ruleset of its own. Classic branch protection's required checks are
   read too. The agent asks the room again (Autonomous, solo on) right before `--admin`, after waiting for checks.
 - A ruleset answer that reaches @pm while it is restarting is lost like any agent result then; the bypass is
