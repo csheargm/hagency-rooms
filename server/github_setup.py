@@ -17,33 +17,85 @@ import urllib.parse
 
 from common import github
 from common import github_app
+from common import registry
 from common.github import LABEL, REPO, GitHubError, run, run_json
+from server import readiness_identity
 
 DEFAULT_AGENTS = ("anna-agent", "betty-agent")
 RULESET_FILE = github.ROOT / "docs" / "github-ruleset.json"
 RULESET_NAME = json.loads(RULESET_FILE.read_text())["name"]
 
 
-def evaluate(identities: dict[str, dict], main_rules: list[dict], repo: str = REPO, branch: str = "main",
-             detail: bool = True) -> list[str]:
-    """identities: agent -> {"login", "push"} (or {"error"}); main_rules: GET rules/branches/<branch>.
-    detail=False leaves out raw GitHub CLI errors (the console shows this to room moderators)."""
-    problems = []
+LABEL_STEPS = ("no '{label}' label on {repo} yet. On GitHub open {repo} → Issues → Labels → New label, name it "
+               "{label}, then click Create label")
+SOLO_FIX = "switch on Solo review below"
+
+
+def review_rule(main_rules: list[dict]) -> bool:
+    """The branch needs an approving review (ADR 0016: a rule is optional; with one, it must be meetable)."""
+    return any(r.get("type") == "pull_request" and r.get("parameters", {}).get("required_approving_review_count", 0) >= 1
+               for r in main_rules)
+
+
+def _names(items) -> str:
+    items = list(items)
+    return ", ".join(items[:-1]) + f" and {items[-1]}" if len(items) > 1 else "".join(items)
+
+
+def _by_login(identities: dict[str, dict]) -> dict[str, list[str]]:
+    """GitHub account (as GitHub compares them: any case) -> the agents signed in as it."""
+    found: dict[str, list[str]] = {}
     for agent, ident in identities.items():
-        if "error" in ident:
-            problems.append(f"{agent}: not signed in to GitHub" + (f" ({ident['error']})" if detail else ""))
-        elif not ident.get("push"):
-            problems.append(f"{agent} ({ident['login']}): no Write access to {repo} — add it as a collaborator")
-    logins = [i["login"] for i in identities.values() if "login" in i]
-    pr_rules = [r for r in main_rules if r.get("type") == "pull_request"]
-    review_rule = any(r.get("parameters", {}).get("required_approving_review_count", 0) >= 1 for r in pr_rules)
-    if review_rule and len(set(logins)) != len(logins):   # ADR 0016: a rule is optional; with one, it must be meetable
-        problems.append(f"agents share a GitHub account ({logins}), so {branch}'s review rule can't be met: give an agent "
-                        "its own account, or remove the rule (then the loop's own reviewer decides)")
+        if "login" in ident:
+            found.setdefault(ident["login"].lower(), []).append(agent)
+    return found
+
+
+def _identity_problem(agent: str, ident: dict, repo: str, detail: bool) -> str | None:
+    if "problem" in ident:                    # from its own report (readiness_identity): already says what to do
+        return ident["problem"]
+    if "error" in ident:                      # gh here, as an agent the server runs: its folder said no
+        return f"{agent}: not signed in to GitHub" + (f" ({ident['error']})" if detail else "")
+    if ident.get("push") is None:
+        return f"{agent} (@{ident['login']}): couldn't check its Write access to {repo} just now; try again"
+    if not ident["push"]:
+        return (f"{agent} (@{ident['login']}): no Write access to {repo}. The repo's owner adds @{ident['login']} on "
+                f"GitHub: {repo} → Settings → Collaborators → Add people, with the Write role")
+    return None
+
+
+def evaluate(identities: dict[str, dict], main_rules: list[dict], repo: str = REPO, branch: str = "main",
+             detail: bool = True, solo: bool = False) -> list[str]:
+    """identities: agent -> {"login", "push"} (push None: unknown), {"error"} (gh here) or {"problem"} (its own
+    report); main_rules: GET rules/branches/<branch>; solo: Solo review is on for this repo (ADR 0023), so one
+    shared account may merge past the review rule. detail=False leaves out raw GitHub CLI errors (the console
+    shows this to room moderators)."""
+    problems = [p for a, i in identities.items() if (p := _identity_problem(a, i, repo, detail))]
+    if review_rule(main_rules) and not solo:
+        for login, agents in _by_login(identities).items():
+            if len(agents) > 1:
+                problems.append(f"{_names(agents)} share the GitHub account @{login}, so {branch}'s review rule can't "
+                                f"be met (GitHub never lets an account approve its own PR): {SOLO_FIX}")
     return problems
 
 
+def verified(identities: dict[str, dict], main_rules: list[dict], repo: str, branch: str, solo: bool) -> list[str]:
+    """What a passing check saw working, one line each."""
+    lines = [f"{_names(agents)}: signed in to GitHub as @{login}, and @{login} can write to {repo}"
+             for login, agents in _by_login(identities).items()]
+    lines.append(f"the '{LABEL}' label is on {repo}")
+    if not review_rule(main_rules):
+        lines.append(f"{branch} has no review rule, so the loop's own reviewer decides")
+    elif solo and any(len(a) > 1 for a in _by_login(identities).values()):
+        lines.append(f"{branch}'s review rule: Solo review is on, so the shared account merges past it after the "
+                     "loop's own review")
+    else:
+        lines.append(f"{branch}'s review rule can be met: each agent has its own GitHub account")
+    return lines
+
+
 async def identity(agent: str, repo: str = REPO) -> dict:
+    """An agent this server runs itself (older local test agents): `gh` here, in its own folder."""
     try:
         login = (await run_json(["api", "user"], agent))["login"]
         perms = (await run_json(["api", f"repos/{repo}"], agent)).get("permissions", {})
@@ -52,29 +104,41 @@ async def identity(agent: str, repo: str = REPO) -> dict:
         return {"error": str(e)[:200]}   # reported as a problem by evaluate()
 
 
-async def readiness(repo: str, agents: list[str], detail: bool = True) -> tuple[dict, list[str]]:
-    """(identities, problems) for the loop on `repo` (its default branch): read-only, nothing changes."""
-    identities = {a: await identity(a, repo) for a in agents}
+async def agent_identity(agent: str, repo: str) -> dict:
+    """An agent on a person's computer: its own report (readiness_identity, ADR 0021); else gh here."""
+    found = readiness_identity.entry_of(agent)
+    if found is not None and found["agent"] == registry.REMOTE:
+        return await readiness_identity.reported(agent, found, repo)
+    return await identity(agent, repo)
+
+
+async def readiness(repo: str, agents: list[str], detail: bool = True,
+                    solo: bool = False) -> tuple[dict, list[str], list[str]]:
+    """(identities, problems, what was verified: only when there are no problems) for the loop on `repo` (its
+    default branch): read-only, nothing changes."""
+    identities = {a: await agent_identity(a, repo) for a in agents}
     try:
         branch = (await run_json(["api", f"repos/{repo}"])).get("default_branch") or "main"
         rules = await run_json(["api", f"repos/{repo}/rules/branches/{urllib.parse.quote(branch, safe='')}"])
         labels = {lb["name"] for lb in await run_json(["label", "list", "-R", repo, "--json", "name", "--limit", "200"])}
     except github_app.NotInstalled:
         return identities, [f"the Hagency Rooms GitHub App isn't installed on {repo}: its owner installs it "
-                            f"(read-only, one click) at {github_app.install_url()}"]
+                            f"(read-only, one click) at {github_app.install_url()}"], []
     except GitHubError as e:
-        return identities, [f"can't read {repo}" + (f": {str(e)[:160]}" if detail else "")]
-    problems = evaluate(identities, rules if isinstance(rules, list) else [], repo, branch, detail)
-    if LABEL not in labels:
-        problems.append(f"no '{LABEL}' label on {repo} — run `bin/github_setup.py ruleset --repo {repo}`")
-    return identities, problems
+        return identities, [f"can't read {repo}" + (f": {str(e)[:160]}" if detail else "")], []
+    rules = rules if isinstance(rules, list) else []
+    problems = evaluate(identities, rules, repo, branch, detail, solo)
+    if LABEL not in labels:                   # the App is read-only: its owner adds it on GitHub's own pages
+        problems.append(LABEL_STEPS.format(label=LABEL, repo=repo))
+    return identities, problems, [] if problems else verified(identities, rules, repo, branch, solo)
 
 
 async def check(agents: list[str], repo: str = REPO) -> int:
-    identities, problems = await readiness(repo, agents)
+    identities, problems, seen = await readiness(repo, agents)
     for a, i in identities.items():
-        print(f"{a:12} {i.get('login', '-'):20} {'write' if i.get('push') else 'NO WRITE' if 'login' in i else i['error']}")
-    print("\n".join(f"✗ {p}" for p in problems) or f"✓ {repo} ready for the loop")
+        said = "write" if i.get("push") else "NO WRITE" if "login" in i else i.get("error") or i.get("problem")
+        print(f"{a:12} {i.get('login', '-'):20} {said}")
+    print("\n".join(f"✗ {p}" for p in problems) or "\n".join([f"✓ {repo} ready for the loop", *seen]))
     return 1 if problems else 0
 
 
