@@ -33,7 +33,10 @@ UNKNOWN_KIND = "unknown task kind"    # an agent's answer to a task its code pre
 SOLO_STEP = "solo_step"               # not a task kind: a solo check or admin merge (server/pm_solo_code.py)
 # By commit time, not ancestry: a compatibility guard for honest older code, never a boundary against a fork (its
 # report is its own). Accepted in docs/adr/0023-solo-review.md ("Agents on older code"; GPT whole-batch review).
-TASK_SINCE = {"solo_ruleset": 1795804541, SOLO_STEP: 1795804541}
+SOLO_MERGE, SOLO_ADD = "solo_merge", "solo_bypass_add"   # not task kinds: a solo merge (admin or not), adding the bypass
+# 1795812792: the last agent-side fix they need (code-owner and designated-reviewer refusals, the switch re-read at
+# the merge: GPT whole-batch review); older code would waive those rules or merge after a switch-off.
+TASK_SINCE = {"solo_ruleset": 1795804541, SOLO_STEP: 1795804541, SOLO_MERGE: 1795812792, SOLO_ADD: 1795812792}
 NONE = object()                               # "number" left out (older agents), unlike a present null (GPT review)
 log = logging.getLogger("bridge")
 

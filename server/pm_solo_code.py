@@ -13,7 +13,7 @@ from server import console_auto_update, ownership, routing
 from server.pm_cards import local
 from server.pm_paused import num
 
-NEEDS_UPDATE = "{agent} needs an update first: it runs code from before solo review. "   # live test 2026-11-27
+NEEDS_UPDATE = "{agent} needs an update first: its code is older than solo review needs. "   # live test 2026-11-27
 THEN_ASKED = "I've asked it to update. Once My agents shows it Up to date, say **@pm retry #{n}**."
 THEN_BY_HAND = "Update it in My agents (in your chat with Product Manager), then say **@pm retry #{n}**."
 NOT_ON = "Solo review is off here now, so I sent nothing that needs it."
@@ -21,11 +21,23 @@ UNREADABLE = "⚠️ I couldn't read this room's settings just now, so I changed
 
 
 class SoloCode:
-    def runs_solo(self, agent: str) -> bool:
-        """`agent` (a Matrix id) runs code that does solo steps: a solo check, an admin merge."""
+    def runs_solo(self, agent: str, step: str = code_report.SOLO_STEP) -> bool:
+        """`agent` (a Matrix id) runs code that does this solo step (a solo check; SOLO_MERGE: a solo merge)."""
         owner = ownership.owner_id(agent)
         code = (registry.find(owner, local(agent)) or {}).get(registry.CODE) if owner else None
-        return code_report.runs_task(code, code_report.SOLO_STEP)
+        return code_report.runs_task(code, step)
+
+    async def merge_waits_for_update(self, room_id: str, key: str, item: dict) -> bool:
+        """A solo merge goes only to code that re-reads the switch at the merge and refuses code-owner rules
+        (code_report.SOLO_MERGE; GPT review). Else it pauses, the builder is asked to update, and "@pm retry #N"
+        tries the merge again, PR kept. True: paused."""
+        builder = item["builder"]
+        if self.runs_solo(builder, code_report.SOLO_MERGE):
+            return False
+        item["resume"] = "approved"
+        await self.stop(room_id, key, item, f"{local(builder)} runs code too old for a solo merge", "**What you can do:**"
+                        "\n\n- " + update_line(local(builder), await self.ask_update(builder), num(key)))
+        return True
 
     async def ask_update(self, agent: str) -> bool:
         """A solo step `agent`'s code predates: it is asked to update, when its owner allows (True)."""

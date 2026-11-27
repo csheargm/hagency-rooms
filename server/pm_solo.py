@@ -256,11 +256,8 @@ class Solo(SoloRules):
         if info.get("headRefOid") != item.get("sha"):
             await self.review_again(room_id, key, item, "it changed")   # the PR moved since it was checked
         elif lvl == "autonomous" and info.get("mergeable") == "MERGEABLE" and await self.checks_green(room_id, key, item):
-            if not self.runs_solo(item["builder"]):   # pm_solo_code: its code would refuse (or not know) the admin merge
-                item["resume"] = "approved"           # "@pm retry #N" tries the merge again, PR kept
-                return await self.stop(room_id, key, item, f"{local(item['builder'])} runs code from before solo review",
-                                       "**What you can do:**\n\n- " + update_line(local(item["builder"]), await self.ask_update(
-                                           item["builder"]), num(key)))
+            if await self.merge_waits_for_update(room_id, key, item):   # pm_solo_code: code too old for it
+                return
             if err := await self.record_on(room_id):   # older agent code reads only an explicit "on" for this repo
                 return await self.say(room_id, err)    # still "approved": tried again at the next poll
             item["stage"] = "merging"

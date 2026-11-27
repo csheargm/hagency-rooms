@@ -60,9 +60,11 @@ class SoloRules(SoloCode):
         asks = [j for j in self.solo_jobs().values() if j.get("room") == rid and j.get("on")]
         return max(asks, key=lambda j: j.get("at", 0)) if asks else None
 
-    async def ruleset_agent(self, room: MatrixRoom, sender: str) -> tuple[str | None, tuple | None]:
+    async def ruleset_agent(self, room: MatrixRoom, sender: str, on: bool = True) -> tuple[str | None, tuple | None]:
         """The room owner's agent that can run the ruleset task (the asker's first, when they are an owner), and
-        else (owner, agent) of the first one whose code is too old for it (code_report.runs_task), or None."""
+        else (owner, agent) of the first one whose code is too old for it (code_report.runs_task; adding the bypass
+        needs code that refuses code-owner rules, SOLO_ADD: GPT review; any taking it out again), or None."""
+        step = code_report.SOLO_ADD if on else solo_review.TASK_KIND
         owners = await room_state.owners(self.client, room)
         here, old = self.agents_in(room), None
         for owner in sorted(owners, key=lambda o: o != sender):
@@ -70,7 +72,7 @@ class SoloRules(SoloCode):
             main = ownership.own_agent_id(owner)
             for agent in sorted(mine, key=lambda a: a != main):
                 if cannot(owner, agent) is None and self.agent_online(local(agent)) is not False:
-                    if code_report.runs_task((registry.find(owner, local(agent)) or {}).get(registry.CODE), solo_review.TASK_KIND):
+                    if code_report.runs_task((registry.find(owner, local(agent)) or {}).get(registry.CODE), step):
                         return agent, None
                     old = old or (owner, agent)
         return None, old
@@ -88,7 +90,7 @@ class SoloRules(SoloCode):
         the room's (GPT review: a rebind in between never gets the task). Never silent: what can't be done is
         said, with what to change."""
         rid = room.room_id
-        agent, old = await self.ruleset_agent(room, sender)
+        agent, old = await self.ruleset_agent(room, sender, on)
         try:                                  # read after the agent is chosen (GPT review: a switch-off meanwhile)
             state = await solo_review.read(self.client, rid, strict=True)
         except room_state.StateUnreadable:

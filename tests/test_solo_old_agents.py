@@ -57,7 +57,7 @@ class OldAgents(Base):
 
     def test_a_builder_on_code_from_before_solo_review_needs_an_update_not_a_contradictory_pause(self):
         with mock.patch("server.console_auto_update.update_for_task", mock.AsyncMock(return_value=True)) as asked:
-            self.lp.runs_solo = lambda a: a != CXA                    # only the builder is old
+            self.lp.runs_solo = lambda a, step=None: a != CXA         # only the builder is old
             item = self.approve_and_advance()
         self.assertEqual(self.tasks("merge"), [])
         self.assertEqual(item["stage"], "stopped")
