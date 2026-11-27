@@ -77,13 +77,22 @@ async def _put_bypass(agent: str, repo: str, rid: int, actors: list[dict]) -> No
         os.unlink(f.name)
 
 
+async def _admin_of(agent: str, repo: str) -> bool:
+    """This account still administers the repo (review: GitHub also says 404 for a ruleset it may no longer see)."""
+    try:
+        info = await run_json(["api", f"repos/{repo}"], agent)
+    except GitHubError:
+        return False                          # can't tell: the ruleset is kept on record, never dropped blind
+    return isinstance(info, dict) and (info.get("permissions") or {}).get("admin") is True
+
+
 async def _change_one(agent: str, repo: str, rid: int, on: bool) -> str:
     """"changed", "already" or "" (nothing of Hagency's there: "gone" when taking it out) for one ruleset; raises
     ValueError with what is wrong."""
     try:
         rs = await run_json(["api", f"repos/{repo}/rulesets/{rid}"], agent)
     except GitHubError as e:
-        if not on and "404" in str(e):        # deleted on GitHub (or not this repo's): nothing left to take out
+        if not on and "404" in str(e) and await _admin_of(agent, repo):   # deleted (or another repo's): nothing left
             return "gone"
         raise
     if not isinstance(rs, dict) or not isinstance(rs.get("bypass_actors"), list):   # shown to admins only

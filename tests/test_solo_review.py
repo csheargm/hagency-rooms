@@ -284,6 +284,27 @@ class Room(Base):
         self.assertIn(f"{REPO} → Settings → Rules", said)
         self.assertEqual((self.recorded()["on"], self.recorded()["bypass_added"]), (False, []))
 
+    def test_a_thumb_given_after_a_rebind_doesnt_switch_on_the_new_repo(self):
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_ON))
+        asked = self.lp.pending["!r"]
+        self.lp.client.bind("o/other")
+        self.run_(self.lp.on_reaction(self.room, SimpleNamespace(sender=CX, key="👍", reacts_to=asked["event_id"])))
+        self.assertFalse(self.recorded()["on"])
+        self.assertIn("repo changed since I asked", self.said[-1][0])
+
+    def test_a_late_answer_for_the_old_repo_never_lands_in_the_new_ones_record(self):
+        self.enable()
+        job = self.job()
+        self.lp.client.bind("o/other")
+        self.answer(job, on=True, changed=[42], already=[])
+        self.assertEqual(self.recorded()["bypass_added"], [])
+        self.assertIn(f"{REPO} → Settings → Rules", self.said[-1][0])
+
+    def test_a_partial_answer_is_never_ok(self):
+        self.enable()
+        self.answer(self.job(), on=True, changed=[42], already=[], error="HTTP 403 on 43")
+        self.assertFalse(self.recorded()["ok"])
+
     def test_solo_off_after_the_repo_was_removed_says_whats_left(self):
         self.enable()
         self.answer(self.job(), on=True, changed=[42], already=[])
@@ -377,6 +398,17 @@ class Merging(Base):
         self.agents = [CXA, CXC, BA]
         self.run_(self.lp.retry(self.room, CX, 7))
         self.assertEqual((item["stage"], item["reviewer"]), ("reviewing", BA))
+
+    def test_switched_off_it_never_merges_on_the_solo_verdict_even_without_a_github_rule(self):
+        """GPT review: a repo without required reviews merged on the solo verdict after consent was withdrawn."""
+        self.enable()
+        item = self.built()
+        item.update(stage="approved", sha="abc")
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
+        info = {"state": "OPEN", "mergeable": "MERGEABLE", "headRefOid": "abc", "reviewDecision": ""}
+        with mock.patch("common.github.merge_ready", mock.AsyncMock(return_value=(True, info))):
+            self.run_(self.lp.advance("!r", KEY, item, "autonomous"))
+        self.assertEqual((item["stage"], self.tasks("merge")), ("stopped", []))
 
     def test_a_refused_admin_merge_says_how_to_fix_it_and_retry_merges_again(self):
         item = self.approved("autonomous")

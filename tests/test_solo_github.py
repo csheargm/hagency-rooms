@@ -16,6 +16,11 @@ OTHER = {"actor_id": 9, "actor_type": "Team", "bypass_mode": "always"}
 GREEN = [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}]
 
 
+def solo_github_state(events):
+    from nio import RoomGetStateResponse
+    return RoomGetStateResponse(events, "!r")
+
+
 class FakeGitHub:
     def __init__(self, bypass=None, source="Repository", can_bypass="pull_requests_only", readable=True, extra_rules=()):
         self.rulesets = {i: {"id": i, "current_user_can_bypass": can_bypass} for i in (42, 43)}
@@ -26,12 +31,15 @@ class FakeGitHub:
                       {"type": "deletion", "ruleset_id": 42}, *extra_rules]
         self.puts, self.ran, self.pr, self.protection = [], [], {}, None   # None: no classic protection (404)
         self.missing: set[int] = set()                                       # rulesets deleted on GitHub
+        self.admin = True
 
     async def run_json(self, args, agent=None):
         if args[:2] == ["repo", "view"]:
             return {"defaultBranchRef": {"name": "main"}}
         if args[1] == f"repos/{REPO}/rules/branches/main?per_page=100":
             return self.rules
+        if args[1] == f"repos/{REPO}":
+            return {"permissions": {"admin": self.admin}}
         if args[1] == f"repos/{REPO}/branches/main/protection":
             if self.protection is None:
                 raise solo_github.GitHubError("gh: Branch not protected (HTTP 404)")
@@ -109,6 +117,10 @@ class Ruleset(unittest.TestCase):
         gh.missing = {11}
         out = self.go(gh, {"on": False, "rulesets": [11, 42]})
         self.assertEqual((out["changed"], out["gone"], "error" in out), ([42], [11], False))
+        gh = FakeGitHub(bypass=[solo_review.ADMIN_BYPASS])
+        gh.missing, gh.admin = {11}, False                    # a 404 because access was lost: kept on record
+        out = self.go(gh, {"on": False, "rulesets": [11, 42]})
+        self.assertEqual((out["changed"], out["gone"], "error" in out), ([42], [], True))
 
     def test_a_failure_part_way_still_reports_what_changed(self):
         gh = FakeGitHub(bypass=[solo_review.ADMIN_BYPASS])
@@ -229,6 +241,18 @@ class BridgeRechecks(unittest.TestCase):
     def test_run_while_on_and_taking_the_bypass_out_is_always_allowed(self):
         self.run_task({"kind": solo_review.TASK_KIND, "on": True}, on=True)[0].assert_awaited_once()
         self.run_task({"kind": solo_review.TASK_KIND, "on": False}, on=False)[0].assert_awaited_once()
+
+    def test_the_last_recheck_needs_consent_for_the_merges_own_repo(self):
+        """GPT review: another repo's consent must never cover a merge into this one."""
+        events = [{"type": solo_review.SOLO_EVENT, "state_key": "", "sender": "@pm:s",
+                   "content": solo_review.content(True, [], "o/other")},
+                  {"type": github.LEVEL_EVENT, "state_key": "", "sender": "@pm:s",
+                   "content": {"level": "autonomous", "repos": ["o/other"]}}]
+        client = SimpleNamespace(user_id="@cx-agent:s", room_get_state=mock.AsyncMock(
+            return_value=solo_github_state(events)))
+        with mock.patch.object(github, "bound_repo", lambda r: r):
+            self.assertFalse(asyncio.run(solo_review.still_allowed(client, "!r", REPO)))
+            self.assertTrue(asyncio.run(solo_review.still_allowed(client, "!r", "o/other")))
 
     def test_an_add_and_a_removal_are_different_steps(self):
         from adapters.agents import bridge

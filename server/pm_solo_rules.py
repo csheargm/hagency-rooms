@@ -112,8 +112,20 @@ class SoloRules:
             return
         repo = job.get("repo") or "the repo"
         changed = ids_in(result, "changed")
+        try:
+            bound = (await solo_review.read(self.client, rid, strict=True))["bound"]
+        except room_state.StateUnreadable:
+            await self.say(rid, f"⚠️ I couldn't read this room's settings, so I couldn't note which review rules Hagency "
+                                f"changed on {repo}: {sorted(changed) or 'none'}.")
+            return
+        if job.get("repo") != bound:          # review: never into another repo's record
+            self.solo_jobs().pop(task_id, None)
+            if job["on"] and changed:
+                await self.say(rid, f"Hagency's admin bypass was added to the review rule on {repo} after this room "
+                                    "moved to another repo. " + solo_review.TAKE_OUT.format(repo=repo))
+            return
         gone = changed | ids_in(result, "gone")   # off: one deleted on GitHub (or not there) drops from the record too
-        ok = job["on"] and bool(changed or ids_in(result, "already"))
+        ok = job["on"] and bool(changed or ids_in(result, "already")) and not result.get("error")   # all of it, or not ok
         err, now = await self.write_solo(rid, None, (lambda s: s | changed) if job["on"] else (lambda s: s - gone),
                                          ok=ok if job["on"] else False)
         if err:                               # the ask stays on record: GitHub was changed, and that must be said
@@ -122,9 +134,7 @@ class SoloRules:
             return
         self.solo_jobs().pop(task_id, None)
         recorded = sorted(set(now["bypass_added"]) | changed if job["on"] else set(now["bypass_added"]) - gone)
-        if job.get("repo") != now["bound"]:   # the room's repo changed meanwhile: pm_solo.follow_repo says what's left
-            pass
-        elif job["on"] and not now["on"] and recorded:   # switched off while it was added: take it out again
+        if job["on"] and not now["on"] and recorded:   # switched off while it was added: take it out again
             await self.ask_ruleset(room, job.get("by", sender), False, recorded)
         elif not job["on"] and now["on"]:             # switched on again while it was taken out: put it back
             await self.ask_ruleset(room, job.get("by", sender), True, [])

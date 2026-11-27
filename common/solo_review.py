@@ -63,9 +63,11 @@ async def enabled(client: AsyncClient, room_id: str) -> bool:
     return live(state, state["bound"])
 
 
-async def still_allowed(client: AsyncClient, room_id: str) -> bool:
-    """An admin merge may still go ahead: the room is Autonomous and solo review is on, read now."""
-    return await enabled(client, room_id) and await room_state.level(client, room_id) == "autonomous"
+async def still_allowed(client: AsyncClient, room_id: str, repo: str | None) -> bool:
+    """An admin merge into `repo` may still go ahead: the room is Autonomous and solo review is on for that very
+    repo, read now (review: another repo's consent never covers it)."""
+    state = await read(client, room_id)
+    return live(state, state["bound"]) and state["repo"] == repo and await room_state.level(client, room_id) == "autonomous"
 
 
 PASSED = ("SUCCESS", "NEUTRAL", "SKIPPED")

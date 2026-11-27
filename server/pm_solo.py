@@ -45,7 +45,8 @@ SOLO_READY = ("PR #{pr} ready — a person merges. GitHub's review rule can't co
 SOLO_READY_NO_BYPASS = ("PR #{pr} ready — a person merges. GitHub's review rule can't count a review by your own agent, "
                         "and it doesn't let repo admins past it yet. ")
 NO_REPO_YET = "Pick this room's GitHub repo first: solo review is switched on for that repo's rules."
-UNREADABLE = "⚠️ I couldn't read this room's settings just now, so I changed nothing. Please try again in a minute."
+REPO_MOVED = "This room's repo changed since I asked, so solo review stays off. Ask me again for the new repo."
+UNREADABLE ="⚠️ I couldn't read this room's settings just now, so I changed nothing. Please try again in a minute."
 MERGE_FAILED = ("**What you can do:**\n\n- If GitHub's rules stopped it: {steps} Then say **@pm retry #{n}** and I'll "
                 "try the merge again.\n- Or: {link}")
 
@@ -70,7 +71,8 @@ class Solo(SoloRules):
             if named:
                 await self.say(rid, ALREADY_ON)
         else:
-            await self.ask_once(rid, sender, gen, QUESTION, {"kind": "solo"}, named)   # pm_chat.confirm: solo_confirmed
+            await self.ask_once(rid, sender, gen, QUESTION, {"kind": "solo", "repo": await room_state.repo_of(
+                self.client, rid)}, named)   # pm_chat.confirm: solo_confirmed, for the repo asked about only
 
     async def solo_from_panel(self, room: MatrixRoom, user: str, value: str) -> str:
         """The panel's toggle: a click is the moderator's confirmation; off is anyone's."""
@@ -102,11 +104,13 @@ class Solo(SoloRules):
             return NEED_POWER, before
         return f"⚠️ I couldn't save this room's settings: {room_safe(resp)}", before
 
-    async def solo_confirmed(self, room: MatrixRoom, sender: str) -> str | None:
-        """Switch it on (after the 👍 or the panel's click; the moderator was checked just now), for the room's repo."""
+    async def solo_confirmed(self, room: MatrixRoom, sender: str, asked: object = KEEP) -> str | None:
+        """Switch it on (after the 👍 or the panel's click; the moderator was checked just now), for the room's repo;
+        asked: the repo the 👍 question was about (review: a rebind in between needs a new 👍)."""
         rid = room.room_id
         repo = await room_state.repo_of(self.client, rid)
-        err = NO_REPO_YET if not repo else (await self.write_solo(rid, True, repo=repo, ok=False))[0]
+        err = NO_REPO_YET if not repo else REPO_MOVED if asked is not KEEP and asked != repo else \
+            (await self.write_solo(rid, True, repo=repo, ok=False))[0]
         if err:
             await self.say(rid, err)
             return err
@@ -203,16 +207,21 @@ class Solo(SoloRules):
             finally:
                 self.save()
 
+    async def solo_withdrawn(self, room_id: str, key: str, item: dict) -> bool:
+        """An item checked in solo mode, before it merges: solo review is off now (or for another repo), so it pauses
+        for another person's check, whatever GitHub's rules say (review: it merged on the solo verdict anyway)."""
+        if await self.solo_on(room_id):
+            return False
+        item["no_checker"] = True
+        await self.stop(room_id, key, item, f"solo review was switched off before PR #{item['pr']} merged",
+                        self.no_checker_steps(num(key), no_reviewer_steps(num(key), item["repo"], item["pr"]), False))
+        return True
+
     async def past_review_rule(self, room_id: str, key: str, item: dict, info: dict, lvl: str) -> None:
         """Solo review in a repo whose ruleset requires an approval GitHub won't take from the author's own
-        account (loop_progress.advance): Autonomous merges as the repo's admin, Assist tells the person how. Solo
-        switched off since it was checked: it pauses for another person's check (review)."""
+        account (loop_progress.advance): Autonomous merges as the repo's admin, Assist tells the person how."""
         state = await solo_review.read(self.client, room_id)
-        if not solo_review.live(state, state["bound"]):
-            item["no_checker"] = True
-            await self.stop(room_id, key, item, f"solo review was switched off before PR #{item['pr']} merged",
-                            self.no_checker_steps(num(key), no_reviewer_steps(num(key), item["repo"], item["pr"]), False))
-        elif info.get("headRefOid") != item.get("sha"):
+        if info.get("headRefOid") != item.get("sha"):
             item["stage"] = "reviewing"       # the PR moved since it was checked: check what's there now
             await self.dispatch(room_id, item, item["reviewer"], f"{item['reviewer']}: review PR #{item['pr']} again "
                                 f"(it changed) against #{num(key)}", routing.check_task(item, num(key)))

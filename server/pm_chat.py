@@ -235,7 +235,7 @@ class Chat(Addressing):
         elif p.get("kind") == "implicit":                       # pm_implicit.py: asked, as I wasn't named
             await self.do_implicit(room, sender, p, gen)
         elif p.get("kind") == "solo":                           # pm_solo.py: solo review on (moderator re-checked above)
-            await self.solo_confirmed(room, sender)
+            await self.solo_confirmed(room, sender, p.get("repo"))
         elif p.get("kind") == "bring":                          # pm_follow.py: "bring your agent? ✅"
             await self.invite_agent(room.room_id, p["agent"], "Your agent is on its way in.")
         else:                                 # a mode switch asked about with ✅ (ask_mode)

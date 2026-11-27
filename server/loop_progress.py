@@ -244,6 +244,8 @@ class Progress:
             return
         if item["stage"] not in ("approved", "ready", "merge_sent"):
             return                                   # waiting on an agent's result message
+        if item.get("solo") is True and item["stage"] != "merge_sent" and await self.solo_withdrawn(room_id, key, item):
+            return                                   # pm_solo.py: checked solo, but solo review is off now
         ok, info = await github.merge_ready(item["pr"], repo=item["repo"])
         if info.get("state") == "MERGED":
             by = "the loop" if item["stage"] == "merge_sent" else "a person"

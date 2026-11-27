@@ -205,7 +205,8 @@ def require_autonomous(t: dict) -> None:
         raise tasks.TaskError(f"room is {level}, not autonomous")
     if t.get("admin") is True:   # an admin merge (solo review, ADR 0023): only while @pm's own switch is on, read now
         ev = core.api("GET", core.room_path(t["_room"], f"/state/{solo_review.SOLO_EVENT}/?format=event"), token=core.token())
-        if not solo_review.live(solo_review.state_in([ev], core.PM_ID), room_state.repo_in(binding)):
+        state, bound = solo_review.state_in([ev], core.PM_ID), room_state.repo_in(binding)
+        if not solo_review.live(state, bound) or t.get("repo") != bound:   # consent for this very repo
             raise tasks.TaskError("solo review is off in this room")
 
 
