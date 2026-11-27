@@ -127,5 +127,12 @@ anyone can switch it off at once; the GitHub consent stays tied to the room's re
   official code, never a boundary against the owner's own code. The worst case is the owner's own fork, with
   two of the owner's own GitHub accounts, posting a real approval instead of a comment: an approval by the
   owner's own account, on a PR in a room where the owner consented to solo review.
+- **Later agent-side safety checks** (GPT whole-batch review): a solo merge (admin, or a regular one marked
+  `solo`) goes only to code that re-reads the switch right before the merge and refuses code-owner and
+  designated-reviewer rules (`code_report.TASK_SINCE["solo_merge"]`), and adding the bypass only to code that
+  refuses those rules (`"solo_bypass_add"`); older code gets "needs an update first" and `@pm retry #N`.
+  Taking the bypass out again works on any code that knows the ruleset task. Another person's agent that is in
+  the room but offline is waited for, never replaced by the builder's sibling, and a sibling's verdict doesn't
+  count while one is here.
 - Readiness ("Check readiness"), the panel's Mode card and the pinned status read the same state, so a room
   that never set it shows solo review on; the readiness check counts a bypass only for the repo it checks.
