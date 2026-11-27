@@ -8,7 +8,7 @@ from unittest import mock
 
 from common import github, intents
 from tests import test_solo_github
-from tests.test_solo_review import CX, KEY, Base
+from tests.test_solo_review import CX, CXA, KEY, Base
 
 
 class SwitchedOffDuringTheGitHubCall(Base):
@@ -34,6 +34,26 @@ class SwitchedOffDuringTheGitHubCall(Base):
         item = self.approved(off_midway=False)
         self.assertEqual(item["stage"], "merging")
         self.assertIs(self.tasks("merge")[-1]["solo"], True)
+
+
+class RefusedSoloMerge(Base):
+    def test_a_merge_the_agent_refused_after_a_switch_off_retries_to_another_persons_check(self):
+        """GPT final review: the generic steps said retry, but a retry refuses an open PR."""
+        self.enable()
+        item = self.built()
+        item.update(stage="approved", sha="abc")
+        with mock.patch("common.github.merge_ready", mock.AsyncMock(return_value=(True, {"headRefOid": "abc"}))):
+            self.run_(self.lp.advance("!r", KEY, item, "autonomous"))
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))            # after the merge went out
+        self.run_(self.lp.on_result(self.room, CXA, {"kind": "merge", "issue": 7, "pr": 9, "task_id": item["task_id"],
+                                                     "error": "solo review is off in this room"}))
+        self.assertEqual((item["stage"], item.get("resume")), ("stopped", "approved"))
+        self.assertIn("@pm retry #7", self.said[-1][0])
+        self.run_(self.lp.retry(self.room, CX, 7))
+        self.assertEqual(item["stage"], "approved")                       # the PR kept, the merge decided again
+        with mock.patch("common.github.merge_ready", mock.AsyncMock(return_value=(True, {"headRefOid": "abc"}))):
+            self.run_(self.lp.advance("!r", KEY, item, "autonomous"))
+        self.assertEqual((item["stage"], item.get("no_checker")), ("stopped", True))   # waits for another person
 
 
 class AgentRechecksASoloMerge(unittest.TestCase):

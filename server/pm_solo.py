@@ -183,9 +183,10 @@ class Solo(SoloRules):
         return "**What you can do:**\n\n" + f"- {first}" + (f"\n- Or: {steps}" if steps else "")
 
     def merge_failed_steps(self, item: dict, key: str, kind: str) -> str | None:
-        """An admin merge (solo review) that GitHub's rules or a check stopped: how to let it merge, and "@pm retry #N"
-        tries the merge again (review: the generic steps led to a retry that refuses an open PR). None otherwise."""
-        if kind != "merge" or (item.get("task") or {}).get("admin") is not True:
+        """A solo merge (admin, or one the agent refused after a switch-off: GPT review) that stopped: how to let it
+        merge, and "@pm retry #N" goes back to the merge, PR kept, which pauses for another person's check if solo
+        review is off now (review: the generic steps led to a retry that refuses an open PR). None otherwise."""
+        if kind != "merge" or not any((item.get("task") or {}).get(f) is True for f in ("admin", "solo")):
             return None
         item["resume"] = "approved"
         return MERGE_FAILED.format(steps=solo_review.BYPASS_STEPS.format(repo=item["repo"]), n=num(key),
