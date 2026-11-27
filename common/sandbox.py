@@ -15,6 +15,7 @@ E2BSandboxes wraps the E2B SDK (deploy/requirements-trial.txt pins it; imported 
 the tests never need it). common/sandbox_fake.py is the same interface in memory, for tests.
 """
 import asyncio
+import base64
 import hashlib
 import json
 import re
@@ -62,6 +63,8 @@ print(json.dumps(out))
 """
 LIST_CMD = f"python3 -c {shlex.quote(LIST_PY)} {ROOT} {MAX_ENTRIES} {MAX_HASHED}"
 MAX_LIST_CHARS = 4_000_000
+MAX_OUTPUT = 256 * 1024               # any one command's output we hold
+MAX_READ = 1024 * 1024                # any one file we read back
 EXIT_MARK = "__hagency_exit__"
 
 
@@ -109,10 +112,28 @@ def parse_listing(text: str) -> dict:
 
 
 def capped(cmd: str, limit: int) -> str:
-    """`cmd` in the repo, its output in a file of which only `limit` bytes come back, then our own exit line:
-    a flood of output never reaches the worker's memory (GPT review), and the exit code is ours to read."""
-    return (f"cd {ROOT} && ( {cmd} ) > /tmp/.hagency-out 2>&1 < /dev/null; code=$?; "
-            f"head -c {int(limit)} /tmp/.hagency-out; printf '\\n{EXIT_MARK} %s' \"$code\"")
+    """`cmd` in the repo, passed as data (base64: it can't break out of the wrapper), its output in a file of
+    which only `limit` bytes come back, then our own exit line (GPT review: a flood never reaches the worker)."""
+    data = base64.b64encode(cmd.encode()).decode()
+    return (f"cd {ROOT} && echo {data} | base64 -d > /tmp/.hagency-cmd && bash /tmp/.hagency-cmd > /tmp/.hagency-out "
+            f"2>&1 < /dev/null; code=$?; head -c {int(limit)} /tmp/.hagency-out; printf '\\n{EXIT_MARK} %s' \"$code\"")
+
+
+class Bounded:
+    """Collects a command's output as it streams, keeping at most `limit` characters (the rest is dropped:
+    the SDK keeps nothing itself, retain_output=False)."""
+    def __init__(self, limit: int) -> None:
+        self.parts, self.size, self.limit, self.over = [], 0, limit, False
+
+    def add(self, text: str) -> None:
+        if self.size + len(text) > self.limit:
+            self.over = True
+            text = text[:max(0, self.limit - self.size)]
+        self.parts.append(text)
+        self.size += len(text)
+
+    def text(self) -> str:
+        return "".join(self.parts)
 
 
 def parse_capped(out: str) -> Result:
@@ -176,16 +197,22 @@ class E2BBox:
     def __init__(self, sbx) -> None:
         self.sbx, self.id = sbx, sbx.sandbox_id
 
-    async def run(self, cmd: str, timeout: float = 120, cwd: str | None = None) -> Result:
-        """Our own fixed commands only (their output is small); the model's go through run_capped."""
+    async def run(self, cmd: str, timeout: float = 120, cwd: str | None = None, limit: int = MAX_OUTPUT) -> Result:
+        """At most `limit` characters of output are ever held (SandboxError past it); the model's commands go
+        through run_capped, which keeps them far below it."""
         from e2b import CommandExitException, TimeoutException
+        out, err = Bounded(limit), Bounded(limit)
         try:
-            r = await self.sbx.commands.run(cmd, timeout=timeout, cwd=cwd, envs={})
+            r = await self.sbx.commands.run(cmd, timeout=timeout, cwd=cwd, envs={}, on_stdout=out.add,
+                                            on_stderr=err.add, retain_output=False)
+            code = r.exit_code
         except CommandExitException as e:      # a non-zero exit is an answer, not a failure of ours
-            return Result(e.exit_code, e.stdout or "", e.stderr or "")
+            code = e.exit_code
         except TimeoutException:
             raise asyncio.TimeoutError() from None
-        return Result(r.exit_code, r.stdout or "", r.stderr or "")
+        if out.over:
+            raise SandboxError("the sandbox answered with too much output")
+        return Result(code, out.text(), err.text())
 
     async def run_capped(self, cmd: str, limit: int, timeout: float = 120) -> Result:
         return parse_capped((await self.run(capped(cmd, limit), timeout=timeout)).stdout)
@@ -201,12 +228,22 @@ class E2BBox:
         for start in range(0, len(entries), 100):
             await self.sbx.files.write_files(entries[start:start + 100])
 
-    async def read(self, path: str) -> bytes:
-        """A file of the repo (relative), or an absolute path (the test report); callers check its size first."""
-        return bytes(await self.sbx.files.read(path if path.startswith("/") else f"{ROOT}/{path}", format="bytes"))
+    async def read(self, path: str, limit: int = MAX_READ) -> bytes:
+        """A file of the repo (relative), or an absolute path, streamed: SandboxError once it passes `limit`
+        bytes (GPT review: a file can grow after it was listed)."""
+        stream = await self.sbx.files.read(path if path.startswith("/") else f"{ROOT}/{path}", format="stream")
+        data = bytearray()
+        try:
+            async for chunk in stream:
+                data += chunk
+                if len(data) > limit:
+                    raise SandboxError("a file in the sandbox is too big")
+        finally:
+            await stream.aclose()
+        return bytes(data)
 
     async def listing(self) -> dict:
-        return parse_listing((await self.run(LIST_CMD, timeout=60)).stdout)
+        return parse_listing((await self.run(LIST_CMD, timeout=60, limit=MAX_LIST_CHARS)).stdout)
 
     async def kill(self) -> None:
         try:

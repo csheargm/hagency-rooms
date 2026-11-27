@@ -15,6 +15,7 @@ Not configured: it exits at once, and nothing anywhere changes.
 import asyncio
 import datetime
 import logging
+import signal
 import sys
 import time
 
@@ -92,12 +93,18 @@ async def serve(d: trial_build.Deps, stop: asyncio.Event, poll_s: float = POLL_S
     return True
 
 
-async def shut_down(jobs: trial_jobs.Jobs, sandboxes) -> None:
-    """The kill switch: no sandbox of ours survives, nothing waits, and @pm stops offering builds."""
-    for job_id in jobs.shut("off"):
-        log.warning("trial build %s: switched off", job_id)
-    if sandboxes is not None:
-        log.warning("switched off: killed %s sandbox(es)", await sandboxes.reap(older_than_s=0))
+async def shut_down(jobs: trial_jobs.Jobs, sandboxes) -> bool:
+    """The kill switch: no sandbox of ours survives, nothing waits, and @pm stops offering builds. Only once
+    no worker runs (its lifetime lock; GPT review): False while one still does (recreate it first)."""
+    with jobs.one_worker() as alone:
+        if not alone:
+            log.error("a trial-worker is still running: recreate it with TRIAL_BUILD=off")
+            return False
+        for job_id in jobs.shut("off"):
+            log.warning("trial build %s: switched off", job_id)
+        if sandboxes is not None:
+            log.warning("switched off: killed %s sandbox(es)", await sandboxes.reap(older_than_s=0))
+    return True
 
 
 def deps() -> trial_build.Deps:
@@ -122,7 +129,14 @@ async def main() -> int:
         log.info("trial builds are off (not configured: %s)", ", ".join(gone))
         return 0
     log.info("trial builds on: %d demo repo(s) in %s", len(config.repos()), config.org())
-    await serve(deps(), asyncio.Event())
+    task = asyncio.create_task(serve(deps(), asyncio.Event()))
+    # docker stop: the build underway is cancelled, so its `finally`s run (its sandbox killed, its token revoked,
+    # the heartbeat removed); the job stays "running" and the next start fails it plainly (GPT review)
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
+    try:
+        await task
+    except asyncio.CancelledError:
+        log.info("trial-worker stopped")
     return 0
 
 

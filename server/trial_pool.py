@@ -14,6 +14,9 @@ from pathlib import Path
 from common.saved_dict import SavedDict
 
 
+IDLE_S = 3600                        # a lease with no PR: well past any build's 15 minutes (GPT review)
+
+
 class NoRepoFree(RuntimeError):
     """Every demo repo is leased to someone else right now."""
 
@@ -41,7 +44,9 @@ class Pool:
         for number in e.get("prs") or []:
             if await gh.pr_state(token, repo, number) == "open":
                 return False
-        return bool(e.get("prs"))         # leased, nothing opened yet: still theirs
+        if e.get("prs"):
+            return True
+        return self.clock() - float(e.get("since") or 0) >= IDLE_S   # nothing opened: theirs only while building
 
     async def lease(self, gh, github_id: int) -> str:
         """Their repo (recycled first if someone else had it), or NoRepoFree."""

@@ -57,10 +57,12 @@ class FakeBox:
     async def write_files(self, files: dict[str, bytes]) -> None:
         self.files.update(files)
 
-    async def read(self, path: str) -> bytes:
+    async def read(self, path: str, limit: int = 1024 * 1024) -> bytes:
         where = self.outside if path.startswith("/") else self.files
         if path not in where:
             raise SandboxError("no such file in the sandbox")
+        if len(where[path]) > limit:
+            raise SandboxError("a file in the sandbox is too big")
         return where[path]
 
     async def listing(self) -> dict:

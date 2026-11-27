@@ -111,6 +111,7 @@ def _fetch_tarball(url: str, token: str) -> bytes:
 class TrialGitHub:
     def __init__(self, app_id: str, key_path: str, repos: list[str], call=None, fetch=None) -> None:
         self.app_id, self.key_path, self.repos = app_id, key_path, {r.lower() for r in repos}
+        self.reset: tuple[str, str] | None = None      # (default branch, template commit) while recycling
         self.call = call or github_app.call
         self.fetch = fetch or (lambda url, token: asyncio.to_thread(_fetch_tarball, url, token))
 
@@ -154,6 +155,9 @@ class TrialGitHub:
 
     async def write(self, token: str, repo: str, method: str, sub: str, body: dict | None = None) -> object:
         check_write(method, sub, body)
+        if method == "PATCH" and sub.startswith("/git/refs/") and (
+                self.reset is None or (sub, body["sha"]) != (f"/git/refs/heads/{self.reset[0]}", self.reset[1])):
+            raise TrialGitHubError("a branch is only reset to its template, while recycling")
         status, data = await self.call(method, f"/repos/{self._repo(repo)}{sub}", token, body)
         if status not in (200, 201, 204):
             raise TrialGitHubError(f"GitHub answered {status} for {method} {sub.split('/')[1]}")
@@ -211,8 +215,15 @@ class TrialGitHub:
         await self.write(token, repo, "POST", f"/pulls/{int(number)}/reviews", {"event": "COMMENT", "body": body})
 
     async def recycle(self, token: str, repo: str, template_sha: str) -> None:
-        """Back to the template: trial PRs closed, trial branches deleted, the default branch reset."""
-        branch, head = await self.base(token, repo)
+        """Back to the template: the default branch reset first (a refusal stops here, nothing else touched),
+        then trial PRs closed and trial branches deleted."""
+        branch, at = await self.base(token, repo)
+        if at != template_sha:
+            self.reset = (branch, template_sha)    # write() allows exactly this one reset (GPT review)
+            try:
+                await self.write(token, repo, "PATCH", f"/git/refs/heads/{branch}", {"sha": template_sha, "force": True})
+            finally:
+                self.reset = None
         for pr in await self.get(token, repo, "/pulls?state=open&per_page=100") or []:
             head = (pr.get("head") or {}) if isinstance(pr, dict) else {}
             same_repo = str((head.get("repo") or {}).get("full_name", "")).lower() == repo.lower()
@@ -222,5 +233,3 @@ class TrialGitHub:
             name = str(ref.get("ref", "")).removeprefix("refs/heads/") if isinstance(ref, dict) else ""
             if name.startswith(BRANCH_PREFIX):
                 await self.write(token, repo, "DELETE", f"/git/refs/heads/{name}")
-        if head != template_sha:
-            await self.write(token, repo, "PATCH", f"/git/refs/heads/{branch}", {"sha": template_sha, "force": True})

@@ -93,7 +93,7 @@ async def read_back(box, pristine: dict) -> tuple[dict, list, list]:
         raise trial_patch.Refused(trial_patch.TOO_BIG)
     for p in listing["files"]:
         if p in differ:
-            after[p] = await box.read(p)
+            after[p] = await box.read(p, listing["files"][p][1])   # streamed, never past its listed size
             if len(after[p]) != listing["files"][p][1]:     # it changed after it was listed: never trusted
                 raise trial_patch.Refused(trial_patch.TOO_BIG)
         elif not trial_patch.ignored(p):
@@ -150,7 +150,7 @@ def report_counts(xml: str) -> tuple[int, int] | None:
     if not m:
         return None
     n = {k: int(v) for k, v in ATTR_RE.findall(m.group(0))}
-    if "tests" not in n:
+    if not {"tests", "failures", "errors"} <= set(n):
         return None
     bad = n.get("failures", 0) + n.get("errors", 0)
     return n["tests"] - bad - n.get("skipped", 0), bad

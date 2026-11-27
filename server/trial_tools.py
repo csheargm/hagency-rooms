@@ -126,6 +126,8 @@ class ToolLoop:
             if not calls:
                 chat.append({"role": "user", "content": "Use the tools to make the change, then call finish."})
             for call in calls:
+                if self.clock() >= self.deadline:     # also between the tools of one answer (GPT review)
+                    return Ended(TIME, steps=steps, tokens=self.used)
                 name = str(call.get("name", ""))
                 args = arguments(call.get("arguments"))
                 if name == "finish":

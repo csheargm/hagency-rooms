@@ -36,6 +36,8 @@ STARTED = "🛠️ Your trial build has started: issue #{issue} in {repo}, \"{ti
 DONE = ("✅ Your trial build is done: pull request #{pr} in {repo}, for issue #{issue}. Changed: {files}. The tests "
         "passed (run again in a separate sandbox with no network), and an **AI self-check** was posted on it as a "
         "comment, not an approval. **Ready: a person merges** (the trial never merges).\n\nThe self-check said: {review}")
+POSTED = "an **AI self-check** was posted on it as a comment, not an approval"
+NOT_POSTED = "the AI self-check couldn't be posted on it (read the change yourself)"
 FAILED = "⚠️ Your trial build didn't finish: {why}. Nothing was opened. You have {left} trial builds left today."
 
 
@@ -51,8 +53,9 @@ def news_words(job: dict, event: str, left: int) -> str:
                               title=excerpt(job.get("title") or "", 120))
     if event == trial_jobs.DONE:
         files = ", ".join(excerpt(p, 200) for p in (out.get("files") or [])[:10]) or "nothing"
-        return DONE.format(pr=int(out.get("pr") or 0), repo=excerpt(out.get("repo") or "", 120), issue=int(out.get("issue") or 0),
+        said = DONE.format(pr=int(out.get("pr") or 0), repo=excerpt(out.get("repo") or "", 120), issue=int(out.get("issue") or 0),
                            files=files, review=excerpt(out.get("review") or "(nothing)"))
+        return said.replace(POSTED, NOT_POSTED) if out.get("review") == trial_build.NO_REVIEW else said
     why = trial_build.WHY.get(str(out.get("why")), trial_build.WHY["error"])
     if out.get("why") == "patch" and out.get("rule"):
         why = f"{why}, because {excerpt(out['rule'], 200)}"

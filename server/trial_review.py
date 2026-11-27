@@ -67,5 +67,5 @@ async def comment(issue: dict, patch: list, tests: str, slot, ask=None) -> str:
 
 def notes(said: str) -> str:
     """The model's notes as inert text, line by line (no links, images, mentions, HTML: GPT review)."""
-    lines = [inert(line, MAX_LINE_CHARS) for line in trial_model.scrub(said, MAX_SAID_CHARS).splitlines()]
-    return "\n".join(line for line in lines if line)
+    lines = [inert(line.strip().lstrip("#>|=~"), MAX_LINE_CHARS) for line in trial_model.scrub(said, MAX_SAID_CHARS).splitlines()]
+    return "\n".join(line.strip() for line in lines if line.strip())   # no headings, quotes or tables either
