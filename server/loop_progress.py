@@ -84,7 +84,7 @@ class Progress:
                       if v["room"] == room_id and v.get("repo") == repo and v["stage"] in ACTIVE]
             for key, item in active:
                 if item.get("held"):          # a step decided while stopped: send it now
-                    await self.dispatch(room_id, item, item["agent"], item["body"], item["task"])
+                    await self.send_held(room_id, key, item)
                     continue
                 if not await self.watchdog(room_id, key, item):
                     before = item["stage"]
@@ -93,6 +93,12 @@ class Progress:
             if not active:
                 await self.claim_next(room, lvl)
             await self.announce_done(room_id)
+
+    async def send_held(self, room_id: str, key: str, item: dict) -> None:
+        """A step decided while the room was stopped goes out now; a solo merge only through its version gate
+        (pm_solo_code.saved_merge_waits: GPT review)."""
+        if not await self.saved_merge_waits(room_id, key, item):
+            await self.dispatch(room_id, item, item["agent"], item["body"], item["task"])
 
     async def announce_done(self, room_id: str) -> None:
         """Once nothing is left (none active, none queued), say so once, with where to try it."""
@@ -137,6 +143,8 @@ class Progress:
             who = str(item.get("agent", "the agent")).split(":")[0].lstrip("@")
             if item.get("sends", 1) >= MAX_SENDS or "task" not in item:
                 return await self.stop(room_id, key, item, f"no answer from {who} on #{num(key)}")
+            if await self.saved_merge_waits(room_id, key, item):   # pm_solo_code: never to code too old for it
+                return True
             await self.dispatch(room_id, item, item["agent"], item["body"], item["task"], resend=True)
             await self.say(room_id, f"no answer from {who} on #{num(key)} yet; asked again")
             return True
@@ -255,9 +263,13 @@ class Progress:
         elif ok and info.get("headRefOid") and info["headRefOid"] != item.get("sha"):
             await self.review_again(room_id, key, item, "it changed")   # the PR moved since it was approved
         elif ok and lvl == "autonomous":
-            item["stage"] = "merging"
+            if item.get("solo") is True and (await self.solo_withdrawn(room_id, key, item)
+                                             or await self.merge_waits_for_update(room_id, key, item)):
+                return                               # GPT review: switched off while GitHub was asked; old code
+            item["stage"] = "merging"                # "solo": the agent re-reads the switch before it merges
             await self.dispatch(room_id, item, item["builder"], f"{item['builder']}: merge PR #{item['pr']}",
-                                {"kind": "merge", "issue": num(key), "pr": item["pr"], "sha": item["sha"]})
+                                {"kind": "merge", "issue": num(key), "pr": item["pr"], "sha": item["sha"],
+                                 **({"solo": True} if item.get("solo") is True else {})})
         elif ok and item["stage"] == "approved":
             item["stage"] = "ready"
             await self.say(room_id, f"PR #{item['pr']} ready — a person merges")

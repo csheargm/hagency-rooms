@@ -160,13 +160,13 @@ async def submit_review(agent: str, n: int, pr: int, head: str, verdict: str, te
 
 async def merge(agent: str, backend: str, base: Path, task: dict) -> dict:
     repo = _check_repo(task)
-    n, pr = int(task["issue"]), int(task["pr"])
-    sha = str(task["sha"])
+    n, pr, sha, still = int(task["issue"]), int(task["pr"]), str(task["sha"]), task.get("_still")
     if task.get("admin") is True:   # solo review (ADR 0023): past GitHub's review rule as the repo's admin
-        return await solo_github.admin_merge(agent, repo, n, pr, sha, task.get("_still"))
+        return await solo_github.admin_merge(agent, repo, n, pr, sha, still)
     ok, info = await github.merge_ready(pr, agent, repo)  # GitHub's verdict, re-checked here
-    if not ok or info.get("headRefOid") != sha:
-        raise TaskError(f"GitHub says PR #{pr} isn't ready at the reviewed commit: {info}")
+    if not (ready := ok and info.get("headRefOid") == sha) or callable(still) and not await still():   # still: solo
+        raise TaskError(f"GitHub says PR #{pr} isn't ready at the reviewed commit: {info}" if not ready
+                        else "the room stopped, or solo review was switched off, while GitHub was asked")
     await run(["pr", "merge", str(pr), "-R", repo, "--squash", "--match-head-commit", sha], agent)
     return {"kind": "merge", "issue": n, "pr": pr, "line": f"merged PR #{pr} (closes #{n})"}
 

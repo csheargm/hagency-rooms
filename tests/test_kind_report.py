@@ -182,7 +182,7 @@ class Reports(flows.Base):
         self.lp.client = SimpleNamespace(add_event_callback=lambda cb, kind: seen.append(kind.__name__),
                                          add_to_device_callback=lambda cb, kind: seen.append(kind.__name__))
         self.lp.listen_early()
-        self.assertEqual(seen, ["InviteMemberEvent", "RoomMessage", "UnknownToDeviceEvent"])   # RoomMessage: note_said
+        self.assertEqual(seen, ["InviteMemberEvent", "RoomMessage", "RoomMessageText", "UnknownToDeviceEvent"])   # note_said, on_early_solo
         other = ToDeviceEvent.parse_event({"sender": CXA, "type": "m.something", "content": {"agent_kind": "codex"}})
         asyncio.run(self.lp.on_kind_report(other))                  # another type: never a report
         self.assertEqual(self.card()["cx-agent"], pm_kinds.NOT_REPORTED)

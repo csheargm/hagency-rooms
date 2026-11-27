@@ -13,7 +13,7 @@ from server import console_auto_update, ownership, routing
 from server.pm_cards import local
 from server.pm_paused import num
 
-NEEDS_UPDATE = "{agent} needs an update first: it runs code from before solo review. "   # live test 2026-11-27
+NEEDS_UPDATE = "{agent} needs an update first: its code is older than solo review needs. "   # live test 2026-11-27
 THEN_ASKED = "I've asked it to update. Once My agents shows it Up to date, say **@pm retry #{n}**."
 THEN_BY_HAND = "Update it in My agents (in your chat with Product Manager), then say **@pm retry #{n}**."
 NOT_ON = "Solo review is off here now, so I sent nothing that needs it."
@@ -21,11 +21,34 @@ UNREADABLE = "⚠️ I couldn't read this room's settings just now, so I changed
 
 
 class SoloCode:
-    def runs_solo(self, agent: str) -> bool:
-        """`agent` (a Matrix id) runs code that does solo steps: a solo check, an admin merge."""
+    def runs_solo(self, agent: str, step: str = code_report.SOLO_STEP) -> bool:
+        """`agent` (a Matrix id) runs code that does this solo step (a solo check; SOLO_MERGE: a solo merge)."""
         owner = ownership.owner_id(agent)
         code = (registry.find(owner, local(agent)) or {}).get(registry.CODE) if owner else None
-        return code_report.runs_task(code, code_report.SOLO_STEP)
+        return code_report.runs_task(code, step)
+
+    async def saved_merge_waits(self, room_id: str, key: str, item: dict) -> bool:
+        """A saved solo merge about to go out again (held while stopped, or the watchdog's resend): the same gate
+        (GPT review: a task saved before an update, or a builder rolled back, skipped it). True: paused."""
+        task = item.get("task") or {}
+        if task.get("kind") != "merge" or not (item.get("solo") is True or any(task.get(f) is True for f in ("admin", "solo"))):
+            return False
+        if item.get("solo") is True and task.get("admin") is not True:   # GPT review: one saved before "solo" existed
+            item["task"] = {**task, "solo": True}                         # goes out with it (the agent re-reads)
+        return await self.merge_waits_for_update(room_id, key, item)
+
+    async def merge_waits_for_update(self, room_id: str, key: str, item: dict) -> bool:
+        """A solo merge goes only to code that re-reads the switch at the merge and refuses code-owner rules
+        (code_report.SOLO_MERGE; GPT review). Else it pauses, the builder is asked to update, and "@pm retry #N"
+        tries the merge again, PR kept. True: paused."""
+        builder = item["builder"]
+        if self.runs_solo(builder, code_report.SOLO_MERGE):
+            return False
+        item["resume"] = "approved"
+        item.pop("held", None)                # a held merge never goes out after the retry: the merge is decided again
+        await self.stop(room_id, key, item, f"{local(builder)} runs code too old for a solo merge", "**What you can do:**"
+                        "\n\n- " + update_line(local(builder), await self.ask_update(builder), num(key)))
+        return True
 
     async def ask_update(self, agent: str) -> bool:
         """A solo step `agent`'s code predates: it is asked to update, when its owner allows (True)."""
@@ -52,6 +75,9 @@ class SoloCode:
         """A fresh review by the item's reviewer (after fixes, or the PR moved); a solo one only to code that does
         solo steps (GPT review: else it pauses, its update is asked, and "@pm retry #N" goes back to the check)."""
         reviewer = item["reviewer"]
+        room = getattr(self.client, "rooms", {}).get(room_id) if item.get("solo") is True else None
+        if room is not None and routing.checkers_for(self.agents_in(room), item["builder"], ownership.owner_id):
+            return await self.recheck_with(room, key, item)   # GPT review: another person's agent is here now
         if item.get("solo") is True and not self.runs_solo(reviewer):
             item["no_checker"] = True
             await self.stop(room_id, key, item, f"{local(reviewer)} runs code from before solo review",
@@ -61,6 +87,20 @@ class SoloCode:
         item["stage"] = "reviewing"
         await self.dispatch(room_id, item, reviewer, f"{reviewer}: review PR #{item['pr']} again ({why}) against "
                             f"#{num(key)}", routing.check_task(item, num(key)))
+
+
+    async def recheck_with(self, room, key: str, item: dict) -> None:
+        """A solo item's next check goes through checker selection again (another person's agent first). If the
+        step can't go out (Matrix refused), it pauses for "@pm retry #N" (GPT review: never left at "reviewing"
+        with the fix task for the watchdog to resend), as check_again does."""
+        item.update(stage="reviewing", task_ids=[])
+        try:
+            await self.ask_checker(room, item, key)
+        except RuntimeError:                  # loop.SendError / GitHub: said by the caller's log
+            item.update(stage="stopped", no_checker=True)
+            raise
+        finally:
+            self.save()                       # GPT review: the pause (or the sent step) survives a restart
 
 
 def update_line(agent: str, asked: bool, n: int) -> str:

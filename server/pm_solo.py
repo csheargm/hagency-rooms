@@ -40,12 +40,16 @@ NO_OTHER = ("Solo review is on, but none of the builder's owner's other agents i
             "work). Bring a second agent of yours into the room, then say **@pm retry #{n}**.")
 OFFLINE = ("Solo review is on, but your other agent {names} is offline. Wake its computer (or start it in My agents), "
            "then say **@pm retry #{n}**.")
+AWAY = ("Another person's agent, {names}, is here but offline, so it checks this rather than your own agent. Ask "
+        "its owner to wake it, then say **@pm retry #{n}**.")
 SOLO_READY = ("PR #{pr} ready — a person merges. GitHub's review rule can't count a review by your own agent, so as "
               "the repo's admin use **Merge without waiting for requirements** on GitHub.")
 SOLO_READY_NO_BYPASS = ("PR #{pr} ready — a person merges. GitHub's review rule can't count a review by your own agent, "
                         "and it doesn't let repo admins past it yet. ")
 NO_REPO_YET = "Pick this room's GitHub repo first: solo review is switched on for that repo's rules."
 REPO_MOVED = "This room's repo changed since I asked, so solo review stays off. Ask me again for the new repo."
+UNANSWERED = ("{agent} hasn't said yet whether it let repo admins past GitHub's review rule on {repo}. When it does, "
+              "I'll ask it to take that out again. If no answer comes: ")
 MERGE_FAILED = ("**What you can do:**\n\n- If GitHub's rules stopped it: {steps} Then say **@pm retry #{n}** and I'll "
                 "try the merge again.\n- Or: {link}")
 
@@ -138,6 +142,9 @@ class Solo(SoloRules):
         await self.say(rid, err or OFF)
         if not err and before["bypass_added"]:
             await self.take_out(room, sender, before)   # pm_solo_rules.py: by the owner's agent, or said plainly
+        elif not err and (job := self.unanswered_add(rid)):   # GPT review: its answer may be lost; said plainly
+            await self.say(rid, UNANSWERED.format(agent=local(job["agent"]), repo=job.get("repo"))
+                           + solo_review.TAKE_OUT.format(repo=job.get("repo")))
         return err
 
     def waiting_for_checker(self, rid: str) -> str:
@@ -148,10 +155,14 @@ class Solo(SoloRules):
 
     async def checkers(self, room: MatrixRoom, item: dict) -> tuple[list[str], bool]:
         """(who may check this item's work, whether that is solo review)."""
-        agents = routing.available(self.agents_in(room), self.agent_online)
+        here = self.agents_in(room)
+        agents = routing.available(here, self.agent_online)
         others = routing.checkers_for(agents, item["builder"], ownership.owner_id)
         if others or not await self.solo_on(room.room_id):
             return others, False
+        if away := routing.checkers_for(here, item["builder"], ownership.owner_id):   # GPT review: another person's
+            item["away_checker"] = [local(a) for a in away]   # agent, offline for now: waited for, never replaced
+            return [], False
         own = routing.own_checkers(agents, item["builder"], ownership.owner_id)
         fit = [a for a in own if self.runs_solo(a)]   # pm_solo_code: never a solo check to code that predates it
         if own and not fit:                   # said by no_checker_steps, with "@pm retry #N"
@@ -165,14 +176,17 @@ class Solo(SoloRules):
         asleep = [local(a) for a in (self.agents_in(room) if room and mine else [])
                   if a != item["builder"] and ownership.owner_id(a) == mine and self.agent_online(local(a)) is False]
         old = (item or {}).pop("old_checker", None) if solo else None   # pm_solo_code: code from before solo review
-        first = (update_line(old[0], old[1], n) if old else OFFLINE.format(names=", ".join(asleep), n=n)
-                 if solo and asleep else (NO_OTHER if solo else HINT).format(n=n))   # review: in the room, but offline
+        away = (item or {}).pop("away_checker", None)                    # checkers: another person's, offline
+        first = (update_line(old[0], old[1], n) if old else AWAY.format(names=", ".join(away), n=n) if away else
+                 OFFLINE.format(names=", ".join(asleep), n=n) if solo and asleep
+                 else (NO_OTHER if solo else HINT).format(n=n))   # review: in the room, but offline
         return "**What you can do:**\n\n" + f"- {first}" + (f"\n- Or: {steps}" if steps else "")
 
     def merge_failed_steps(self, item: dict, key: str, kind: str) -> str | None:
-        """An admin merge (solo review) that GitHub's rules or a check stopped: how to let it merge, and "@pm retry #N"
-        tries the merge again (review: the generic steps led to a retry that refuses an open PR). None otherwise."""
-        if kind != "merge" or (item.get("task") or {}).get("admin") is not True:
+        """A solo merge (admin, or one the agent refused after a switch-off: GPT review) that stopped: how to let it
+        merge, and "@pm retry #N" goes back to the merge, PR kept, which pauses for another person's check if solo
+        review is off now (review: the generic steps led to a retry that refuses an open PR). None otherwise."""
+        if kind != "merge" or not any((item.get("task") or {}).get(f) is True for f in ("admin", "solo")):
             return None
         item["resume"] = "approved"
         return MERGE_FAILED.format(steps=solo_review.BYPASS_STEPS.format(repo=item["repo"]), n=num(key),
@@ -185,10 +199,12 @@ class Solo(SoloRules):
             return True
         if item.get("solo") is not True or not routing.own_checkers([sender], item["builder"], ownership.owner_id):
             return False
-        if await self.solo_on(room.room_id):
-            return True
+        on = await self.solo_on(room.room_id)
+        if on and not routing.checkers_for(self.agents_in(room), item["builder"], ownership.owner_id):
+            return True                       # GPT review: never while another person's agent is here (back) to check
         item["no_checker"] = True
-        await self.stop(room.room_id, key, item, f"solo review was switched off while {local(sender)} checked it",
+        await self.stop(room.room_id, key, item, f"another person's agent is here to check it, so {local(sender)}'s "
+                        "check doesn't count" if on else f"solo review was switched off while {local(sender)} checked it",
                         self.no_checker_steps(num(key), None, False))
         return False
 
@@ -241,11 +257,8 @@ class Solo(SoloRules):
         if info.get("headRefOid") != item.get("sha"):
             await self.review_again(room_id, key, item, "it changed")   # the PR moved since it was checked
         elif lvl == "autonomous" and info.get("mergeable") == "MERGEABLE" and await self.checks_green(room_id, key, item):
-            if not self.runs_solo(item["builder"]):   # pm_solo_code: its code would refuse (or not know) the admin merge
-                item["resume"] = "approved"           # "@pm retry #N" tries the merge again, PR kept
-                return await self.stop(room_id, key, item, f"{local(item['builder'])} runs code from before solo review",
-                                       "**What you can do:**\n\n- " + update_line(local(item["builder"]), await self.ask_update(
-                                           item["builder"]), num(key)))
+            if await self.merge_waits_for_update(room_id, key, item):   # pm_solo_code: code too old for it
+                return
             if err := await self.record_on(room_id):   # older agent code reads only an explicit "on" for this repo
                 return await self.say(room_id, err)    # still "approved": tried again at the next poll
             item["stage"] = "merging"

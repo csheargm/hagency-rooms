@@ -156,9 +156,9 @@ class GptReview(Default):
     def test_switched_off_while_the_agent_was_chosen_sends_nothing(self):
         real = self.lp.ruleset_agent
 
-        async def slow(room, sender):         # someone says "solo review off" meanwhile
+        async def slow(room, sender, on=True):   # someone says "solo review off" meanwhile
             await self.lp.write_solo("!r", False)
-            return await real(room, sender)
+            return await real(room, sender, on)
         self.lp.ruleset_agent = slow
         self.run_(self.lp.ask_ruleset(self.room, CX, True, [], REPO))
         self.assertEqual(self.tasks(solo_review.TASK_KIND), [])

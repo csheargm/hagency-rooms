@@ -9,6 +9,7 @@ from server import readiness_identity
 from server.github_setup import evaluate
 
 GATED = [{"type": "pull_request", "parameters": {"required_approving_review_count": 1}}]
+ONE_OWNER = mock.patch.object(github_setup.registry, "owner_of", lambda a: "@one:s")   # one person's agents
 OK = {"anna-agent": {"login": "a", "push": True}, "betty-agent": {"login": "b", "push": True}}
 
 
@@ -39,6 +40,7 @@ class Evaluate(unittest.TestCase):
     def test_an_agents_own_report_says_its_own_fix(self):
         self.assertEqual(evaluate({"betty-agent": {"problem": "betty-agent: do this"}}, GATED), ["betty-agent: do this"])
 
+    @ONE_OWNER
     def test_shared_account(self):
         shared = {"anna-agent": {"login": "a", "push": True}, "betty-agent": {"login": "a", "push": True}}
         p = evaluate(shared, GATED)                       # with the rule: it can't be met, said with the switch
@@ -49,6 +51,7 @@ class Evaluate(unittest.TestCase):
         mixed = {**shared, "betty-agent": {"login": "A", "push": True}}   # GitHub's names ignore case
         self.assertEqual(len(evaluate(mixed, GATED)), 1)
 
+    @ONE_OWNER
     def test_solo_review_needs_an_admin_and_the_rules_bypass(self):
         """GPT review: Solo on alone isn't enough; GitHub lets only a repo admin past, once the rule allows it."""
         admin = {"login": "a", "push": True, "admin": True}

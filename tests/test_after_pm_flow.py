@@ -90,6 +90,15 @@ class AfterPm(RoomBase, unittest.TestCase):
         self.answer(ANNA, ANSWER, 8)                                    # the board edit is no new message
         self.assertEqual((self.asked, self.said), ([], []))
 
+    def test_a_task_right_after_pms_status_doesnt_hide_the_status(self):
+        """GPT whole-batch review: @pm's task message was noted as the latest, by someone else, so the answer
+        to the status just before it was ignored."""
+        self.model = {"action": "none", "reply": ""}
+        self.post(PM, PAUSED, 0)
+        self.post(PM, "anna-agent, please build #3", 1, {github.TASK_KEY: {"kind": "build"}})
+        self.answer(ANNA, ANSWER, 5)
+        self.assertEqual(len(self.asked), 1)
+
     def test_without_a_model_it_stays_quiet(self):
         """No rule-based fallback for a speculative read: never "didn't catch that" to chat."""
         self.lp.agent_online = lambda agent: False

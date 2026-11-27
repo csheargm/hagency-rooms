@@ -153,12 +153,12 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
                 elif kind in tasks.AUTONOMOUS_ONLY and await room_state.level(self.client, room_id) != "autonomous":
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "room is no longer autonomous", "line": f"{kind} skipped: room is no longer autonomous"}
-                elif (task.get("on") if kind == solo_review.TASK_KIND else task.get("admin")) is True \
-                        and not await solo_review.enabled(self.client, room_id):   # ADR 0023: re-read from the room now
+                elif any(task.get(f) is True for f in (("on",) if kind == solo_review.TASK_KIND else ("admin", "solo"))) \
+                        and not await solo_review.enabled(self.client, room_id):   # ADR 0023: re-read now (any solo merge)
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "solo review is off in this room", "line": f"{kind} refused: solo review is off here"}
                 else:
-                    if kind == "merge" and task.get("admin") is True:   # ADR 0023: read again right before --admin
+                    if kind == "merge" and any(task.get(f) is True for f in ("admin", "solo")):   # ADR 0023: again, at the merge
                         task = {**task, "_still": lambda: solo_review.still_allowed(self.client, room_id, task["repo"])}
                     base = ROOT / "rooms" / self.owner / "work" / (room_context.repo_dir(room_repo) if room_repo else "no-repo")
                     result = await tasks.handle(f"{self.owner}-agent", self.backend, base, task)

@@ -82,13 +82,14 @@ class Implicit:
         latest one, and the one before it. An edit isn't a new message; a task to an agent isn't said to people."""
         content = event.source.get("content", {})
         rel = content.get("m.relates_to")
-        if isinstance(rel, dict) and rel.get("rel_type") == "m.replace":
-            return
+        if isinstance(rel, dict) and rel.get("rel_type") == "m.replace" or \
+                event.sender == self.user_id and github.TASK_KEY in content:
+            return                            # GPT review: my task to an agent never hides my status before it
         said = self.__dict__.setdefault("_said", {})
         last = said.get(room.room_id)
         if last and last[0] == event.event_id:
             return                            # seen already (a replay after a hand-off)
-        mine = event.sender == self.user_id and github.TASK_KEY not in content
+        mine = event.sender == self.user_id
         said[room.room_id] = (event.event_id, event.server_timestamp, mine, last[:3] if last else None)
 
     def follows_pm(self, room_id: str, event: RoomMessageText) -> bool:

@@ -158,6 +158,10 @@ def beyond_review(rules: list, checks_ok: bool = True) -> list[str]:
         params = (r.get("parameters") or {}) if isinstance(r, dict) else {}
         if r.get("type") == "pull_request" and params.get("required_review_thread_resolution") is True:
             more.append("resolved conversations")
+        if r.get("type") == "pull_request" and params.get("require_code_owner_review") is True:
+            more.append("a code owner's review")          # GPT review: the bypass would waive it too
+        if r.get("type") == "pull_request" and params.get("required_reviewers"):
+            more.append("approval from designated reviewers")
         if r.get("type") == "pull_request" and params.get("allowed_merge_methods") not in (None, []) \
                 and "squash" not in params["allowed_merge_methods"]:
             more.append("a merge method other than squash")
@@ -197,6 +201,8 @@ async def classic_checks(agent: str, repo: str, branch: str) -> list[str]:
     prot = await classic_protection(agent, repo, branch)
     extra = [word for key, word in CLASSIC_EXTRA.items() if isinstance(prot.get(key), dict) and prot[key].get("enabled")]
     extra += ["limits on who may push"] if prot.get("restrictions") else []
+    extra += ["a code owner's review"] if (prot.get("required_pull_request_reviews") or {}).get(
+        "require_code_owner_reviews") is True else []      # GPT review: --admin skips it as well
     if extra:
         raise ValueError(f"{repo}'s branch protection also requires {', '.join(extra)}, which --admin would skip; "
                          "a person merges")

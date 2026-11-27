@@ -48,7 +48,7 @@ class Guard(unittest.TestCase):
 
     def run_main(self, disk, tx, alert_rc=0):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(guard, "FLAG", Path(d) / "flags" / "media-paused"), \
-                mock.patch.object(guard, "measure", return_value=(disk, tx)), \
+                mock.patch.object(guard, "measure", return_value=(disk, tx, None)), \
                 mock.patch.object(guard.subprocess, "run", return_value=mock.Mock(returncode=alert_rc)) as run:
             rc = guard.main()
             return rc, guard.FLAG.exists(), run
@@ -60,7 +60,7 @@ class Guard(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             flag = Path(d) / "media-paused"
             flag.touch()
-            with mock.patch.object(guard, "FLAG", flag), mock.patch.object(guard, "measure", return_value=(0.2, 0)), \
+            with mock.patch.object(guard, "FLAG", flag), mock.patch.object(guard, "measure", return_value=(0.2, 0, None)), \
                     mock.patch.object(guard.subprocess, "run") as run:
                 self.assertEqual(guard.main(), 0)
                 self.assertFalse(flag.exists())
@@ -69,7 +69,7 @@ class Guard(unittest.TestCase):
     def test_missing_figures_keep_this_months_pause_but_not_last_months(self):
         with tempfile.TemporaryDirectory() as d:
             flag = Path(d) / "media-paused"
-            with mock.patch.object(guard, "FLAG", flag), mock.patch.object(guard, "measure", return_value=(0.2, None)), \
+            with mock.patch.object(guard, "FLAG", flag), mock.patch.object(guard, "measure", return_value=(0.2, None, None)), \
                     mock.patch.object(guard.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
                 flag.write_text("2026-11")
                 guard.main(NOV)
@@ -83,7 +83,7 @@ class Guard(unittest.TestCase):
                         self.assertRaises(SystemExit):
                     guard.main(NOV)
                 self.assertFalse(flag.exists())                                      # even when measuring fails
-            with mock.patch.object(guard, "FLAG", flag), mock.patch.object(guard, "measure", return_value=(0.2, 6 * guard.TB)), \
+            with mock.patch.object(guard, "FLAG", flag), mock.patch.object(guard, "measure", return_value=(0.2, 6 * guard.TB, None)), \
                     mock.patch.object(guard.subprocess, "run", return_value=mock.Mock(returncode=0)):
                 guard.main(NOV)
                 self.assertEqual(flag.read_text(), "2026-11")

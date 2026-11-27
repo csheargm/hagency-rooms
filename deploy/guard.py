@@ -25,6 +25,7 @@ DISK_WARN = 0.80
 TB = 10 ** 12
 TRAFFIC_WARN = 1 * TB
 TRAFFIC_PAUSE = 5 * TB
+MAX_TX = 10 ** 6 * TB                         # an exabyte a month: anything above is a broken counter
 SCHEDULE = "*-*-* 05:00:00 America/Los_Angeles"
 ALERT = ["docker", "compose", "--env-file", ".env", "exec", "-T", "pm", ".venv/bin/python", "deploy/pm_alert.py"]
 
@@ -84,24 +85,40 @@ def unit_file(kind: str) -> str:
     raise SystemExit(f"✗ no unit {kind!r}: service or timer")
 
 
-def measure() -> tuple[float, int | None]:
+def traffic() -> tuple[int | None, str | None]:
+    """(bytes sent this month or None, why it couldn't be read: None when vnstat just has no figure yet)."""
+    try:
+        iface = default_iface(Path("/proc/net/route").read_text())
+        out = subprocess.run(["vnstat", "--json", "m"], capture_output=True, text=True, timeout=60)
+        if out.returncode != 0 or not iface:
+            return None, f"can't read this month's traffic (vnstat: {out.stderr.strip()[:200]}, interface {iface})"
+        tx = month_tx(json.loads(out.stdout), iface, datetime.date.today())
+        if tx is not None and not 0 <= tx < MAX_TX:   # GPT review: 10**400 broke tx / TB later, before the disk
+            return None, f"vnstat reported an impossible traffic figure ({str(tx)[:40]})"
+        return tx, None
+    except SystemExit as e:                   # month_tx: an interface vnstat doesn't watch; said in the alert
+        return None, str(e).removeprefix("✗ ")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, subprocess.TimeoutExpired) as e:
+        return None, f"can't read this month's traffic ({type(e).__name__}: {str(e)[:200]})"   # no vnstat, bad JSON: said
+
+
+def measure() -> tuple[float, int | None, str | None]:
+    """(disk use, this month's traffic or None, why traffic couldn't be read). The disk never waits on vnstat
+    (GPT review: a vnstat failure skipped the disk history and its alerts)."""
     usage = shutil.disk_usage("/")
-    iface = default_iface(Path("/proc/net/route").read_text())
-    out = subprocess.run(["vnstat", "--json", "m"], capture_output=True, text=True, timeout=60)
-    if out.returncode != 0 or not iface:
-        raise SystemExit(f"✗ can't read this month's traffic (vnstat: {out.stderr.strip()[:200]}, interface {iface})")
-    return usage.used / usage.total, month_tx(json.loads(out.stdout), iface, datetime.date.today())
+    return (usage.used / usage.total, *traffic())
 
 
 def main(today: datetime.date | None = None) -> int:
     today = today or datetime.date.today()
     if FLAG.exists() and not paused_this_month(today):
         FLAG.unlink()                         # last month's pause ends even if measuring fails below
-    disk_used, tx = measure()
+    disk_used, tx, unread = measure()
     if tx is None:                            # no figure: keep a pause set this month, don't invent zero
         warnings, pause = decide(disk_used, 0)
         pause = paused_this_month(today)
-        warnings.append("⚠️ vnstat has no traffic figure for this month; check `vnstat -m` on the server.")
+        warnings.append(f"⚠️ Traffic not checked: {unread}." if unread else
+                        "⚠️ vnstat has no traffic figure for this month; check `vnstat -m` on the server.")
         tx = 0
     else:
         warnings, pause = decide(disk_used, tx)
@@ -119,7 +136,7 @@ def main(today: datetime.date | None = None) -> int:
     text = "\n".join(warnings + disk_notes + problems)
     print(text)
     sent = subprocess.run(ALERT, cwd=HERE, input=text, text=True, timeout=120)
-    return 0 if sent.returncode == 0 else 1          # a warning nobody got: the timer's run shows failed
+    return 0 if sent.returncode == 0 and not unread else 1   # a warning nobody got, or no traffic: the run shows failed
 
 
 if __name__ == "__main__":
