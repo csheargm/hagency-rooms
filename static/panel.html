@@ -95,7 +95,7 @@ let openidRequest = null, gotCredentials = false, capable = false, expired = 0;
 // the widget API's navigate (MSC2931; pre-approved for our panel only: deploy/element_home.py), else (or
 // if Element refuses) a matrix.to link in a new tab.
 const NAVIGATE = "org.matrix.msc2931.navigate", NAV_WAIT_MS = 4000;
-let canNavigate = false, navRequest = null, navHref = "", pmChat = null, inPmChat = false;   // inPmChat: My Hagency
+let canNavigate = false, navRequest = null, navHref = "", navLabel = "", pmChat = null, inPmChat = false;   // inPmChat: My Hagency
 if (embedded) window.addEventListener("message", ev => {
   const m = ev.data || {};
   if (!EMBEDDERS.includes(ev.origin) || ev.source !== window.parent || m.widgetId !== wid) return;
@@ -212,7 +212,7 @@ function pmChatLink(text) {
 }
 document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("a[data-pmchat]");
   if (!a || !embedded || !canNavigate) return;      // a new tab, by the link itself
-  e.preventDefault(); navHref = a.href; const sent = navRequest = "nav-" + crypto.randomUUID();
+  e.preventDefault(); navHref = a.href; navLabel = (a.dataset || {}).label || ""; const sent = navRequest = "nav-" + crypto.randomUUID();
   window.parent.postMessage({api: "fromWidget", widgetId: wid, requestId: sent, action: NAVIGATE, data: {uri: a.href}}, ELEMENT);
   setTimeout(() => { if (navRequest === sent) { navRequest = null; navFallback(); } }, NAV_WAIT_MS); });
 // "Welcome steps": Element's home page (common/bridge_config.ELEMENT_HOME). The widget API can't open it
@@ -227,7 +227,7 @@ document.addEventListener("click", e => { const a = e.target.closest && e.target
   doc.body.appendChild(link); link.click(); link.remove(); });
 // Refused, or no answer: a link to click (GPT review: a tab opened later, not by the click, is blocked).
 function navFallback() { $("msg").innerHTML = `Element didn't open the chat here: <a href="${esc(navHref)}" target="_blank"
-  rel="noopener noreferrer">open your chat with Product Manager</a>.`; }
+  rel="noopener noreferrer">${esc(navLabel || "open your chat with Product Manager")}</a>.`; }
 // A card whose script didn't load (a proxy that doesn't route it) shows a note; the rest of the panel still works.
 const card = (name, s) => typeof window[name] === "function" ? window[name](s)
   : `<section class="card"><h2>Unavailable</h2><div class="muted">Part of this panel didn't load. Reload, or tell the server's owner.</div></section>`;

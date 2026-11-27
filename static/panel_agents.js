@@ -235,7 +235,7 @@ function trialCard(t) {
 function openChat(roomId) {
   const msg = document.getElementById("msg");
   msg.innerHTML = `${esc(msg.textContent)} <a id="trialchat" href="https://matrix.to/#/${esc(encodeURIComponent(roomId))}"
-    target="_blank" rel="noopener noreferrer" data-pmchat="1">Open the Trial agent chat</a>`;
+    target="_blank" rel="noopener noreferrer" data-pmchat="1" data-label="open the Trial agent chat">Open the Trial agent chat</a>`;
   if (embedded && canNavigate) document.getElementById("trialchat").click();
 }
 // Auto-update (console_auto_update.py, ADR 0024): one switch for all of a person's agents on their computers, on by

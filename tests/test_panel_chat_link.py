@@ -47,10 +47,11 @@ const send = async data => { listener({origin: element, source: ctx.parent, data
   const html = (els.controls.innerHTML + el("agents").innerHTML);
   const href = (html.match(/<a href="([^"]+)"[^>]*data-pmchat/) || [])[1];
   let prevented = false;
-  const a = {href, closest: sel => sel.includes("pmchat") ? a : null};
+  const a = {href, closest: sel => sel.includes("pmchat") ? a : null,
+             dataset: scenario === "refused_trial" ? {label: "open the Trial agent chat"} : {}};   // openChat's link
   clicker.forEach(f => f({target: a, preventDefault: () => { prevented = true; }}));
   const nav = posted.find(m => m.action === "org.matrix.msc2931.navigate");
-  if (scenario === "refused") await send({api: "fromWidget", requestId: nav.requestId, action: nav.action, response: {error: {message: "no"}}});
+  if (scenario.startsWith("refused")) await send({api: "fromWidget", requestId: nav.requestId, action: nav.action, response: {error: {message: "no"}}});
   process.stdout.write(JSON.stringify({asked, href, prevented, nav: nav ? nav.data.uri : null, opened, msg: el("msg").innerHTML}));
 })();
 """
@@ -86,6 +87,12 @@ class ChatLink(unittest.TestCase):
         self.assertEqual(got["opened"], [])
         self.assertIn('<a href="https://matrix.to/#/!dm%3Aexample" target="_blank"', got["msg"])
         self.assertIn("open your chat with Product Manager</a>", got["msg"])
+
+    def test_a_refused_trial_chat_link_keeps_its_own_words(self):
+        """GPT review: the fallback for the Trial agent chat's link said it opens Product Manager."""
+        got = self.run_page("refused_trial")
+        self.assertIn("open the Trial agent chat</a>", got["msg"])
+        self.assertNotIn("Product Manager", got["msg"])
 
 
 @unittest.skipIf(NODE is None, "node not installed")
