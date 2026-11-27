@@ -44,7 +44,7 @@ class FakeBridge(agent_github.BridgeGitHub):
 
 def request(sender, ask="k1"):
     event = ToDeviceEvent.parse_event({"sender": sender, "type": github_login.REQUEST_TYPE, "content": {"id": ask}})
-    assert isinstance(event, UnknownToDeviceEvent)       # what report_and_listen's callback is given
+    assert isinstance(event, UnknownToDeviceEvent)       # what listen_to_pm's callback is given
     return event
 
 
@@ -81,7 +81,7 @@ class SignIn(Base):
     def test_pms_click_signs_it_in_and_only_the_code_and_login_go_out(self):
         b = self.click()
         self.assertEqual(self.answers(b), [{"id": "k1", "code": "WDJB-MJHT"}, {"id": "k1", "result": "signed_in", "login": "octo-cat"}])
-        self.assertEqual(b.sent[-1], (github_login.STATE_TYPE, agent_github.PM_ID, {"state": "signed_in", "login": "octo-cat"}))
+        self.assertEqual(b.sent[-1], (github_login.STATE_TYPE, agent_github.PM_ID, {"state": "signed_in", "login": "octo-cat", "id": "k1"}))
         everything = json.dumps(b.sent) + self.logs
         self.assertNotIn("gho_", everything)                # gh printed a token-like line: never sent, never logged
         self.assertNotIn("curious", everything)
@@ -117,13 +117,13 @@ class SignIn(Base):
             self.assertEqual(answers[-1], {"id": "k1", "result": word}, mode)
             self.assertTrue(all("code" not in a for a in answers) or mode == "fail", mode)
             self.assertIn(word, github_login.RESULTS)
-            self.assertEqual(b.sent[-1][2], {"state": "none"})
+            self.assertEqual(b.sent[-1][2], {"state": "none", "id": "k1"})
 
     def test_no_gh_on_that_computer(self):
         with mock.patch.object(github, "GH_BIN", "/nowhere/gh"):
             b = self.click()
         self.assertEqual(self.answers(b), [{"id": "k1", "result": "no_gh"}])
-        self.assertEqual(b.sent[-1][2], {"state": "no_gh"})
+        self.assertEqual(b.sent[-1][2], {"state": "no_gh", "id": "k1"})
 
     def test_a_code_nobody_enters_times_out_and_gh_is_stopped(self):
         with mock.patch.object(agent_github, "SIGNIN_S", 0.5):
@@ -198,16 +198,20 @@ class Updating(FakeBridge, agent_update.BridgeUpdate):
         self.tasks, self.sync_point, self.updated = set(), None, False
 
 
+def now(agent: str) -> dict:
+    return asyncio.run(agent_github.current_state(agent))
+
+
 class State(Base):
     def test_its_start_says_signed_in_or_not_or_no_gh(self):
-        self.assertEqual(agent_github.current_state(AGENT), {"state": "none"})
+        self.assertEqual(now(AGENT), {"state": "none"})
         with mock.patch.object(github, "GH_BIN", "/nowhere/gh"):
-            self.assertEqual(agent_github.current_state(AGENT), {"state": "no_gh"})
+            self.assertEqual(now(AGENT), {"state": "no_gh"})
         (self.root / AGENT).mkdir(parents=True)
         (self.root / AGENT / "hosts.yml").write_text("github.com:\n    oauth_token: gho_secret\n    user: octo-cat\n")
-        self.assertEqual(agent_github.current_state(AGENT), {"state": "signed_in", "login": "octo-cat"})
+        self.assertEqual(now(AGENT), {"state": "signed_in", "login": "octo-cat"})
         (self.root / AGENT / "hosts.yml").write_text("github.com:\n    user: bad name; rm\n")
-        self.assertEqual(agent_github.current_state(AGENT), {"state": "none"})   # no valid github.com user: not signed in
+        self.assertEqual(now(AGENT), {"state": "none"})   # no valid github.com user: not signed in
 
     def test_pm_keeps_only_its_exact_shape(self):
         self.assertEqual(github_login.state({"state": "signed_in", "login": "octo-cat"}), {"state": "signed_in", "login": "octo-cat"})
@@ -249,7 +253,7 @@ class Recipe(unittest.TestCase):
             (root / AGENT).mkdir()
             (root / AGENT / "hosts.yml").write_text("ghe.example.com:\n    user: someone\n")
             self.assertIsNone(github_login.login_of(AGENT))
-            self.assertEqual(agent_github.current_state(AGENT)["state"] in ("none", "no_gh"), True)
+            self.assertIn(now(AGENT)["state"], ("none", "no_gh"))
             (root / AGENT / "hosts.yml").write_text("ghe.example.com:\n    user: someone\ngithub.com:\n    user: octo-cat\n")
             self.assertEqual(github_login.login_of(AGENT), "octo-cat")
 

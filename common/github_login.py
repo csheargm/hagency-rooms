@@ -25,7 +25,8 @@ NO_BROWSER = "cmd /c rem" if os.name == "nt" else "true"   # the panel's sign-in
 # Panel sign-in messages (to-device; Synapse sets the sender, ADR 0020's pattern).
 REQUEST_TYPE = "xyz.hagencylabs.agent.github"          # @pm → agent: {"id"} (an owner's click)
 ANSWER_TYPE = "xyz.hagencylabs.agent.github.result"    # agent → @pm: {"id", "code"}, then {"id", "result", "login"?}
-STATE_TYPE = "xyz.hagencylabs.agent.github.state"      # agent → @pm at each start: {"state", "login"?}
+STATE_TYPE = "xyz.hagencylabs.agent.github.state"      # agent → @pm: {"state", "login"?} and, at its start,
+                                                       # "startup" (+ "id" of a click it runs), else "id" of its click
 RESULTS = ("signed_in", "failed", "timeout", "no_gh", "too_old_gh", "already")
 STATES = ("signed_in", "none", "no_gh")
 # How long each side waits for gh's code. @pm waits longer than the agent's worst case (its --help, its wait
@@ -91,9 +92,12 @@ def login_of(agent: str) -> str | None:
 
 
 def state(content: object) -> dict | None:
-    """An agent's state report as @pm keeps it ({"state", "login"}), or None for anything else."""
-    if not isinstance(content, dict) or not set(content) <= {"state", "login"} or content.get("state") not in STATES:
+    """An agent's state report as @pm keeps it ({"state", "login"}), or None for anything else (STATE_TYPE's shape)."""
+    if not isinstance(content, dict) or not set(content) <= {"state", "login", "startup", "id"} or content.get("state") not in STATES:
         return None
+    ask = content.get("id", "")
+    if content.get("startup", True) is not True or not isinstance(ask, str) or len(ask) > 64:
+        return None                           # "startup" and "id" tell a start from a click (console_github.restarted)
     login = content.get("login")
     if login is not None and not (isinstance(login, str) and github.LOGIN_RE.fullmatch(login)):
         return None

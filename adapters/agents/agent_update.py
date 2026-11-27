@@ -46,13 +46,16 @@ class BridgeUpdate(BridgeGitHub):
     """Mixed into bridge.Bridge; with the panel's Sign in to GitHub (agent_github.py, ADR 0021)."""
     updated = False
 
-    async def report_and_listen(self) -> None:
-        """After the first sync: the reports to @pm, then @pm's update and GitHub sign-in requests."""
+    def listen_to_pm(self) -> None:
+        """Before the first sync: @pm's update and GitHub sign-in requests (GPT review: one that came in it was missed)."""
+        self.client.add_to_device_callback(self.on_update_request, UnknownToDeviceEvent)
+        self.client.add_to_device_callback(self.on_github_request, UnknownToDeviceEvent)
+
+    async def report_to_pm(self) -> None:
+        """After the first sync: the reports to @pm."""
         await kind_report.send(self.client, PM_ID, CREDENTIALS)                  # My agents: the AI I run
         await code_report.send(self.client, PM_ID, code_report.build(STARTED, runs_own(self.owner)))
         await self.report_github()                                               # My agents: signed in to GitHub?
-        self.client.add_to_device_callback(self.on_update_request, UnknownToDeviceEvent)
-        self.client.add_to_device_callback(self.on_github_request, UnknownToDeviceEvent)
 
     async def on_update_request(self, event: UnknownToDeviceEvent) -> None:
         if event.type != UPDATE_TYPE or event.sender != PM_ID:

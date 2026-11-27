@@ -103,6 +103,6 @@ class KindReports:
         try:
             store(event.sender, content)
             if event.type == github_login.STATE_TYPE and github_login.state(content) is not None:
-                console_github.restarted(self, own_agent(event.sender))   # a click its old process never finished
+                console_github.restarted(self, own_agent(event.sender), content)   # a click its old process never finished
         except OSError as e:                  # agents.json unwritable: only the badge waits (the next start reports
             log.error("couldn't record %s's report: %s", event.sender, e)   # again); never stops @pm's sync

@@ -31,17 +31,44 @@ SIGNIN_S = 15 * 60                # GitHub's device codes last 15 minutes
 HELP_S = github_login.HELP_S
 MAX_LINE = 4096                   # gh's own lines are short; a longer one: failed, never read on
 MAX_LINES = 50
+PROBE = ["api", "--hostname", "github.com", "user"]   # answers only with a token GitHub still takes
+PROBE_S = 15
+NO_TOKEN_EXIT = 4                 # gh's exit when it has no token at all
+REVOKED_RE = re.compile(r"HTTP 401\b")   # GitHub refused the token (revoked, expired)
+KILL_WAIT_S = 5                   # a stopped gh: its pipe read to the end and it reaped, at most this long
 CODE_LINE_RE = re.compile(r"one-time code:\s*(\S+)")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")   # color, should a terminal setting force it
 log = logging.getLogger("bridge")
 
 
-def current_state(agent: str) -> dict:
-    """What the agent tells @pm at each start: signed in (as whom), not yet, or no gh on this computer."""
+async def current_state(agent: str) -> dict:
+    """What the agent tells @pm: signed in (as whom), not yet, or no gh on this computer. A folder with a
+    username but a revoked or missing token isn't signed in (GPT review: the panel said so and refused every
+    click); with no answer from GitHub (offline, slow) it stays what its folder says, as before."""
     login = github_login.login_of(agent) if github.identity_dir(agent) is not None else None
-    if login:                                 # a hosts.yml without a github.com user isn't a sign-in (GPT review)
+    if login and await token_check(agent) != "invalid":   # a hosts.yml without a github.com user isn't one (GPT review)
         return {"state": "signed_in", "login": login}
     return {"state": "none" if shutil.which(github.GH_BIN) else "no_gh"}
+
+
+async def token_check(agent: str) -> str:
+    """"valid", "invalid" (GitHub refused its token, or it has none) or "unknown" (no answer in time, no gh).
+    gh's output is only matched here: never logged, never sent."""
+    gh = shutil.which(github.GH_BIN)
+    if gh is None:
+        return "unknown"
+    env = github_login.env_for(github_login.folder(agent), quiet=True)
+    try:
+        proc = await asyncio.create_subprocess_exec(gh, *PROBE, env=env, stdin=asyncio.subprocess.DEVNULL,
+                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await lifecycle.communicate(proc, None, PROBE_S)
+    except (OSError, asyncio.TimeoutError):   # gh couldn't start or GitHub didn't answer: unknown, so no re-auth is blocked
+        return "unknown"
+    if proc.returncode == 0:
+        return "valid"
+    if proc.returncode == NO_TOKEN_EXIT or REVOKED_RE.search(out.decode(errors="replace")):
+        return "invalid"
+    return "unknown"
 
 
 async def _help(gh: str, env: dict) -> str:
@@ -70,8 +97,9 @@ async def _drain(stream: asyncio.StreamReader) -> None:
 
 async def sign_in(agent: str, tell_code) -> tuple[str, str | None]:
     """(one of github_login.RESULTS, its GitHub username or None). `tell_code(code)` → whether @pm got it."""
-    if github.identity_dir(agent) is not None and github_login.login_of(agent):
-        return "already", github_login.login_of(agent)
+    login = github_login.login_of(agent) if github.identity_dir(agent) is not None else None
+    if login and await token_check(agent) == "valid":   # a revoked or unchecked token: sign in again (GPT review)
+        return "already", login
     gh = shutil.which(github.GH_BIN)
     if gh is None:
         return "no_gh", None
@@ -84,8 +112,18 @@ async def sign_in(agent: str, tell_code) -> tuple[str, str | None]:
         return await _follow(proc, agent, tell_code)
     finally:
         if proc.returncode is None:           # timed out, failed or cancelled (the agent stopping): never left running
-            proc.kill()
-            await asyncio.shield(proc.wait())
+            await asyncio.shield(_end(proc))
+
+
+async def _end(proc) -> None:
+    """Kill gh and reap it, its pipe read to the end meanwhile: a full pipe nobody read never closed, so the
+    wait hung, and with it the next click and an Update (GPT review). Bounded either way."""
+    proc.kill()
+    try:
+        await asyncio.wait_for(asyncio.gather(_drain(proc.stdout), proc.wait()), KILL_WAIT_S)
+    except (asyncio.TimeoutError, ValueError, OSError) as e:
+        # gh itself is killed; something it started may still hold the pipe. Going on beats hanging the agent.
+        log.warning("gh's output didn't close after it was stopped: %s", type(e).__name__)
 
 
 async def _follow(proc, agent: str, tell_code) -> tuple[str, str | None]:
@@ -110,8 +148,17 @@ async def _follow(proc, agent: str, tell_code) -> tuple[str, str | None]:
 
 class BridgeGitHub:
     """Mixed into bridge.Bridge (through agent_update.BridgeUpdate)."""
-    async def report_github(self) -> None:
-        await self.to_pm(github_login.STATE_TYPE, current_state(f"{self.owner}-agent"))
+    async def report_github(self, after: str | None = None) -> None:
+        """Its state for @pm. At its start: "startup", and the click it already runs (one its first sync brought).
+        After a click: that click's "id", so @pm never takes it for a restart that ends a newer click (GPT review)."""
+        said = await current_state(f"{self.owner}-agent")
+        if after is not None:
+            said["id"] = after
+        else:
+            job = self.__dict__.get("_gh_job")
+            running = self.__dict__.get("_gh_ask") if job is not None and not job.done() else None
+            said.update(startup=True, **({"id": running} if running is not None else {}))
+        await self.to_pm(github_login.STATE_TYPE, said)
 
     async def on_github_request(self, event: UnknownToDeviceEvent) -> None:
         if event.type != github_login.REQUEST_TYPE or event.sender != PM_ID:
@@ -123,7 +170,8 @@ class BridgeGitHub:
             await self.stop_github()
         content = event.source.get("content") or {}
         ask = content.get("id") if isinstance(content.get("id"), str) else ""   # echoed: @pm matches it to its click
-        self._gh_job = asyncio.create_task(self.github_sign_in(ask[:64]))   # kept apart from turns: a restart never waits 15 minutes
+        self._gh_ask = ask[:64]
+        self._gh_job = asyncio.create_task(self.github_sign_in(self._gh_ask))   # kept apart from turns: a restart never waits 15 minutes
 
     async def stop_github(self) -> None:
         """Stops a running sign-in (its gh killed: sign_in's finally): a newer click, or the agent stopping."""
@@ -142,7 +190,7 @@ class BridgeGitHub:
             result, login = "failed", None
         log.info("GitHub sign-in: %s", result)   # the word only: never gh's output
         await self.to_pm(github_login.ANSWER_TYPE, {"id": ask, "result": result, **({"login": login} if login else {})})
-        await self.report_github()            # what @pm keeps: also after a restart of @pm forgot the click
+        await self.report_github(ask)         # what @pm keeps: also after a restart of @pm forgot the click
 
     async def to_pm(self, kind: str, content: dict) -> bool:
         try:

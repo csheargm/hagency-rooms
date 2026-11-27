@@ -165,7 +165,7 @@ class FakeBridge(agent_update.BridgeUpdate):
 
 def request(sender, commit="a" * 40):
     event = ToDeviceEvent.parse_event({"sender": sender, "type": code_report.UPDATE_TYPE, "content": {"commit": commit, "id": "k1"}})
-    assert isinstance(event, UnknownToDeviceEvent)      # what report_and_listen's callback is given
+    assert isinstance(event, UnknownToDeviceEvent)      # what listen_to_pm's callback is given
     return event
 
 

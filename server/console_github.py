@@ -124,11 +124,15 @@ async def send(loop, agent_id: str, ask: str) -> bool:
     return True
 
 
-def restarted(loop, agent: str | None) -> None:
-    """Its state report (pm_kind_reports): at a start, a sign-in still waiting died with the old process
-    (an update, a crash), so its dead code goes and the button comes back (review, 2026-11-26)."""
+def restarted(loop, agent: str | None, content: dict) -> None:
+    """Its state report (pm_kind_reports). One from a start ("startup"; or no "id": an agent from before that
+    field) means a sign-in still waiting died with the old process (an update, a crash), so its dead code goes
+    and the button comes back (review, 2026-11-26), unless it names that very click (its first sync brought
+    it). One sent after a sign-in carries that click's "id" and ends nothing: a newer click stays (GPT review)."""
+    if content.get("startup") is not True and "id" in content:
+        return
     click = _clicks(loop).get(agent) if agent else None
-    if click is not None and click["result"] is None:
+    if click is not None and click["result"] is None and click["id"] != content.get("id"):
         _clicks(loop).pop(agent, None)
 
 
