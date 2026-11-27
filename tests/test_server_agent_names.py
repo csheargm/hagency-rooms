@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from adapters.agents import bridge
 from common import identity
+from server import trial_turn
 from server.pm_implicit import Implicit
 
 S = "bridge.localhost"
@@ -22,13 +23,26 @@ def event(sender, body, mentions=None):
 class TheName(unittest.TestCase):
     def test_its_words_and_exact_id_match(self):
         for body in ("Server agent, what is a rebase?", "server agent: hi", "Trial agent, hi", "  Server agent (free, "
-                     "limited): hi", f"{SHARED} hi", "hagency.trial-agent, hi"):
+                     "limited): hi", "hagency.trial-agent, hi", "@Server agent (free, limited), hi", "@Trial agent, hi"):
             self.assertTrue(identity.SERVER_AGENT_NAME_RE.search(body), body)
 
     def test_a_real_persons_server_agent_or_trial_agent_never_matches(self):
         for body in (f"@server-agent:{S} build #4", "server-agent, build #4", "trial-agent: hi", f"@trial-agent:{S} hi",
-                     "the server agent is slow", "@hagency.trial-agent-x hi", "observer agent, hi"):
+                     "the server agent is slow", "@hagency.trial-agent-x hi", "observer agent, hi",
+                     "@hagency.trial-agent:elsewhere.test hi"):
             self.assertFalse(identity.SERVER_AGENT_NAME_RE.search(body), body)
+
+
+class WhoItHears(unittest.TestCase):
+    def test_pills_decide_and_only_its_exact_id_counts(self):
+        mine = trial_turn.mentions
+        self.assertFalse(mine(event("@a:" + S, "Server agent, hi", [f"@server-agent:{S}"]), SHARED))   # pilled elsewhere
+        self.assertTrue(mine(event("@a:" + S, "Server agent (free, limited): hi", [SHARED]), SHARED))
+        self.assertTrue(mine(event("@a:" + S, "Server agent, and you?", ["@betty:" + S]), SHARED))   # a reply to Betty
+        self.assertTrue(mine(event("@a:" + S, "Server agent, hi"), SHARED))
+        self.assertTrue(mine(event("@a:" + S, f"{SHARED} hi"), SHARED))
+        self.assertFalse(mine(event("@a:" + S, f"{SHARED}.evil hi"), SHARED))
+        self.assertFalse(mine(event("@a:" + S, "@hagency.trial-agent:elsewhere.test hi"), SHARED))
 
 
 class PmLeavesItAlone(unittest.TestCase):

@@ -21,6 +21,7 @@ ask_model, history, answering, waiting, busy, eligible, sponsors, post).
 import asyncio
 import logging
 import math
+import re
 import time
 
 from nio import MatrixRoom, RoomMessageText
@@ -80,7 +81,11 @@ def mentions(event: RoomMessageText, me: str) -> bool:
     content = event.source.get("content", {}) if isinstance(event.source, dict) else {}
     named = (content.get("m.mentions") or {}).get("user_ids") if isinstance(content.get("m.mentions"), dict) else None
     own = without_quote(event.body or "")             # never a mention inside the quoted message
-    return (isinstance(named, list) and me in named) or me in own or bool(NAME_RE.search(own))
+    if isinstance(named, list) and me in named:
+        return True
+    if isinstance(named, list) and any(identity.split(u)[0] in identity.LOOKALIKE_AGENTS for u in named if isinstance(u, str)):
+        return False                                   # "Server agent, hi" pilled to a real @server-agent (GPT review)
+    return bool(re.search(re.escape(me) + r"(?![\w.:-])", own) or NAME_RE.search(own))   # my exact id, not a longer one
 
 
 class Turns:

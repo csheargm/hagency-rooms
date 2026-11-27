@@ -24,7 +24,9 @@ LABEL_RE = re.compile(r"^[a-z][a-z0-9]{0,8}$")   # a further agent's label (LABE
 # exact id): it answers it (server/trial_turn.py), a person's own agent and @pm leave it alone (bridge_followup.py,
 # pm_implicit.py). Words only, with a space: "@server-agent" / "trial-agent" are a real person's agent (independent
 # review), and sign-up keeps "server" and "trial" as usernames anyway (deploy/sso_login.RESERVED_PEOPLE).
-SERVER_AGENT_NAME_RE = re.compile(r"^[^\w@]*(?:@?hagency\.trial-agent(?![\w.-])|(?:server|trial) agent\b)", re.I)
+# Its localpart alone ("hagency.trial-agent, …"; never "…:another.server"): the full id is matched where it is known.
+LOOKALIKE_AGENTS = ("server-agent", "trial-agent")   # real agents of @server / @trial (made before they were reserved)
+SERVER_AGENT_NAME_RE = re.compile(r"^[^\w@]*@?(?:hagency\.trial-agent(?![\w.:-])|(?:server|trial) agent\b)", re.I)
 
 
 def person_id(who: str, home: str) -> str:
