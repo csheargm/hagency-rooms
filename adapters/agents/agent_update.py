@@ -86,6 +86,8 @@ class BridgeUpdate(BridgeGitHub):
             await self.tell_pm(result, ask)
             if result == "updated":
                 self.updated = True
+                if auto:                      # work that came in while it updated finishes first (GPT review): a
+                    await self.wait_idle()    # GitHub sign-in is never killed by the restart, a turn never drained short
                 self.sync_point.stop.set()    # serve() hands off and drains, then serve_until_updated exits
         finally:
             self._updating = self.updated

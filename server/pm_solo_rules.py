@@ -23,8 +23,9 @@ KEEP_JOBS_S = 7 * 24 * 3600   # an unanswered ask is forgotten after this
 NO_OWNER_AGENT = "No agent of the room owner's is here to update GitHub's review rule on {repo}. "
 NOT_WANTED = "If you don't want it anymore, take **Repository admin** out of the rule's Bypass list on GitHub."
 NEEDS_UPDATE = "{agent} needs an update first: it runs code from before solo review. "   # live test 2026-11-27
-ASKED = "I've asked it to update; switch Solo review off and on again once My agents shows it Up to date."
-BY_HAND = "Update it in My agents (in your chat with Product Manager), then switch Solo review off and on again."
+ASKED = "I've asked it to update. Once My agents shows it Up to date, switch Solo review {again}."
+BY_HAND = "Update it in My agents (in your chat with Product Manager), then switch Solo review {again}."
+AGAIN_ON, AGAIN_OFF = "off and on again", "on and off again"   # off: the bypass stays until then (review)
 AGAIN = (" Or bring the room owner's agent into the room and switch Solo review off and on again: it adds it for you "
          "when its GitHub account is the repo's admin.")
 
@@ -52,10 +53,12 @@ class SoloRules:
                     old = old or (owner, agent)
         return None, old
 
-    async def needs_update(self, rid: str, owner: str, agent: str) -> None:
-        """Said plainly (never "unknown task kind"), and the agent asked to update (console_auto_update)."""
+    async def needs_update(self, rid: str, owner: str, agent: str, on: bool = True) -> None:
+        """Said plainly (never "unknown task kind"), and the agent asked to update (console_auto_update). Switching
+        off, the bypass stays on GitHub meanwhile: said, with how to take it out by hand."""
         asked = await console_auto_update.update_for_task(self, owner, local(agent))
-        await self.say(rid, NEEDS_UPDATE.format(agent=local(agent)) + (ASKED if asked else BY_HAND))
+        then = (ASKED if asked else BY_HAND).format(again=AGAIN_ON if on else AGAIN_OFF)
+        await self.say(rid, NEEDS_UPDATE.format(agent=local(agent)) + then + ("" if on else " " + NOT_WANTED))
 
     async def ask_ruleset(self, room: MatrixRoom, sender: str, on: bool, ids: list[int]) -> None:
         """Ask the room owner's agent to let admins merge past the review rule (on), or to take the entries
@@ -66,7 +69,7 @@ class SoloRules:
             return
         agent, old = await self.ruleset_agent(room, sender)
         if agent is None and old:             # an owner's agent is here, on code from before the task
-            await self.needs_update(rid, *old)
+            await self.needs_update(rid, *old, on)
             return
         if agent is None:
             await self.say(rid, NO_OWNER_AGENT.format(repo=repo)
@@ -153,8 +156,8 @@ class SoloRules:
             await self.ask_ruleset(room, job.get("by", sender), False, recorded)
         elif not job["on"] and now["on"]:             # switched on again while it was taken out: put it back
             await self.ask_ruleset(room, job.get("by", sender), True, [])
-        if "unknown task kind" in str(result.get("error")):   # older code after all: plain words, and an update
-            await self.needs_update(rid, ownership.owner_id(sender), sender)
+        if code_report.UNKNOWN_KIND in str(result.get("error")):   # older code after all: plain words, and an update
+            await self.needs_update(rid, ownership.owner_id(sender), sender, job["on"])
         elif result.get("error"):             # the follow-up first (GPT review): a failed announcement can't skip it
             await self.say(rid, f"⚠️ {local(sender)} couldn't update GitHub's review rule on {repo}: "
                                 f"{room_safe(result['error'])}\n\n"

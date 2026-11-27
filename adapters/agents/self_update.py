@@ -137,8 +137,10 @@ class _Lock:
 def apply(target: str, own: bool, app: Path = DEFAULT_APP, code: Path = paths.ROOT, run=subprocess.run) -> str:
     """Update to `target`; one of code_report.RESULTS. "updated" only once the code moved: then restart."""
     try:
-        check_install(app, code, own, run)
+        if own or code.resolve() != app.resolve() or not (app / ".git").is_dir():
+            check_install(app, code, own, run)   # refused before any lock: its own version, or no clone there
         with _Lock(app):
+            check_install(app, code, own, run)   # under the lock: another agent's update half done isn't an edit (GPT review)
             if check_target(app, target, run) == "current":
                 return "current"
             install_requirements(app, target, run)

@@ -206,7 +206,7 @@ class Reports(flows.Base):
     def test_no_answer_is_said_after_a_while_and_update_comes_back(self):
         self.start(OLD)
         self.click()
-        self.lp._updates["cx-agent"]["at"] -= console_update.WAIT_S + 1
+        self.lp._updates["cx-agent"]["at"] -= console_update.budget(self.lp._updates["cx-agent"]) + 1
         row = self.row()
         self.assertEqual((row["code_says"], row["code_updating"], row["code_fallback"]), (console_update.NO_ANSWER, False, True))
         self.assertEqual(self.click(), "ok")          # past the gap: asked again

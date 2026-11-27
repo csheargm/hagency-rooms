@@ -36,8 +36,9 @@ def status(loop, a: dict) -> dict:
     reason = st.get("reason") if st.get("target") == console_update.SERVER["commit"] else None
     if reason == "busy":
         return {**out, "code_says": console_update.SAYS["busy"]}
-    if reason:
-        return {**out, "code_says": console_update.SAYS.get(reason) or auto_update.NO_ANSWER, "code_retry": True}
+    if reason:                                # edited / not_official: the Connect page, never a Retry that can't help
+        return {**out, "code_says": console_update.SAYS.get(reason) or auto_update.WHY.get(reason, auto_update.NO_ANSWER),
+                "code_retry": reason not in console_update.FALLBACK, "code_fallback": reason in console_update.FALLBACK}
     return {**out, "code_says": auto_update.SOON if loop.agent_online(a["localpart"]) is True else auto_update.OFFLINE}
 
 
@@ -69,10 +70,13 @@ async def toggle(loop, user: str, value: str) -> str:
 
 async def update_for_task(loop, owner: str, agent: str) -> bool:
     """A task needs newer code than `agent` (a localpart) runs (code_report.runs_task): ask it to update to the
-    server's now, waiting for no task running when its code can. False when it can't be asked."""
+    server's now, as an automatic update. Only with its owner's Auto-update on and code that waits for its work
+    (GPT review: a room action never overrides the owner's switch, nor updates under a running turn); else False,
+    and the room is told how to update it by hand."""
     found = registry.find(owner, agent) if owner and agent else None
-    if found is None or not registry.owns(owner, agent) or loop.agent_online(agent) is not True:
+    if found is None or not registry.owns(owner, agent) or not auto_update.is_on(owner) or loop.agent_online(agent) is not True:
         return False
-    if console_update.status(loop, found)["code"] != "behind" or console_update.clicks(loop).get(agent):
-        return False                          # no report, its own version, or already asked
-    return await console_update.ask(loop, found, auto=bool(found[registry.CODE].get(code_report.WAITS)))
+    if (console_update.status(loop, found)["code"] != "behind" or not found[registry.CODE].get(code_report.WAITS)
+            or console_update.is_open(console_update.clicks(loop).get(agent))):
+        return False                          # no report, its own version, older code, or already asked
+    return await console_update.ask(loop, found, auto=True)

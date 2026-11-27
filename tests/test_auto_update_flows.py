@@ -33,7 +33,7 @@ class Flows(flows.Base):
         self.lp.client = SimpleNamespace(to_device=mock.AsyncMock(side_effect=lambda m, tx: ToDeviceResponse(m)),
                                          rooms={"!r": SimpleNamespace(users={CX: 0}, invited_users={}, name="P", room_id="!r")})
         self.lp.is_person = lambda r, u: True
-        for p in (mock.patch.object(console_update, "SERVER", NEW), mock.patch.object(auto_update, "SUMMARY", "agents update themselves")):
+        for p in (mock.patch.object(console_update, "SERVER", NEW), mock.patch.object(auto_update, "summary", lambda: "agents update themselves")):
             p.start()
             self.addCleanup(p.stop)
 
@@ -102,6 +102,45 @@ class Flows(flows.Base):
         self.start(OLD)                       # its next report: asked again
         self.assertEqual(len(self.asks()), 2)
 
+    def test_a_closed_click_never_blocks_and_an_open_one_is_never_replaced(self):
+        """GPT review: a refused hand click blocked the owner's automatic asks for good; a click a minute old was
+        replaced while its agent still worked, so its real answer was dropped."""
+        registry.update(CX, None, auto_update=False)
+        self.start(OLD)
+        self.assertEqual(asyncio.run(console.act(self.lp, "!r", CX, "selfupdate", "", "cx-agent")), "ok")
+        self.lp._updates["cx-agent"]["at"] -= console_update.CLICK_GAP_S + 1
+        self.assertEqual(asyncio.run(console.act(self.lp, "!r", CX, "selfupdate", "", "cx-agent")), console_update.UPDATING)
+        self.assertEqual(len(self.asks()), 1)
+        self.answer(CXA, "failed")                                     # closed now
+        registry.update(CX, None, auto_update=True)
+        asyncio.run(auto_update.sweep(self.lp))
+        self.assertEqual(len(self.asks()), 2)
+
+    def test_unreachable_counts_as_a_failure(self):
+        self.lp.client.to_device.side_effect = OSError("down")
+        self.start(OLD)
+        st = self.lp._auto_updates["cx-agent"]
+        self.assertEqual((st["fails"], st["reason"]), (1, "unreachable"))
+        self.assertEqual(self.row()["code_says"], auto_update.WHY["unreachable"])
+
+    def test_a_refused_report_asks_nothing(self):
+        self.start(OLD)
+        self.lp.client.to_device.reset_mock()
+        self.lp._updates.clear()
+        self.lp._auto_asked[CX] = 0
+        event = ToDeviceEvent.parse_event({"sender": CXA, "type": code_report.EVENT_TYPE,
+                                           "content": {**report(OLD), "api_key": "x"}})
+        asyncio.run(self.lp.on_kind_report(event))
+        self.assertEqual(self.asks(), [])
+
+    def test_edited_offers_its_connect_page_not_a_retry_that_cant_help(self):
+        self.start(OLD)
+        self.answer(CXA, "edited")
+        row = self.row()
+        self.assertEqual((row["code_retry"], row["code_fallback"]), (False, True))
+        self.assertIn('data-a="update" data-v="agents"', Panel.render(row))
+        self.assertNotIn("Retry update", Panel.render(row))
+
     def test_a_failure_shows_retry_with_the_reason_and_backs_off(self):
         self.start(OLD)
         self.answer(CXA, "failed")
@@ -138,7 +177,7 @@ class Flows(flows.Base):
         self.start(OLD)
         self.later("cx-agent", console_update.WAIT_S + 1)
         self.assertTrue(self.row()["code_updating"])                                  # it may be waiting for its work
-        self.later("cx-agent", code_report.IDLE_WAIT_S)
+        self.later("cx-agent", code_report.IDLE_WAIT_S + code_report.UPDATE_MAX_S)
         row = self.row()
         self.assertEqual((row["code_retry"], row["code_says"]), (True, auto_update.NO_ANSWER))
 
@@ -184,14 +223,27 @@ class Flows(flows.Base):
         self.assertEqual(self.said[0][1], "Your agents **main** and **codex** updated automatically to bbbbbbb: agents update themselves")
 
     def test_a_task_its_code_predates_asks_for_an_update_never_unknown_task_kind(self):
-        from server.pm_solo_rules import ASKED, BY_HAND, NEEDS_UPDATE
+        from server.pm_solo_rules import AGAIN_OFF, AGAIN_ON, ASKED, BY_HAND, NEEDS_UPDATE, NOT_WANTED
+        needs = NEEDS_UPDATE.format(agent="cx-agent")
         self.start(OLD)                       # cx-agent, on code from before solo review (its report asked it once)
         self.lp._updates.clear()
         asyncio.run(self.lp.needs_update("!r", CX, CXA))
-        self.assertEqual(self.said[-1], ("!r", NEEDS_UPDATE.format(agent="cx-agent") + ASKED))
-        self.assertEqual((len(self.asks()), self.asks()[-1].recipient), (2, CXA))
-        asyncio.run(self.lp.needs_update("!r", CX, CXA))                 # asked already: how to do it by hand
-        self.assertEqual(self.said[-1], ("!r", NEEDS_UPDATE.format(agent="cx-agent") + BY_HAND))
+        self.assertEqual(self.said[-1], ("!r", needs + ASKED.format(again=AGAIN_ON)))
+        self.assertEqual((len(self.asks()), self.asks()[-1].recipient, self.asks()[-1].content["auto"]), (2, CXA, True))
+        asyncio.run(self.lp.needs_update("!r", CX, CXA, on=False))      # asked already: by hand; switching off: the bypass
+        self.assertEqual(self.said[-1], ("!r", needs + BY_HAND.format(again=AGAIN_OFF) + " " + NOT_WANTED))
+
+    def test_a_task_never_overrides_the_owners_switch_nor_updates_code_that_wont_wait(self):
+        """GPT review: a room action (Solo review) must not update an agent whose owner turned Auto-update off,
+        nor an older agent at once (it would update under a running turn)."""
+        self.start(OLD, waits=False)
+        asyncio.run(self.lp.needs_update("!r", CX, CXA))
+        self.assertEqual(self.asks(), [])
+        registry.update(CX, None, auto_update=False)
+        self.start(OLD)
+        asyncio.run(self.lp.needs_update("!r", CX, CXA))
+        self.assertEqual(self.asks(), [])
+        self.assertIn("Update it in My agents", self.said[-1][1])
 
     def test_the_solo_ruleset_goes_only_to_an_agent_whose_code_runs_it(self):
         from server import pm_solo_rules

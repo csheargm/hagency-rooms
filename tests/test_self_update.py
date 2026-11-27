@@ -109,6 +109,17 @@ class Install(unittest.TestCase):
             self.assertEqual(self_update.apply(self.new, False, app=self.app, code=self.app, run=self.run_), "failed")
         self.assertEqual(self.apply(self.new), "updated")    # held far longer than an update takes: "failed", asked again
 
+    def test_another_agents_update_half_done_is_never_taken_for_an_edit(self):
+        """GPT review: the clean-tree check ran before the lock, so a second agent could see the first's half-done
+        checkout and answer "edited" (which stops automatic updates)."""
+        lock = self_update._Lock(self.app)
+        lock.__enter__()
+        (self.app / "requirements.txt").write_text("half written\n")   # the first agent's checkout in progress
+        timer = threading.Timer(0.5, lambda: (git(self.app, "checkout", "--", "requirements.txt"), lock.__exit__()))
+        timer.start()
+        self.assertEqual(self.apply(self.new), "updated")
+        timer.join()
+
     def test_two_agents_of_one_install_asked_together_both_end_on_the_new_code(self):
         """Live test 2026-11-27: cx-agent updated the shared install while cx-codex2-agent's update said
         "failed" and kept running old code. Now the second waits for the first, finds the install at the

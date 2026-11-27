@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -63,10 +64,23 @@ class Reports(unittest.TestCase):
         self.assertIn("--format='%H%n%ct%n%s%n%b'", script)
 
     def test_one_line_names_the_agents_the_version_and_what_changed(self):
-        with mock.patch.object(console_update, "SERVER", {**NEW, "number": "1.4.0"}), mock.patch.object(auto_update, "SUMMARY", "faster"):
+        with mock.patch.object(console_update, "SERVER", {**NEW, "number": "1.4.0"}), mock.patch.object(auto_update, "summary", lambda: "faster"):
             self.assertEqual(auto_update.line(["pi"]), "Your agent **pi** updated automatically to v1.4.0 · bbbbbbb: faster")
             self.assertEqual(auto_update.line(["pi", "cx", "*x*"]),
                              "Your agents **pi**, **cx** and **x** updated automatically to v1.4.0 · bbbbbbb: faster")
+        with mock.patch.object(console_update, "SERVER", NEW), mock.patch.object(auto_update, "summary", lambda: "_fast_ ~x~"):
+            self.assertEqual(auto_update.line(["my_pi"]),                   # GPT review: "_fast_" rendered as emphasis
+                             r"Your agent **my\_pi** updated automatically to bbbbbbb: \_fast\_ \~x\~")
+
+    def test_the_servers_wait_covers_the_agents_whole_update(self):
+        """GPT review: the lock wait alone (960 s) was longer than the 300 s @pm waited for an answer."""
+        self.assertGreaterEqual(code_report.UPDATE_MAX_S,
+                                self_update.LOCK_WAIT_S + self_update.PIP_TIMEOUT_S + 4 * self_update.GIT_TIMEOUT_S)
+        click = {"at": 0, "result": None, "auto": True}
+        self.assertGreaterEqual(console_update.budget(click), code_report.IDLE_WAIT_S + code_report.UPDATE_MAX_S)
+        click.update(result="updated", answered=10_000)                  # its drain counts from its answer
+        self.assertTrue(console_update.is_open(click, 10_000 + console_update.DRAIN_S))
+        self.assertFalse(console_update.is_open({**click, "result": "failed"}, 10_001))
 
 
 class AgentWaits(unittest.TestCase):
@@ -118,6 +132,29 @@ class AgentWaits(unittest.TestCase):
         self.assertFalse(b.updated)
         b.tasks.clear()                       # the review finished meanwhile
         self.assertTrue(self.request(b).called)                                     # not stuck: asked again, it updates
+
+    def test_work_that_came_in_during_the_update_finishes_before_the_restart(self):
+        """GPT review: idle was checked once; a turn or sign-in that started while git and pip ran was drained short."""
+        b, order = FakeBridge(), []
+
+        async def turn():
+            await asyncio.sleep(0.2)
+            order.append("turn done")
+
+        def apply(*a):                       # a message arrives while the update runs (in its thread)
+            loop.call_soon_threadsafe(lambda: b.tasks.add(loop.create_task(turn())))
+            time.sleep(0.05)
+            return "updated"
+
+        async def go():
+            nonlocal loop
+            loop = asyncio.get_running_loop()
+            with mock.patch.object(self_update, "apply", side_effect=apply), mock.patch.object(agent_update, "IDLE_POLL_S", 0.01):
+                await b.update_to("a" * 40, "k1", auto=True)
+                order.append("restart" if b.sync_point.stop.is_set() else "no restart")
+        loop = None
+        asyncio.run(go())
+        self.assertEqual(order, ["turn done", "restart"])
 
     def test_a_github_sign_in_counts_as_work(self):
         b = FakeBridge()

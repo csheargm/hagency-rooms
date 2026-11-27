@@ -11,7 +11,7 @@ from pathlib import Path
 
 from adapters.agents import agents, own_account, planning, solo_github
 from adapters.agents.card_task import card   # panel cards (ADR 0019)
-from common import github
+from common import code_report, github
 from common.redact import public_safe, room_safe
 from common.github import GitHubError, git, run, run_json
 
@@ -287,7 +287,7 @@ async def handle(agent: str, backend: str, base: Path, task: dict) -> dict:
     kind = task.get("kind")
     try:
         if kind not in HANDLERS:
-            raise TaskError(f"unknown task kind {kind!r}")
+            raise TaskError(f"{code_report.UNKNOWN_KIND} {kind!r}")
         return {**await HANDLERS[kind](agent, backend, base, task), "task_id": task.get("task_id")}
     except (TaskError, GitHubError, agents.AgentError, KeyError, ValueError, TypeError, OSError) as e:
         why = room_safe(e)                     # the result is posted in the room: no local paths

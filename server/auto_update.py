@@ -15,7 +15,9 @@ Update button once.
   theirs is still to update, or BATCH_S after the first finished.
 State is in @pm's memory only: a restart (a deploy) starts over, once.
 """
+import functools
 import logging
+import re
 import time
 
 from common import code_report
@@ -30,14 +32,21 @@ BUSY_AGAIN_S = 10 * 60               # it had a task running the whole wait: ask
 STAGGER_S = 90                       # an owner's asks this far apart (one install, several agents)
 BATCH_S = 15 * 60                    # the line waits at most this long for the owner's other agents
 STOP = ("own", "not_official", "edited", "not_newer")   # self_update's refusals that a retry can't change
-SUMMARY = version.summary(paths.ROOT)   # what this server's commit changed, in one line
+MARKUP_RE = re.compile(r"([*_~])")    # escaped in the chat line: never emphasis (GPT review: "_fast_")
 SOON = "Updates automatically once it has nothing running."
 OFFLINE = "Updates automatically when it's back online."
 UPDATING = "Updating automatically: it restarts on the new version once it has nothing running."
 ONCE = "Click Update once; after that it updates itself automatically."
 NO_ANSWER = "It didn't finish the update."
+WHY = {"unreachable": "I couldn't reach it to ask."}   # failures of @pm's own (console_update.SAYS: the agent's)
 NOT_SAVED = "I couldn't save that just now; please try again."
 log = logging.getLogger("loop")
+
+
+@functools.cache
+def summary() -> str:
+    """What this server's commit changed, in one line (asked once, when first needed: git in a checkout)."""
+    return version.summary(paths.ROOT)
 
 
 def is_on(person: str) -> bool:
@@ -62,15 +71,19 @@ def settle(loop, agent: str, now: float | None = None) -> None:
     click = console_update.clicks(loop).get(agent)
     if not click or not click.get("auto") or console_update.SERVER is None:
         return
-    waited = {None: console_update.WAIT_S + code_report.IDLE_WAIT_S, "updated": console_update.DRAIN_S}.get(click["result"], 0)
-    if now - click["at"] < waited:
+    if console_update.is_open(click, now):
         return                            # its answer may still come, or it is finishing its turns
     console_update.clicks(loop).pop(agent, None)
     st = _entry(loop, agent)
     if click["result"] == "busy":
         st.update(next=now + BUSY_AGAIN_S, reason="busy")
         return
-    word = "no_answer" if click["result"] in (None, "updated") else click["result"]
+    failed(loop, agent, "no_answer" if click["result"] in (None, "updated") else click["result"], now)
+
+
+def failed(loop, agent: str, word: str, now: float) -> None:
+    """One more failure: the back-off doubles; a refusal that retrying can't change stops it at once."""
+    st = _entry(loop, agent)
     st["fails"] = MAX_FAILURES if word in STOP else st["fails"] + 1
     st.update(reason=word, next=now + min(BASE_BACKOFF_S * 2 ** (st["fails"] - 1), MAX_BACKOFF_S))
     log.info("%s: automatic update %s (%d so far)", agent, word, st["fails"])
@@ -85,7 +98,8 @@ def _due(loop, a: dict, now: float, online: bool | None, any_time: bool = False)
     if (online if online is not None else loop.agent_online(a["localpart"])) is not True:
         return False
     st = _entry(loop, a["localpart"])
-    return not console_update.clicks(loop).get(a["localpart"]) and st["fails"] < MAX_FAILURES and (any_time or now >= st["next"])
+    return (not console_update.is_open(console_update.clicks(loop).get(a["localpart"]), now) and st["fails"] < MAX_FAILURES
+            and (any_time or now >= st["next"]))
 
 
 async def ask_next(loop, person: str, now: float, online: dict | None = None) -> None:
@@ -97,13 +111,14 @@ async def ask_next(loop, person: str, now: float, online: dict | None = None) ->
     for a in agents:
         settle(loop, a["localpart"], now)
     asked = loop.__dict__.setdefault("_auto_asked", {})
-    if now - asked.get(person, 0) < STAGGER_S or any(console_update.clicks(loop).get(a["localpart"]) for a in agents):
-        return
+    if now - asked.get(person, 0) < STAGGER_S or any(console_update.is_open(console_update.clicks(loop).get(a["localpart"]), now)
+                                                      for a in agents):
+        return                            # a closed click (a refusal, an old one) never blocks the rest (GPT review)
     for a in agents:
         if _due(loop, a, now, (online or {}).get(a["localpart"])):
             asked[person] = now
             if not await console_update.ask(loop, a, auto=True):
-                _entry(loop, a["localpart"])["next"] = now + BASE_BACKOFF_S   # unreachable: the next round, later
+                failed(loop, a["localpart"], "unreachable", now)   # counted too: never asked without end (GPT review)
             return
 
 
@@ -142,10 +157,16 @@ def finished(loop, owner: str, name: str) -> None:
         batch["names"].append(name)
 
 
+def plain(text: str) -> str:
+    """Text for the chat line, never markup: version.UNSAFE_RE's characters out, emphasis marks escaped."""
+    return MARKUP_RE.sub(r"\\\1", " ".join(version.UNSAFE_RE.sub("", text).split()))
+
+
 def line(names: list[str]) -> str:
-    names = [f"**{' '.join(version.UNSAFE_RE.sub('', n).split()) or 'agent'}**" for n in names]
+    names = [f"**{plain(n) or 'agent'}**" for n in names]
     who = f"Your agent {names[0]}" if len(names) == 1 else f"Your agents {', '.join(names[:-1])} and {names[-1]}"
-    return f"{who} updated automatically to {version.name(console_update.SERVER)}" + (f": {SUMMARY}" if SUMMARY else ".")
+    said = plain(summary())
+    return f"{who} updated automatically to {version.name(console_update.SERVER)}" + (f": {said}" if said else ".")
 
 
 async def tell(loop, owner: str, now: float) -> None:
@@ -155,8 +176,8 @@ async def tell(loop, owner: str, now: float) -> None:
     if not batch or batch["said"] or not batch["names"]:
         return
     agents = [a for a in registry.agents_of(owner) if registry.owns(owner, a["localpart"])]
-    if now - batch["since"] < BATCH_S and any(console_update.clicks(loop).get(a["localpart"])
-                                              or _due(loop, a, now, None, any_time=True) for a in agents):
+    if now - batch["since"] < BATCH_S and is_on(owner) and any(console_update.is_open(console_update.clicks(loop).get(a["localpart"]), now)
+                                                               or _due(loop, a, now, None, any_time=True) for a in agents):
         return                                # another of theirs is on its way: one line for both
     batch["said"] = True
     try:
