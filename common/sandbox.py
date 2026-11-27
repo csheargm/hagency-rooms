@@ -129,6 +129,8 @@ class Bounded:
         if self.size + len(text) > self.limit:
             self.over = True
             text = text[:max(0, self.limit - self.size)]
+        if not text:
+            return                        # full: nothing more is kept, not even an empty part (GPT review)
         self.parts.append(text)
         self.size += len(text)
 

@@ -193,6 +193,7 @@ async def publish(d: Deps, job_id: str, repo: str, base: tuple, issue: dict, pat
     try:
         number = await d.gh.open_pr(token, repo, base, f"{trial_github.BRANCH_PREFIX}{issue['number']}-{job_id}", patch, title, body)
         d.pool.opened(repo, number)                # recorded at once: the PR exists, whatever comes next
+        d.jobs.update(job_id, pr=number)           # a restart now still says it was opened (GPT review)
         review = await finish_pr(d, token, repo, number, review)
     finally:
         await d.gh.revoke(token)

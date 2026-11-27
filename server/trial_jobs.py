@@ -108,8 +108,9 @@ class Jobs:
         """A worker that starts again (or is switched off): what was underway can't finish."""
         with self._locked() as jobs:
             hit = [j for j, v in jobs.items() if v.get("state") in states]
-            for j in hit:
-                jobs[j].update(state=FAILED, outcome={"why": why}, finished=self.clock())
+            for j in hit:                 # a PR it opened already is kept in the outcome: it is open on GitHub
+                pr = {"pr": jobs[j]["pr"], "repo": jobs[j].get("repo")} if jobs[j].get("pr") else {}
+                jobs[j].update(state=FAILED, outcome={"why": why, **pr}, finished=self.clock())
             return hit
 
     def news(self) -> list[tuple[str, dict, str]]:

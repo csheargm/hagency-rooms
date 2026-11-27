@@ -38,6 +38,8 @@ DONE = ("✅ Your trial build is done: pull request #{pr} in {repo}, for issue #
         "comment, not an approval. **Ready: a person merges** (the trial never merges).\n\nThe self-check said: {review}")
 POSTED = "an **AI self-check** was posted on it as a comment, not an approval"
 NOT_POSTED = "the AI self-check couldn't be posted on it (read the change yourself)"
+OPENED_UNFINISHED = ("⚠️ Your trial build opened pull request #{pr} in {repo}, but didn't finish: {why}. Its AI "
+                     "self-check may be missing. A person reviews and merges it (the trial never merges).")
 FAILED = "⚠️ Your trial build didn't finish: {why}. Nothing was opened. You have {left} trial builds left today."
 
 
@@ -57,6 +59,8 @@ def news_words(job: dict, event: str, left: int) -> str:
                            files=files, review=excerpt(out.get("review") or "(nothing)"))
         return said.replace(POSTED, NOT_POSTED) if out.get("review") == trial_build.NO_REVIEW else said
     why = trial_build.WHY.get(str(out.get("why")), trial_build.WHY["error"])
+    if out.get("pr"):                 # it got as far as opening one (then a restart or a switch-off)
+        return OPENED_UNFINISHED.format(why=why, pr=int(out["pr"]), repo=excerpt(out.get("repo") or "", 120))
     if out.get("why") == "patch" and out.get("rule"):
         why = f"{why}, because {excerpt(out['rule'], 200)}"
     return FAILED.format(why=why, left=left)

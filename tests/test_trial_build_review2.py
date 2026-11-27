@@ -173,5 +173,32 @@ class KillSwitch(BuildBase):
         self.assertTrue(run(trial_worker.shut_down(jobs, None)))
 
 
+class ThirdPass(BuildBase):
+    """The third GPT pass: an opened PR survives a restart in the news, Bounded stays bounded, a refused
+    kill switch exits non-zero."""
+    def test_a_restart_after_the_pr_was_opened_says_it_is_open(self):
+        jobs = trial_jobs.Jobs(self.folder)
+        jobs.beat(kit.CAPS)
+        _, job_id, _ = jobs.enqueue("@a:s", 1, "!a", 5)
+        jobs.claim()
+        jobs.update(job_id, pr=100, repo=kit.REPO)
+        jobs.fail_unfinished("restart")
+        job = jobs.all()[job_id]
+        said = pm_build.news_words(job, trial_jobs.FAILED, 2)
+        self.assertIn("opened pull request #100", said)
+        self.assertNotIn("Nothing was opened", said)
+
+    def test_a_full_buffer_keeps_nothing_more(self):
+        b = sandbox.Bounded(3)
+        for _ in range(1000):
+            b.add("xy")
+        self.assertEqual((b.text(), len(b.parts), b.over), ("xyx", 2, True))
+
+    def test_a_refused_kill_switch_exits_non_zero(self):
+        jobs = trial_jobs.Jobs(self.folder)
+        with kit.configured_env(self.folder, TRIAL_BUILD="off", E2B_API_KEY=""), jobs.one_worker():
+            self.assertEqual(run(trial_worker.main()), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

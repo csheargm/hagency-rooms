@@ -121,9 +121,9 @@ async def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     jobs = trial_jobs.Jobs(config.shared_dir())
     if config.switched_off():
-        await shut_down(jobs, sandbox.E2BSandboxes(config.env("E2B_API_KEY"), config.template(), 0)
-                        if config.env("E2B_API_KEY") else None)
-        return 0
+        done = await shut_down(jobs, sandbox.E2BSandboxes(config.env("E2B_API_KEY"), config.template(), 0)
+                               if config.env("E2B_API_KEY") else None)
+        return 0 if done else 1           # refused: non-zero, so Compose tries it again (GPT review)
     if gone := config.missing():
         jobs.stop_beating()
         log.info("trial builds are off (not configured: %s)", ", ".join(gone))
