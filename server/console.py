@@ -41,8 +41,7 @@ from server.console_agents import UPDATE, add_agent, can_add, first_pick, fresh_
 from common.setup_accounts import HS, SERVER_NAME
 from server import pm_paused
 
-SESSION_S, MAX_SESSIONS = 12 * 3600, 1000
-LINK_S = 600
+SESSION_S, MAX_SESSIONS, LINK_S = 12 * 3600, 1000, 600   # a session's and a one-time link's life (s)
 _sessions: dict[str, tuple[str, float, str | None]] = {}   # session → (user, expires, room scope or None)
 _links: dict[str, tuple[str, float, str]] = {}             # one-time code → (user, expires, room)
 USER_RE = re.compile(r"^@[a-z0-9._=/+-]+:" + re.escape(SERVER_NAME) + "$")
@@ -186,8 +185,8 @@ async def act(loop, room_id: str, user: str, action: str, value: str, agent: str
     if action == "follow" and value in registry.FOLLOW:
         done = await loop.set_follow(room, user, value, agent or None)
         return "ok" if done is not False else "that isn't one of your agents"
-    if action == "add":                   # pm_agents.py: the Connect page goes to our private chat
-        return await add_agent(loop, user, value)
+    if action in ("add", "trial", "trial_model"):   # pm_agents.py: the Connect page goes to our private chat; pm_trial.py:
+        return await (add_agent(loop, user, value) if action == "add" else loop.trial_action(user, action, value))   # ADR 0025
     if action == "code":                  # a never-connected agent's fresh Connect page (console_agents)
         return await fresh_code(loop, user, agent or None)
     if action == "update":                # "Update my agent" (Your cards; My agents: "agents"): its Connect page again

@@ -45,6 +45,14 @@ RULES = {
     "HAGENCY_GOOGLE_CLIENT_SECRET": r"[A-Za-z0-9_-]{16,128}",
     "HAGENCY_GITHUB_CLIENT_ID": r"[A-Za-z0-9.]{16,40}",
     "HAGENCY_GITHUB_CLIENT_SECRET": r"[A-Za-z0-9_]{20,128}",
+    # The trial agent (ADR 0025, server/trial_limits.py): on only with an Ollama Cloud API key.
+    "OLLAMA_API_KEY": r"[A-Za-z0-9._-]{16,256}", "TRIAL_MODELS": r"[a-z0-9][a-z0-9._:*-]{0,90}(,[a-z0-9][a-z0-9._:*-]{0,90}){0,11}",
+    "TRIAL_PER_VISITOR": r"[0-9]{1,4}", "TRIAL_PER_SERVER": r"[0-9]{1,6}",   # messages a day (UTC)
+    "TRIAL_MAX_TOKENS": r"[0-9]{1,5}", "TRIAL_TIMEOUT_S": r"[0-9]{1,3}",
+    # Its monthly budget guard (trial_budget.py): the share of the Ollama plan trials may use, a token cap,
+    # how long a message waits for the one model slot, and how long a 429/402 from Ollama pauses trials.
+    "TRIAL_MAX_SHARE": r"0(\.[0-9]{1,3})?|1(\.0{1,3})?", "TRIAL_MONTHLY_TOKENS": r"[0-9]{1,10}",
+    "TRIAL_QUEUE_WAIT_S": r"[0-9]{1,3}", "TRIAL_PAUSE_S": r"[0-9]{1,6}",
 }
 # Sign-up and sign-in settings: a bad value turns that feature off (signup.py and sso_login.py check them
 # against RULES and bootstrap prints which), instead of stopping the deploy, so a typo made while
@@ -59,13 +67,15 @@ COMPOSE_UNSAFE = re.compile(r"""['"`$\\\s]""")
 KEY_RE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")   # a .env name; anything else is a malformed line
 SECRETS = {"POSTGRES_PASSWORD"}               # filled with a random value when empty
 PRIVATE = SECRETS | {"SMTP_USER", "SMTP_PASS",   # never printed (`get` refuses them)
-                     "HAGENCY_GOOGLE_CLIENT_SECRET", "HAGENCY_GITHUB_CLIENT_SECRET"}
+                     "HAGENCY_GOOGLE_CLIENT_SECRET", "HAGENCY_GITHUB_CLIENT_SECRET", "OLLAMA_API_KEY"}
 OPTIONAL = {"OPERATOR", "ALLOW_REMOTE", "REMOTE_PER_HOUR",     # OPERATOR: empty until the operator has an account
             "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID",   # the GitHub App: empty until
             "HAGENCY_REPOS",                                               # it is registered
             "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",   # empty: sign-up by invite only
             "HAGENCY_OPEN_SIGNUP", "HAGENCY_TEST_LIMITS", "HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRET",
-            "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET"}
+            "HAGENCY_GITHUB_CLIENT_ID", "HAGENCY_GITHUB_CLIENT_SECRET",
+            "OLLAMA_API_KEY", "TRIAL_MODELS", "TRIAL_PER_VISITOR", "TRIAL_PER_SERVER", "TRIAL_MAX_TOKENS", "TRIAL_TIMEOUT_S",
+            "TRIAL_MAX_SHARE", "TRIAL_MONTHLY_TOKENS", "TRIAL_QUEUE_WAIT_S", "TRIAL_PAUSE_S"}
 
 
 def read() -> dict:

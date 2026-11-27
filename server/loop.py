@@ -22,7 +22,7 @@ from nio import (AsyncClient, RoomMessageAudio, LoginResponse, MatrixRoom, React
 
 from common import github
 from common import lifecycle
-from server import ownership, panel
+from server import ownership, panel, trial_agent
 from server.pm_cards import Cards   # panel cards (ADR 0019)
 from common.redact import room_safe
 from common import room_state
@@ -41,7 +41,6 @@ from server.pm_welcome import Welcome
 from server.pm_agents import MoreAgents
 from server.status_board import Boards
 from common.bridge_config import HOMESERVER, ROOT, SERVER_NAME, read_env
-from common.lifecycle import is_stale
 
 POLL_S = float(os.environ.get("LOOP_POLL_S", "30"))
 FAST_POLL_S = min(POLL_S, 5.0)        # while waiting on GitHub (mergeability, a merge, a close)
@@ -135,7 +134,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
 
     # --- chat: agent results -----------------------------------------
     async def on_message(self, room: MatrixRoom, event: RoomMessageText) -> None:
-        if is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
+        if lifecycle.is_stale(event, self.started_ms) or not self.sync_point.first_time(event.event_id):
             return
         result = event.source.get("content", {}).get(github.RESULT_KEY)
         if isinstance(result, dict) and event.sender in self.agents_in(room):
@@ -151,7 +150,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
                     pass   # Matrix itself is refusing; the log line above is all we can do
 
     async def on_reaction_event(self, room: MatrixRoom, event: ReactionEvent) -> None:
-        if not is_stale(event, self.started_ms) and self.is_person(room, event.sender):
+        if not lifecycle.is_stale(event, self.started_ms) and self.is_person(room, event.sender):
             try:
                 await self.on_welcome_reaction(room, event) or await self.on_reaction(room, event)
             except SendError as e:
@@ -259,6 +258,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
                      self.client.add_event_callback(self.on_welcome_member, RoomMemberEvent)),
             lambda ms: setattr(self, "started_ms", ms))
         log.info("pm online (one repo per room; poll %ss)", POLL_S)
+        self.trial = await trial_agent.start(self.trial_eligible)   # ADR 0025: only with OLLAMA_API_KEY (pm_trial.py offers it)
         await self.ensure_welcome_room()     # pm_welcome.py: where every new account starts
         await panel.start(self)              # the side panel (panel.py); never fatal
         await lifecycle.serve(self.client, github.PM_BOT, self.sync_point, self.busy, side=self.poll_forever())
