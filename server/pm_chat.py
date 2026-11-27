@@ -29,6 +29,7 @@ CONFIRM_S = 300
 FOLLOW_SETTINGS = {intents.FOLLOW_ALWAYS: "always", intents.FOLLOW_ASK: "ask", intents.FOLLOW_NEVER: "never"}
 NOTE_WORDS = 6               # a longer message to @pm that isn't a command is a requirement, not noise
 ONLY_MODERATORS = "Only the room owner or a maintainer can change how I run this project."
+ASKED_STOP = ' If you only asked, say "@pm let us approve each change" to resume.'   # a question that says stop stops
 LEVEL_WORDS = {"off": "stopped: no new work is handed out and nothing is merged",
                "assist": "assist: agents build and review; a person merges each change",
                "autonomous": "autonomous: agents build, review and merge on their own"}
@@ -88,7 +89,8 @@ class Chat(Addressing):
             await self.say(room.room_id, "🎙 To confirm, click 👍 on my question above.")   # a click, never a transcript
             return
         if not voice and (intents.is_yes(body) or (said is not None and intents.is_approval(said))):
-            if self.yes_counts(room.room_id, reply_to, text is not None) and await self.confirm(room, sender):   # pm_implicit.py
+            if self.yes_counts(room.room_id, reply_to, text is not None) and (   # pm_implicit.py: autonomous takes a plain yes
+                    await self.needs_plain_yes(room.room_id, said or body) or await self.confirm(room, sender)):
                 return                # "yes", "@pm ok go ahead", or "sounds good" in a reply to the question
             if text is not None and (waiting or intents.is_yes(text)):
                 await self.answer_stale_ok(room.room_id, reply_to, sender)   # an OK, but not one that counts
@@ -122,7 +124,8 @@ class Chat(Addressing):
                 await self.retry(room, sender, n)
             return
         if intent != intents.UNKNOWN or pm_brain.BRAIN == "off":   # a phrase I know ("stop", "help", "where
-            await self.by_rules(room, sender, text, intent)    # are we?") never waits for a model (GPT review)
+            await self.by_rules(room, sender, text, intent,    # are we?") never waits for a model (GPT review)
+                                ASKED_STOP if intent == intents.OFF and intents.is_question(text) else "")
             return
         await self.understand_later(room, sender, text, intent, reply_to)   # pm_understand.py: in the background
 
@@ -169,9 +172,9 @@ class Chat(Addressing):
         gen = self.generation.get(rid, 0) if gen is None else gen   # a stop after this wins over a mode change
         if intent == intents.OFF:                                 # never gated: stopping is always safe
             self.invalidate(rid)              # pm_understand.py: drop decisions in flight and the question waiting
-            await self.say(rid, await self.change_level(rid, "off") or
+            await self.say(rid, (await self.change_level(rid, "off") or   # why: ASKED_STOP, after a question
                            "Stopped. No new work is handed out and nothing is merged; steps already "
-                           "running finish. Tell me when to continue.")
+                           "running finish. Tell me when to continue.") + why)
         elif intent in (intents.ASSIST, intents.AUTONOMOUS) and not await room_state.is_moderator(self.client, room, sender):
             await self.say(rid, ONLY_MODERATORS)
         elif intent == intents.ASSIST:

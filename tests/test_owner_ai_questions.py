@@ -59,8 +59,27 @@ class QuestionsNeverApprove(RoomBase, unittest.TestCase):
         for words in ("@pm is it good", "@pm does that look ok", "@pm so is it fine"):
             self.tell(ANNA, words)
         self.assertEqual(self.levels, [])
-        self.tell(ANNA, "@pm ok go ahead")            # a plain affirmation still confirms
+        self.tell(ANNA, "@pm yes")                    # a plain yes still confirms
         self.assertEqual(self.levels, ["autonomous"])
+
+    def test_a_waiting_autonomous_switch_takes_only_a_plain_yes(self):
+        """GPT round 5: "@pm it is good to go, right" passed is_approval and switched the room."""
+        self.lp.pending["!r"] = {"kind": "mode", "level": "autonomous", "event_id": "$q", "by": ANNA,
+                                 "until": time.time() + 300}
+        for words in ("@pm it is good to go, right", "@pm ok go ahead"):
+            self.tell(ANNA, words)
+            self.assertEqual((self.levels, self.said[-1]), ([], pm_implicit.PLAIN_YES), words)
+        self.tell(ANNA, "@pm yes")
+        self.assertEqual(self.levels, ["autonomous"])
+
+    def test_a_question_about_stopping_stops_and_says_how_to_resume(self):
+        """Deliberate (ADR 0022): stopping is the safe direction and never waits; the reply says how to go on."""
+        self.tell(BETTY, "@pm what happens if I stop the agents?")
+        self.assertEqual(self.levels, ["off"])
+        self.assertTrue(self.said[-1].endswith(pm_chat.ASKED_STOP))
+        self.assertIn("@pm let us approve each change", pm_chat.HELP.replace("**", ""))
+        self.tell(BETTY, "@pm stop")
+        self.assertNotIn(pm_chat.ASKED_STOP, self.said[-1])     # a plain stop: the usual reply
 
     def test_only_plain_affirmations_are_approvals(self):
         for text in ("is it good", "does it work", "ok so is it good", "can we go", "are we good", "would that be ok"):

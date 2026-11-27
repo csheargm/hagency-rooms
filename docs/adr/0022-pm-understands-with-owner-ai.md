@@ -47,7 +47,11 @@ OWNER's agent, not the speaker's).
 - A question never changes the mode ("@pm what does autonomous mode do?", `intents.is_question`): @pm
   says what the mode does and asks a 👍. Autonomous from words always asks a 👍, even a plain command
   from the owner or a maintainer (question detection alone isn't trusted with it; `!level` and the
-  console still switch at once). A question is never an approval ("@pm is it good" confirms nothing). Any question an unnamed message led to (a mode, a stop, a setting, ...) takes a
+  console still switch at once). A question is never an approval ("@pm is it good" confirms nothing),
+  and a waiting switch to autonomous takes only a 👍 or a message that is exactly "yes"/"ok"/...
+  (`intents.YES_RE`, optionally after "@pm"), never a looser approval. A question mentioning stop
+  ("@pm what happens if I stop the agents?") stops too, on purpose: stopping is the safe direction and
+  never waits, and the reply says the room resumes with one command ("@pm let us approve each change"). Any question an unnamed message led to (a mode, a stop, a setting, ...) takes a
   👍, a reply to it or "@pm yes", never a bare "yes". An inferred "show the plan" only shows it, with
   nothing to approve installed. Every post that installs an approval (plan, plan request, "bring your
   agent?") does so only if no stop and no other question came while it was sent.

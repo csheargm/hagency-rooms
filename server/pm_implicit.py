@@ -45,6 +45,7 @@ MODERATORS_ONLY = (intents.ASSIST, intents.AUTONOMOUS, intents.SET_REPO, intents
 LOW_IMPACT = (intents.STATUS, intents.SHOW_PLAN, intents.HELP, intents.ABOUT, intents.START, intents.WEB,
               intents.CONSOLE)
 TO_CONFIRM = " Click 👍 below to confirm."
+PLAIN_YES = "To switch to autonomous, click 👍 on my question above, or reply with just \"yes\"."
 HOW_TO_CONFIRM = "To confirm, click 👍 on my question above, or reply to it with yes."
 QUESTIONS = {intents.OFF: "Do you want me to stop? No new work would be handed out and nothing merged.",
              intents.PLAN: "Do you want me to turn this discussion into a plan of issues?",
@@ -57,6 +58,13 @@ def mode_question(level: str) -> str:
     return f"Do you want me to switch to **{level}** ({LEVEL_WORDS[level].split(': ', 1)[1]})?" + TO_CONFIRM
 
 
+def autonomous_ask(waiting: dict) -> bool:
+    """A question waiting to switch to autonomous (asked with a 👍: ask_mode, ask_implicit, or older code)."""
+    kind = waiting.get("kind", "autonomous")
+    return (kind == "autonomous" or (kind == "mode" and waiting.get("level") == intents.AUTONOMOUS)
+            or (kind == "implicit" and waiting.get("intent") == intents.AUTONOMOUS))
+
+
 def unnamed_ask(waiting: dict) -> bool:
     """A question of mine that a message without "@pm" led to (any kind: a stop, a mode, a setting, ...):
     a bare "yes" never confirms it, only a 👍, a reply to it or "@pm yes"."""
@@ -67,6 +75,15 @@ class Implicit:
     def note_talk(self, room_id: str, person: str) -> None:
         """@pm is answering this person here (an addressed message): their next words may be for me too."""
         self.__dict__.setdefault("_talks", {})[room_id] = (person, time.monotonic())
+
+    async def needs_plain_yes(self, room_id: str, words: str) -> bool:
+        """True (and says how) when the switch to autonomous waits and the words are more than a plain yes:
+        only a 👍 or exactly "yes"/"ok"/... (intents.YES_RE, the whole message) confirms it (GPT review)."""
+        waiting = self.pending.get(room_id)
+        if not waiting or not autonomous_ask(waiting) or intents.is_yes(words):
+            return False
+        await self.say(room_id, PLAIN_YES)
+        return True
 
     def yes_counts(self, room_id: str, reply_to: str | None, named: bool) -> bool:
         """A typed OK confirms my question when it replies to it, or replies to nothing; for a question I
