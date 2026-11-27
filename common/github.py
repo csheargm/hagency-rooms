@@ -92,7 +92,8 @@ class GitHubError(RuntimeError):
 # Rooms never show local paths or commands (redact.room_safe), and it fits @pm's 200-character cut.
 # "Ask again", not "@pm retry" (review): retry resumes only a paused issue, never a failed plan or card;
 # a failed filing adds how to ask again itself (pm_plan.FILE_AGAIN).
-NO_IDENTITY = ("{agent} isn't signed in to GitHub yet, so it can't open issues or pull requests. Its owner: open "
+NOT_SIGNED_IN = " isn't signed in to GitHub yet"   # raised before any GitHub call: nothing was made yet
+NO_IDENTITY = ("{agent}" + NOT_SIGNED_IN + ", so it can't open issues or pull requests. Its owner: open "
                "the Hagency panel → My agents → Sign in to GitHub, then ask @pm again.")
 
 

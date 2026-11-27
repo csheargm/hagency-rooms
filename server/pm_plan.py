@@ -37,7 +37,8 @@ PLAN_FAILED = ("⚠️ {agent} couldn't turn the discussion into a plan ({why}).
                "Say \"@pm let's build it\" to try again; I plan with the first agent of whoever asks, so someone "
                "whose first agent runs a stronger AI can ask instead.")
 # Review 2026-11-26: after a failed filing (no GitHub sign-in, say), "@pm retry" said "Nothing is paused
-# here"; the plan is kept (last_plans), so showing it again gives its 👍 back.
+# here"; the plan is kept (last_plans), so showing it again gives its 👍 back. Only when filing failed before
+# any issue was made (no sign-in): after a partial filing, approving again would open duplicates (GPT re-check).
 FILE_AGAIN = ' The plan is kept: once that\'s fixed, say "@pm show the plan" and approve it again.'
 
 class Planner:
@@ -100,7 +101,8 @@ class Planner:
                                                    why=str(result["error"])[:200])
                            if result.get("kind") == "plan" else
                            f"⚠️ {result['kind'].replace('_', ' ')} didn't work: {str(result['error'])[:200]}"
-                           + (FILE_AGAIN if result.get("kind") == "file_issues" and rid in self.last_plans else ""))
+                           + (FILE_AGAIN if result.get("kind") == "file_issues" and rid in self.last_plans
+                              and github.NOT_SIGNED_IN in str(result["error"]) else ""))   # only when none was opened (GPT)
         elif result["kind"] == "plan":
             await self.propose(rid, plan, result.get("items"))
         else:

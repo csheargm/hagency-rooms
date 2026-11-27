@@ -144,6 +144,17 @@ class Flow(unittest.TestCase):
         self.assertIn("**Issue 1: Add index.html**", self.sent[-1][0])
         self.assertEqual(self.lp.pending["!r"]["items"], items)     # still ✅-able
 
+    def test_a_filing_that_failed_partway_never_offers_to_file_again(self):
+        """GPT re-check: approving again after some issues were opened would open them twice."""
+        items = [{"title": "Add index.html", "criteria": ["serves a page"]}]
+        self.run_(self.lp.start_plan(self.room, ANNA))
+        self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "plan", "task_id": self.sent[-1][2]["task_id"],
+                                                                 "items": items}))
+        self.assertTrue(self.run_(self.lp.confirm(self.room, ANNA)))
+        self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "file_issues", "error": "HTTP 502 from GitHub",
+                                                                 "task_id": self.sent[-1][2]["task_id"]}))
+        self.assertFalse(self.sent[-1][0].endswith(pm_plan.FILE_AGAIN), self.sent[-1][0])
+
     def test_show_the_plan_again(self):
         self.lp.last_plans["!r"] = {"items": [{"title": "X", "criteria": ["y"]}], "agent": ANNA_AGENT, "by": ANNA}
         self.run_(self.lp.show_plan("!r"))
