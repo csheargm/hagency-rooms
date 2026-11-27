@@ -81,6 +81,18 @@ class Gate(Base):
         self.run_(self.lp.send_held("!r", KEY, item))
         self.assertEqual((item["stage"], "held" in item, self.tasks("merge")), ("stopped", False, []))
 
+    def test_a_merge_saved_before_the_solo_flag_is_gated_and_goes_out_with_it(self):
+        """GPT final review: a solo item's merge saved by older @pm code had no "solo" in its task."""
+        item = self.saved_merge()
+        item["task"] = {k: v for k, v in item["task"].items() if k != "solo"}
+        item.update(stage="merging", held=True)
+        self.run_(self.lp.send_held("!r", KEY, item))
+        self.assertEqual((item["stage"], self.tasks("merge")), ("stopped", []))   # cx-agent's code is too old
+        self.codes["cx-agent"] = NEW
+        item.update(stage="merging", held=True)
+        self.run_(self.lp.send_held("!r", KEY, item))
+        self.assertIs(self.tasks("merge")[-1]["solo"], True)                     # updated: sent, with "solo"
+
     def test_the_gates_by_reported_time(self):
         loop = pm_solo_code.SoloCode()
         self.assertTrue(loop.runs_solo(CXA))                                 # solo checks: still fine

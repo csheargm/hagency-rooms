@@ -31,8 +31,11 @@ class SoloCode:
         """A saved solo merge about to go out again (held while stopped, or the watchdog's resend): the same gate
         (GPT review: a task saved before an update, or a builder rolled back, skipped it). True: paused."""
         task = item.get("task") or {}
-        return task.get("kind") == "merge" and any(task.get(f) is True for f in ("admin", "solo")) \
-            and await self.merge_waits_for_update(room_id, key, item)
+        if task.get("kind") != "merge" or not (item.get("solo") is True or any(task.get(f) is True for f in ("admin", "solo"))):
+            return False
+        if item.get("solo") is True and task.get("admin") is not True:   # GPT review: one saved before "solo" existed
+            item["task"] = {**task, "solo": True}                         # goes out with it (the agent re-reads)
+        return await self.merge_waits_for_update(room_id, key, item)
 
     async def merge_waits_for_update(self, room_id: str, key: str, item: dict) -> bool:
         """A solo merge goes only to code that re-reads the switch at the merge and refuses code-owner rules
