@@ -24,13 +24,15 @@ class FakeGitHub:
                 rs["bypass_actors"] = list(bypass or [])
         self.rules = [{"type": "pull_request", "ruleset_id": 42, "ruleset_source_type": source},
                       {"type": "deletion", "ruleset_id": 42}, *extra_rules]
-        self.puts, self.ran, self.pr = [], [], {}
+        self.puts, self.ran, self.pr, self.branch = [], [], {}, {"protected": False}
 
     async def run_json(self, args, agent=None):
         if args[:2] == ["repo", "view"]:
             return {"defaultBranchRef": {"name": "main"}}
         if args[1] == f"repos/{REPO}/rules/branches/main?per_page=100":
             return self.rules
+        if args[1] == f"repos/{REPO}/branches/main":
+            return self.branch
         if args[1].startswith(f"repos/{REPO}/rulesets/"):
             return self.rulesets[int(args[1].rsplit("/", 1)[1])]
         if args[:2] == ["pr", "view"]:
@@ -85,6 +87,16 @@ class Ruleset(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "repo's admin.*403"):
                 asyncio.run(solo_github.ruleset("cx-agent", "codex", None, {"repo": REPO, "on": True}))
 
+    def test_no_bypass_on_a_ruleset_that_holds_more_than_the_review(self):
+        """GPT review: a bypass covers the whole ruleset, so one with a merge queue or required threads is left alone."""
+        for rules in ([{"type": "pull_request"}, {"type": "merge_queue"}],
+                      [{"type": "pull_request", "parameters": {"required_review_thread_resolution": True}}]):
+            gh = FakeGitHub()
+            gh.rulesets[42]["rules"] = rules
+            with self.subTest(rules=rules), self.assertRaisesRegex(ValueError, "ruleset of its own"):
+                self.go(gh, {"on": True})
+            self.assertEqual(gh.puts, [])
+
     def test_a_failure_part_way_still_reports_what_changed(self):
         gh = FakeGitHub(bypass=[solo_review.ADMIN_BYPASS])
         del gh.rulesets[43]["bypass_actors"]                    # 43 isn't readable: after 42 was changed
@@ -118,10 +130,29 @@ class AdminMerge(unittest.TestCase):
                             (FakeGitHub(), {"reviewDecision": "CHANGES_REQUESTED"}, "changes requested"),
                             (FakeGitHub(extra_rules=[{"type": "merge_queue", "ruleset_id": 42}]), {}, "merge_queue"),
                             (FakeGitHub(extra_rules=[needs_ci]), {}, "require hasn't passed"),
+                            (FakeGitHub(extra_rules=[{"type": "pull_request", "parameters": {
+                                "allowed_merge_methods": ["merge"]}}]), {}, "other than squash"),
+                            (FakeGitHub(extra_rules=[{"type": "required_status_checks", "parameters": {
+                                "required_status_checks": [{"context": "ci", "integration_id": 7}]}}]), {}, "one particular app"),
                             (FakeGitHub(can_bypass="never"), {}, solo_review.NO_BYPASS)):
             with self.subTest(why=why), self.assertRaisesRegex(ValueError, why):
                 self.merge(gh, **pr)
             self.assertEqual(gh.ran, [])
+
+    def test_a_check_classic_protection_requires_must_be_there(self):
+        gh = FakeGitHub()
+        gh.branch = {"protected": True, "protection": {"required_status_checks": {"contexts": ["deploy"]}}}
+        with self.assertRaisesRegex(ValueError, "require hasn't passed"):
+            self.merge(gh)
+
+    def test_switched_off_while_the_checks_ran_it_doesnt_merge(self):
+        gh = FakeGitHub()
+        gh.pr = dict(self.PR)
+        with gh.patch():
+            with self.assertRaisesRegex(ValueError, "switched off"):
+                asyncio.run(tasks.merge("cx-agent", "codex", None, {"repo": REPO, "issue": 7, "pr": 9, "sha": "abc",
+                                                                    "admin": True, "_still": mock.AsyncMock(return_value=False)}))
+        self.assertEqual(gh.ran, [])
 
     def test_unfinished_checks_are_waited_for(self):
         gh = FakeGitHub()

@@ -70,23 +70,25 @@ class SoloRules:
         job = self.solo_jobs().get(task_id)
         if not job or job["room"] != rid or job["agent"] != sender:
             return
-        self.solo_jobs().pop(task_id, None)
         repo = self.room_repos.get(rid) or await room_state.repo_of(self.client, rid) or "the repo"
         changed = {i for i in result.get("changed") or [] if isinstance(i, int)}
         err, now = await self.write_solo(rid, None, (lambda s: s | changed) if job["on"] else (lambda s: s - changed))
-        if err:
-            await self.say(rid, f"{err} (I couldn't note which review rules Hagency changed on {repo}.)")
-        elif result.get("error"):
-            await self.say(rid, f"⚠️ {local(sender)} couldn't update GitHub's review rule on {repo}: "
-                                f"{room_safe(result['error'])}\n\n"
-                                + (solo_review.BYPASS_STEPS.format(repo=repo) if job["on"] else NOT_WANTED))
-        else:
-            await self.say(rid, ruleset_line(repo, job["on"], bool(changed), bool(result.get("already"))))
+        if err:                               # the ask stays on record: GitHub was changed, and that must be said
+            await self.say(rid, f"{err} (I couldn't note which review rules Hagency changed on {repo}: "
+                                f"{sorted(changed) or 'none'}.)")
+            return
+        self.solo_jobs().pop(task_id, None)
         recorded = sorted(set(now["bypass_added"]) | changed if job["on"] else set(now["bypass_added"]) - changed)
         if job["on"] and not now["on"] and recorded:   # switched off while it was added: take it out again
             await self.ask_ruleset(room, job.get("by", sender), False, recorded)
         elif not job["on"] and now["on"]:             # switched on again while it was taken out: put it back
             await self.ask_ruleset(room, job.get("by", sender), True, [])
+        if result.get("error"):               # the follow-up first (GPT review): a failed announcement can't skip it
+            await self.say(rid, f"⚠️ {local(sender)} couldn't update GitHub's review rule on {repo}: "
+                                f"{room_safe(result['error'])}\n\n"
+                                + (solo_review.BYPASS_STEPS.format(repo=repo) if job["on"] else NOT_WANTED))
+        else:
+            await self.say(rid, ruleset_line(repo, job["on"], bool(changed), bool(result.get("already"))))
 
 
 def ruleset_line(repo: str, on: bool, changed: bool, already: bool) -> str:

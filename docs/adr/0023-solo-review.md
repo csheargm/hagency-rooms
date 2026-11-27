@@ -52,7 +52,13 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
 - While the bypass is in a ruleset, any repo admin may merge a pull request without an approval (never push
   directly). `docs/github-ruleset.json` itself keeps no bypass.
 - GitHub's ruleset API has no compare-and-set: the PUT sends the bypass list read a moment before, so a bypass
-  entry someone edits on GitHub in that same moment could be undone. Classic branch protection (not rulesets) is
-  not inspected; its required checks count only through "every reported check passed".
+  entry someone edits on GitHub in that same moment could be undone. A bypass is only added to a ruleset whose
+  rules are the review plus ones a squash merge meets anyway (a bypass covers the whole ruleset); otherwise the
+  owner is told to give the review rule a ruleset of its own. Classic branch protection's required checks are
+  read too. The agent asks the room again (Autonomous, solo on) right before `--admin`, after waiting for checks.
+- A ruleset answer that reaches @pm while it is restarting is lost like any agent result then; the bypass is
+  then still on GitHub but not recorded, and a person takes it out there.
+- If the room's repo changes while a bypass is recorded, its removal is refused (tasks are for the room's own
+  repo), and @pm says to take it out by hand.
 - Hermes agents (MCP tools) can't run the ruleset task yet; @pm says the agent couldn't, with the manual steps.
 - Supersedes ADR 0016's "always another person's agent" for rooms that switched solo review on.

@@ -215,8 +215,13 @@ async def merge_pr(task_id: str) -> dict:
     if problem:
         return problem
 
+    async def still() -> bool:            # read again right before an admin merge (ADR 0023)
+        require_autonomous(t)
+        return True
+
     async def step():
         require_autonomous(t)
-        return {"done": report(task_id, await tasks.merge(AGENT, "Hermes", core.base_for(t), t)), "next": "Stop."}
+        return {"done": report(task_id, await tasks.merge(AGENT, "Hermes", core.base_for(t), {**t, "_still": still})),
+                "next": "Stop."}
     return await safely(task_id, "merge", step)
 

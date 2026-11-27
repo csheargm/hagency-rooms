@@ -85,6 +85,9 @@ async def _change_one(agent: str, repo: str, rid: int, on: bool) -> str:
     actors = [{k: a.get(k) for k in ACTOR_FIELDS} for a in rs["bypass_actors"] if isinstance(a, dict)]
     if on and any(is_admin_bypass(a) for a in actors):
         return "already"
+    if on and (more := beyond_review(rs.get("rules") or [])):   # GPT review: a bypass covers the WHOLE ruleset
+        raise ValueError(f"the ruleset \"{rs.get('name', rid)}\" on {repo} also requires {', '.join(more)}, which a "
+                         "bypass would skip too. Put the review rule in a ruleset of its own, then switch solo review on again")
     if not on and ADMIN_BYPASS not in actors:
         return ""
     await _put_bypass(agent, repo, rid, [*actors, ADMIN_BYPASS] if on else [a for a in actors if a != ADMIN_BYPASS])
@@ -125,12 +128,36 @@ async def can_bypass(agent: str, repo: str, rules: list[dict]) -> bool:
     return True
 
 
-def required_checks_passed(rules: list[dict], rollup: object) -> bool:
-    """Each check a ruleset requires is there and passed (--admin would skip a missing one)."""
+def beyond_review(rules: list) -> list[str]:
+    """What --admin (or an admin bypass) would skip besides the approval itself; [] when nothing (GPT review)."""
+    more = sorted({str(r.get("type")) for r in rules if isinstance(r, dict)} - SAFE_RULES)
+    for r in rules:
+        params = (r.get("parameters") or {}) if isinstance(r, dict) else {}
+        if r.get("type") == "pull_request" and params.get("required_review_thread_resolution") is True:
+            more.append("resolved conversations")
+        if r.get("type") == "pull_request" and params.get("allowed_merge_methods") not in (None, []) \
+                and "squash" not in params["allowed_merge_methods"]:
+            more.append("a merge method other than squash")
+        if r.get("type") == "required_status_checks" and any(
+                isinstance(c, dict) and c.get("integration_id") for c in params.get("required_status_checks") or []):
+            more.append("checks from one particular app")
+    return more
+
+
+def required_checks_passed(rules: list[dict], rollup: object, classic: list[str] = ()) -> bool:
+    """Each check a ruleset (or classic branch protection) requires is there and passed (--admin would skip a
+    missing one)."""
     ran = {c.get("name") or c.get("context"): c for c in rollup if isinstance(c, dict)} if isinstance(rollup, list) else {}
     needed = [need.get("context") for r in rules if r.get("type") == "required_status_checks"
               for need in (r.get("parameters") or {}).get("required_status_checks") or [] if isinstance(need, dict)]
-    return all(name in ran and checks_state([ran[name]]) == "passed" for name in needed)
+    return all(name in ran and checks_state([ran[name]]) == "passed" for name in [*needed, *classic])
+
+
+async def classic_checks(agent: str, repo: str, branch: str) -> list[str]:
+    """The checks classic branch protection requires on the branch (none when it isn't protected that way)."""
+    info = await run_json(["api", f"repos/{repo}/branches/{urllib.parse.quote(branch, safe='')}"], agent)
+    req = ((info.get("protection") or {}).get("required_status_checks") or {}) if isinstance(info, dict) else {}
+    return [*(req.get("contexts") or []), *(c.get("context") for c in req.get("checks") or [] if isinstance(c, dict))]
 
 
 async def _ready_pr(agent: str, repo: str, pr: int) -> dict:
@@ -145,9 +172,11 @@ async def _ready_pr(agent: str, repo: str, pr: int) -> dict:
                      "merges it on GitHub")
 
 
-async def admin_merge(agent: str, repo: str, n: int, pr: int, sha: str) -> dict:
+async def admin_merge(agent: str, repo: str, n: int, pr: int, sha: str, still=None) -> dict:
     """Solo mode's merge past the review rule as an admin: the reviewed commit, into the default branch, every
-    check green, and only when the review is the only rule --admin would skip."""
+    check green, and only when the review is the only rule --admin would skip. still: the agent adapter's own
+    re-read of the room (Autonomous, solo review on), asked again right before the merge (GPT review: the wait
+    for checks may be long)."""
     branch = await _default_branch(agent, repo)
     info = await _ready_pr(agent, repo, pr)
     if (info.get("state") != "OPEN" or info.get("mergeable") != "MERGEABLE" or info.get("headRefOid") != sha
@@ -156,11 +185,13 @@ async def admin_merge(agent: str, repo: str, n: int, pr: int, sha: str) -> dict:
     if info.get("reviewDecision") == "CHANGES_REQUESTED" or checks_state(info.get("statusCheckRollup")) != "passed":
         raise ValueError(f"PR #{pr} has changes requested, or a check that hasn't passed")
     rules = await branch_rules(agent, repo, branch)
-    if other := sorted({str(r.get("type")) for r in rules} - SAFE_RULES):
+    if other := beyond_review(rules):
         raise ValueError(f"{repo}'s rules also require {', '.join(other)}, which --admin would skip; a person merges")
-    if not required_checks_passed(rules, info.get("statusCheckRollup")):
+    if not required_checks_passed(rules, info.get("statusCheckRollup"), await classic_checks(agent, repo, branch)):
         raise ValueError(f"a check {repo}'s rules require hasn't passed on PR #{pr}")
     if not await can_bypass(agent, repo, rules):
         raise ValueError(NO_BYPASS)
+    if callable(still) and not await still():
+        raise ValueError("the room stopped, or solo review was switched off, while the checks ran")
     await run(["pr", "merge", str(pr), "-R", repo, "--squash", "--admin", "--match-head-commit", sha], agent)
     return {"kind": "merge", "issue": n, "pr": pr, "line": f"merged PR #{pr} (closes #{n}; solo review)"}

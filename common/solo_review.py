@@ -48,6 +48,11 @@ async def enabled(client: AsyncClient, room_id: str) -> bool:
     return (await read(client, room_id))["on"]
 
 
+async def still_allowed(client: AsyncClient, room_id: str) -> bool:
+    """An admin merge may still go ahead: the room is Autonomous and solo review is on, read now."""
+    return await enabled(client, room_id) and await room_state.level(client, room_id) == "autonomous"
+
+
 PASSED = ("SUCCESS", "NEUTRAL", "SKIPPED")
 WAITING = ("QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED", "EXPECTED")
 
