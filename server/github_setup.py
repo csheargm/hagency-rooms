@@ -65,10 +65,19 @@ def approvals(main_rules: list[dict]) -> int:
                 for r in main_rules if r.get("type") == "pull_request"] or [0])
 
 
+def _owner(agent: str) -> str:
+    """Whose agent it is (registry); an unregistered one (the CLI's test agents) counts as its own person."""
+    return registry.owner_of(agent) or agent
+
+
 def _reviewers_short(identities: dict[str, dict], need: int) -> bool:
-    """Too few other GitHub accounts here to give the approvals (an account never approves its own PR), or more
+    """No checker here whose approval GitHub counts (an account never approves its own PR, and the loop's checker
+    is another PERSON's agent: routing.checkers_for; GPT review: one owner's two accounts are solo review), or more
     approvals than the loop asks for: it has one checker approve (GPT review)."""
-    return need > 1 or need == 1 and len(_by_login(identities)) < 2
+    if need != 1:
+        return need > 1
+    pairs = [(ident["login"].lower(), _owner(agent)) for agent, ident in identities.items() if "login" in ident]
+    return not any(login != other and owner != theirs for login, owner in pairs for other, theirs in pairs)
 
 
 def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: str, solo: bool, bypass: bool) -> str | None:
@@ -82,7 +91,8 @@ def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: s
         return f"{rule} can't be met (the loop has one checker approve each PR): {SOLO_FIX}"
     if not solo:
         why = (f"{_names(shared[0][1])} share the GitHub account @{shared[0][0]}" if shared
-               else "only 1 GitHub account is here")
+               else "only 1 GitHub account is here" if len(_by_login(identities)) < 2
+               else "every agent here is one person's, and the loop has another person's agent check the work")
         return f"{why}, so {rule} can't be met (GitHub never lets an account approve its own PR): {SOLO_FIX}"
     not_admin = [login for login, agents in _by_login(identities).items() if identities[agents[0]].get("admin") is not True]
     if not_admin:
