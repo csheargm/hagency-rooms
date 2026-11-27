@@ -39,6 +39,16 @@ class OwnerPairing(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertIn("cx-agent and betty-agent share the GitHub account @cx", problems[0])
 
+    def test_solo_review_never_covers_another_persons_agent_on_the_builders_account(self):
+        """GPT review round 2: with solo on, admins and the bypass, readiness passed, but betty-agent (not a sibling)
+        gets cx-agent's PR as a regular review GitHub can't count."""
+        admins = {"cx-agent": {"login": "cx", "push": True, "admin": True},
+                  "betty-agent": {"login": "cx", "push": True, "admin": True}}
+        problems = evaluate(admins, GATED, solo=True, bypass=True)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("share the GitHub account @cx", problems[0])
+        self.assertIn(github_setup.OWN_ACCOUNT, problems[0])
+
 
 if __name__ == "__main__":
     unittest.main()

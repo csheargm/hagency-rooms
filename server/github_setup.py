@@ -30,6 +30,7 @@ RULESET_NAME = json.loads(RULESET_FILE.read_text())["name"]
 LABEL_STEPS = ("no '{label}' label on {repo} yet. On GitHub open {repo} → Issues → Labels → New label, name it "
                "{label}, then click Create label")
 SOLO_FIX = "switch on Solo review below"
+OWN_ACCOUNT = "sign each person's agent in to a GitHub account of its own"
 
 
 def _names(items) -> str:
@@ -70,16 +71,19 @@ def _owner(agent: str) -> str:
     return registry.owner_of(agent) or agent
 
 
+def _cross_shared(identities: dict[str, dict]) -> list[tuple[str, list[str]]]:
+    """GitHub accounts used by agents of different owners: routing may give one of them the other's PR, and an
+    account never approves its own PR (GPT review)."""
+    return [(login, agents) for login, agents in _by_login(identities).items() if len({_owner(a) for a in agents}) > 1]
+
+
 def _reviewers_short(identities: dict[str, dict], need: int) -> bool:
     """Some PR's approval can't count: the loop's checker is another PERSON's agent (routing.checkers_for; GPT
-    review: one owner's two accounts are solo review), any of them may get any builder's PR, and an account never
-    approves its own PR; so every builder–checker pair of different owners needs two accounts. Or more approvals
-    than the loop asks for: it has one checker approve (GPT review)."""
+    review: one owner's two accounts are solo review) on another account (_cross_shared). Or more approvals than
+    the loop asks for: it has one checker approve (GPT review)."""
     if need != 1:
         return need > 1
-    pairs = [(ident["login"].lower(), _owner(agent)) for agent, ident in identities.items() if "login" in ident]
-    cross = [login == other for login, owner in pairs for other, theirs in pairs if owner != theirs]
-    return not cross or any(cross)
+    return len({_owner(a) for a, ident in identities.items() if "login" in ident}) < 2 or bool(_cross_shared(identities))
 
 
 def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: str, solo: bool, bypass: bool) -> str | None:
@@ -89,6 +93,9 @@ def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: s
         return None
     shared = [(login, agents) for login, agents in _by_login(identities).items() if len(agents) > 1]
     rule = f"{branch}'s review rule ({need} approving review{'s' * (need > 1)})"
+    if need == 1 and (mixed := _cross_shared(identities)):   # solo review never applies: another person's agent checks
+        return (f"{_names(mixed[0][1])} share the GitHub account @{mixed[0][0]}, so {rule} can't be met when one "
+                f"checks the other's PR (GitHub never lets an account approve its own PR): {OWN_ACCOUNT}")
     if not solo and need > 1:
         return f"{rule} can't be met (the loop has one checker approve each PR): {SOLO_FIX}"
     if not solo:
