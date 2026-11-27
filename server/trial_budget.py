@@ -138,9 +138,11 @@ class Budget:
         self.add_tokens(n)
         return True
 
-    def settle(self, reserved: float, used: float) -> None:
-        """Ollama's own count replaces the estimate (a failed call keeps the estimate)."""
-        self.add_tokens(max(0.0, used) - reserved)
+    def settle(self, reserved: float, used: float, at: str | None = None) -> None:
+        """Ollama's own count replaces the estimate (a failed call keeps the estimate). `at`: the month it was
+        reserved in; after midnight on the 1st the estimate stays in that month and the new one isn't touched."""
+        if at is None or at == month(self.clock()):
+            self.add_tokens(max(0.0, used) - reserved)
 
     def pause(self, seconds: float, why: str) -> None:
         seconds = min(max(MIN_PAUSE_S, seconds), MAX_PAUSE_S) if math.isfinite(seconds) else setting("TRIAL_PAUSE_S")

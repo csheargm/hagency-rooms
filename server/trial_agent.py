@@ -72,7 +72,7 @@ class TrialAgent(Turns):
         self.ask_model = ask
         self.history: dict = {}                                    # (room, visitor) → recent turns, in memory only
         self.answering: set = set()                                # visitors with an answer underway (trial_turn.py)
-        self.told_busy: set = set()                                # visitors told "still"/"busy" since their last answer
+        self.told_busy: dict = {}                                  # visitor → when last told "still"/"busy"
         self.enrolling: dict = {}                                  # visitor → one enrolment at a time
         self.waiting: set = set()                                  # answers underway (trial_turn.on_message)
         self.busy = busy if busy is not None else set()            # @pm's: a restart lets them finish (lifecycle.serve)

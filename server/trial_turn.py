@@ -37,6 +37,7 @@ from server.pm_address import without_quote
 
 log = logging.getLogger("trial")
 HISTORY_TURNS = 8                     # this visitor's last turns in this room, kept in memory only
+NOTICE_EVERY_S = 60                   # "still answering" / "busy": at most this often per visitor
 MAX_WAITING = 6                       # answers queued or running at once; more: "busy" at once
 NAME_RE = re.compile(r"^\W*(@?hagency\.)?trial[ -]agent\b", re.I)   # "Trial agent, …" at the start
 BRING = "To bring your own agent (no daily cap, with tools and the GitHub loop): type \"bring my own\" in your chat with Product Manager."
@@ -55,7 +56,8 @@ STOPPED = {trial_budget.PAUSED: "The trial agent is paused: the AI service it us
                                 "It should be back in about {mins} min.",
            trial_budget.SHARE: "The trial agent has used its share of the AI plan for this period, so it's resting until the "
                                "plan's next period.",
-           trial_budget.WINDOW: "The trial agent has used its share of the AI service for now; it should be back in a few hours.",
+           trial_budget.WINDOW: "The trial agent has used its share of the AI service for now; it comes back when the "
+                                "service's usage window resets (in hours, or at its weekly reset).",
            trial_budget.DAMAGED: "The trial agent is paused while the server's operator checks its settings. Please try again later.",
            trial_budget.TOKENS: RESTING}
 
@@ -104,7 +106,6 @@ class Turns:
             self.say_once(room.room_id, event.sender, BUSY)
             return
         self.answering.add(event.sender)
-        self.told_busy.discard(event.sender)
         task = asyncio.create_task(self.handle(room.room_id, event))
         for tasks in (self.waiting, self.busy):
             tasks.add(task)
@@ -112,11 +113,11 @@ class Turns:
         task.add_done_callback(lambda _: self.answered(event.sender))
 
     def say_once(self, room_id: str, visitor: str, text: str) -> None:
-        """STILL or BUSY, at most once until their next answer starts (independent review: a flood of them got
-        the shared account rate limited), posted in the background so sync never waits on it."""
-        if visitor in self.told_busy:
+        """STILL or BUSY, at most once a minute per visitor (independent review: a flood of them got the shared
+        account rate limited), posted in the background so sync never waits on it."""
+        if time.time() - self.told_busy.get(visitor, 0) < NOTICE_EVERY_S:
             return
-        self.told_busy.add(visitor)
+        self.told_busy[visitor] = time.time()
         task = asyncio.create_task(self.post_safely(room_id, text))
         self.busy.add(task)
         task.add_done_callback(self.busy.discard)
@@ -148,7 +149,7 @@ class Turns:
         try:
             await asyncio.wait_for(self.slot.acquire(), max(1.0, trial_budget.setting_or("TRIAL_QUEUE_WAIT_S", QUEUE_WAIT_S)))
         except asyncio.TimeoutError:
-            await self.post(room_id, BUSY)          # not counted: nothing was asked of the model
+            self.say_once(room_id, visitor, BUSY)   # not counted: nothing was asked of the model
             return
         try:
             reply, read_repo, turn = await self.in_slot(room_id, visitor, text, now)
@@ -173,7 +174,6 @@ class Turns:
 
     def answered(self, visitor: str) -> None:
         self.answering.discard(visitor)
-        self.told_busy.discard(visitor)
 
     def notice(self, visitor: str, stop: str, words: str) -> tuple[str | None, None, None]:
         return (words if self.usage.first_notice(visitor, stop) else None), None, None
@@ -220,19 +220,26 @@ class Turns:
         """Reserve `n` of the visitor's day and of the month; None when both fit, else what to say ("": refused,
         and the used-up allowance was said already today). A request too big for what's left says so each time:
         a request too big for what's left says so each time (independent review), a used-up allowance once a day."""
-        remote = identity.split(visitor)[1] != SERVER_NAME
+        remote, now = identity.split(visitor)[1] != SERVER_NAME, time.time()
+        self.reserved_at = (trial_limits.day(now), trial_budget.month(now))   # one call at a time: one reservation
         if not self.usage.reserve_tokens(visitor, n, remote):
-            if self.usage.tokens_used(visitor) + trial_model.SMALL_TOKENS < self.usage.allowance(visitor, remote):
-                return TOO_BIG
+            if self.usage.tokens_used(visitor) + self.smallest(visitor) <= self.usage.allowance(visitor, remote):
+                return TOO_BIG                    # a shorter one still fits: say so, every time
             return cap_words(trial_limits.TOKENS, time.time()) if self.usage.first_notice(visitor, trial_limits.TOKENS) else ""
         if not self.budget.reserve(n):            # this answer could pass the month's token cap: not asked
-            self.usage.settle_tokens(visitor, n, 0)
+            self.usage.settle_tokens(visitor, n, 0, self.reserved_at[0])
             return TOO_BIG
         return None
 
     def settle(self, visitor: str, reserved: float, used: float) -> None:
-        self.budget.settle(reserved, used)
-        self.usage.settle_tokens(visitor, reserved, used)
+        on_day, in_month = getattr(self, "reserved_at", (None, None))
+        self.budget.settle(reserved, used, in_month)
+        self.usage.settle_tokens(visitor, reserved, used, on_day)
+
+    def smallest(self, visitor: str) -> float:
+        """What the shortest possible request reserves on their model: below it, the day is used up."""
+        weight = trial_models.weight(trial_models.chosen((self.visitors.get(visitor) or {}).get("model")))
+        return trial_model.high_estimate(trial_model.messages([], "?"), trial_limits.number("TRIAL_MAX_TOKENS")) * weight
 
     async def repo(self, room_id: str) -> str | None:
         try:

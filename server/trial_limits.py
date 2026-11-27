@@ -116,9 +116,12 @@ class Usage:
             self._save()
             return True
 
-    def settle_tokens(self, visitor: str, reserved: float, used: float) -> None:
-        """Ollama's count replaces the estimate (a failed call keeps it)."""
+    def settle_tokens(self, visitor: str, reserved: float, used: float, at: str | None = None) -> None:
+        """Ollama's count replaces the estimate (a failed call keeps it). `at`: the day it was reserved on;
+        after midnight the estimate stays with that day and the new day isn't touched."""
         with self.lock:
+            if at is not None and at != day(self.clock()):
+                return
             tokens = self._today().setdefault("tokens", {})
             tokens[visitor] = max(0, int(tokens.get(visitor, 0)) + round(max(0.0, used) - reserved))
             self._save()

@@ -83,8 +83,8 @@ class TrialOffer:
         text = unaddressed(event.body, self.user_id)
         mine = event.sender in self.trial.visitors and self.trial_eligible(event.sender)   # models: only theirs to pick
         m = USE_RE.match(text)                  # first: "use glm-5.3 for the trial" names a model (independent review)
-        if mine and m and (trial_models.allowed(m.group("name")) or m.group("kw") or m.group("kw2") or m.group("trial")):
-            await self.say(room.room_id, self.choose_model(event.sender, m.group("name")))
+        if m and (m.group("trial") or mine and (trial_models.allowed(m.group("name")) or m.group("kw") or m.group("kw2"))):
+            await self.say(room.room_id, self.choose_model(event.sender, m.group("name")))   # NOT_ENROLLED if not theirs
         elif TRIAL_RE.search(text):
             await self.start_trial(room.room_id, event.sender)
         elif mine and MODELS_RE.search(text):

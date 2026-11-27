@@ -54,7 +54,8 @@ RULES = {
     # how long a message waits for the one model slot, and how long a 429/402 from Ollama pauses trials.
     "TRIAL_MAX_SHARE": r"0(\.[0-9]{1,3})?|1(\.0{1,3})?", "TRIAL_MONTHLY_TOKENS": r"[0-9]{1,10}",
     "TRIAL_QUEUE_WAIT_S": r"[1-9][0-9]{0,2}",
-    "TRIAL_VISITOR_TOKENS": r"[0-9]{1,9}", "TRIAL_REMOTE_TOKENS": r"[0-9]{1,9}",   # tokens a visitor may use a day "TRIAL_PAUSE_S": r"[0-9]{1,6}",
+    "TRIAL_PAUSE_S": r"[0-9]{1,6}",
+    "TRIAL_VISITOR_TOKENS": r"[0-9]{1,9}", "TRIAL_REMOTE_TOKENS": r"[0-9]{1,9}",   # tokens a visitor may use a day
 }
 # Sign-up and sign-in settings: a bad value turns that feature off (signup.py and sso_login.py check them
 # against RULES and bootstrap prints which), instead of stopping the deploy, so a typo made while

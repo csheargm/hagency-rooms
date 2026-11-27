@@ -80,8 +80,7 @@ class Notices(Base):
             await self.agent.drain()
             await asyncio.gather(*list(self.agent.busy), return_exceptions=True)
         self.run_(go())
-        self.assertEqual(sends.count(trial_turn.STILL), 1)
-        self.assertEqual(self.agent.told_busy, set())                  # the next answer may say it again
+        self.assertEqual(sends.count(trial_turn.STILL), 1)           # once a minute at most
 
 
 class UseModel(TrialBase):
@@ -125,7 +124,7 @@ class Down(TrialBase):
 class Words(unittest.TestCase):
     def test_each_stop_says_what_is_true(self):
         self.assertIn("operator", trial_turn.STOPPED[trial_budget.DAMAGED])
-        self.assertIn("few hours", trial_turn.STOPPED[trial_budget.WINDOW])
+        self.assertIn("usage window resets", trial_turn.STOPPED[trial_budget.WINDOW])   # no promised time
         self.assertNotIn("month", trial_turn.STOPPED[trial_budget.WINDOW])
         legacy = {"included": {"session": {"remaining_percent": 10}}}
         self.assertTrue(trial_budget.is_window(legacy))
@@ -154,6 +153,69 @@ class SignInFailure(unittest.TestCase):
             self.assertIsNone(loop.trial)
             self.assertIn("not started", logged.output[0])
         asyncio.run(go())
+
+
+
+class FourthPass(Base):
+    """GPT's review of the fixes above."""
+    def test_a_settle_after_midnight_stays_with_the_reserved_day_and_month(self):
+        import datetime
+        from pathlib import Path
+        import tempfile
+        from server import trial_limits
+        now = [datetime.datetime(2026, 11, 30, 23, 59, 59, tzinfo=datetime.timezone.utc).timestamp()]
+        folder = Path(tempfile.mkdtemp())
+        usage = trial_limits.Usage(folder / "u.json", clock=lambda: now[0])
+        budget = trial_budget.Budget(folder / "b.json", clock=lambda: now[0], fetch=self.fetch_balance)
+        self.assertTrue(usage.reserve_tokens(NEW, 2000, remote=False) and budget.reserve(2000))
+        day, month = trial_limits.day(now[0]), trial_budget.month(now[0])
+        now[0] += 2                                                    # December 1st
+        usage.settle_tokens(NEW, 2000, 500, day)
+        budget.settle(2000, 500, month)
+        self.assertEqual((usage.tokens_used(NEW), budget._month()["tokens"]), (0, 0))   # the new day and month untouched
+
+    def test_a_shortenable_request_says_too_big_every_time(self):
+        self.enrol()
+        small = self.agent.smallest(NEW)
+        with mock.patch.dict(os.environ, {"TRIAL_VISITOR_TOKENS": str(int(small) + 10), "TRIAL_MONTHLY_TOKENS": "10000000"}):
+            for _ in range(2):
+                self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, "x" * 4000)))
+        self.assertEqual(self.said()[1:], [trial_turn.TOO_BIG, trial_turn.TOO_BIG])
+
+    def test_busy_from_a_full_queue_is_said_again_after_a_minute(self):
+        self.enrol()
+        self.agent.waiting = {object() for _ in range(trial_turn.MAX_WAITING)}
+
+        async def go():
+            dm = self.client.rooms["!trialdm"]
+            await self.agent.on_message(dm, message(NEW, "a"))
+            await self.agent.on_message(dm, message(NEW, "b"))
+            self.agent.told_busy[NEW] -= trial_turn.NOTICE_EVERY_S + 1
+            await self.agent.on_message(dm, message(NEW, "c"))
+            await asyncio.gather(*list(self.agent.busy), return_exceptions=True)
+        self.run_(go())
+        self.assertEqual(self.said()[1:], [trial_turn.BUSY, trial_turn.BUSY])
+
+
+class NotStarted(TrialBase):
+    def test_use_a_model_for_the_trial_before_starting_it_says_start_first(self):
+        self.join_welcome()
+        self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, "use glm-5.3 for the trial"))))
+        self.assertEqual(said_to(self, "!dm")[-1], pm_trial.NOT_ENROLLED)
+        self.assertEqual(self.trial_client.room_create.await_count, 0)   # it didn't enrol them instead
+
+
+class DeployRule(unittest.TestCase):
+    def test_every_trial_setting_has_its_own_deploy_rule(self):
+        import importlib.util
+        from pathlib import Path
+        spec = importlib.util.spec_from_file_location("envfile", Path(__file__).resolve().parent.parent / "deploy" / "envfile.py")
+        envfile = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(envfile)
+        for name in ("TRIAL_PAUSE_S", "TRIAL_VISITOR_TOKENS", "TRIAL_REMOTE_TOKENS", "TRIAL_QUEUE_WAIT_S"):
+            self.assertIn(name, envfile.RULES)
+        self.assertEqual(len(envfile.validate({**{k: "x.org" for k in ("ROOMS_DOMAIN", "MATRIX_DOMAIN", "SERVER_NAME", "ADMIN_DOMAIN")},
+                                                "POSTGRES_PASSWORD": "ab" * 32, "PM_UID": "1001", "TRIAL_PAUSE_S": "soon"})), 1)
 
 
 if __name__ == "__main__":
