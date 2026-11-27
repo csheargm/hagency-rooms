@@ -100,13 +100,14 @@ def repo_named(text: str) -> str | None:
     return repo.removesuffix(".git") or None
 
 
-QUESTION_RE = re.compile(r"\?\s*$|^\W*(@?pm\b[\s:,]*)?(what|how|why|when|which|who|does|do|did|is|are|was|can|"
-                         r"could|would|will|should|shall|may|might)\b", re.I)
+QUESTION_RE = re.compile(r"\?\s*$|^\W*(@?pm\b[\s:,]*)?((so|ok|okay|hey|hi|and|but|well|um+|uh+|hm+|oh|then|also)\b[\s,.!-]*)*"
+                         r"(what|how|why|when|where|which|who|whose|does|did|is|isn'?t|are|was|were|can|could|would|"
+                         r"will|should|shall|may|might|do (you|we|i|they|people|agents)|any idea)\b", re.I)
 
 
 def is_question(text: str) -> bool:
-    """Asked, not told ("what does autonomous mode do?", "can you go all the way"): never changes the mode
-    by itself (GPT review); @pm says what the mode does and asks a 👍."""
+    """Asked, not told ("what does autonomous mode do?", "so what does it do", "can you go all the way"): never
+    changes the mode by itself, and never an approval (GPT review); @pm says what the mode does and asks a 👍."""
     return QUESTION_RE.search(text.strip()) is not None
 
 
@@ -133,8 +134,8 @@ _APPROVE_MAX_WORDS = 15
 def is_approval(text: str) -> bool:
     """A yes said in a sentence. Only for messages addressed to @pm (or replies to its question)."""
     t = text.lower().replace("’", "'")
-    if "?" in t:
-        return False              # a question is never a yes
+    if "?" in t or is_question(t):
+        return False              # a question is never a yes ("is it good", "does that work")
     words = _APPROVE_TOKEN.findall(t)
     leftover = _APPROVE_TOKEN.sub("", t)
     if not words or len(words) > _APPROVE_MAX_WORDS or re.search(r"[^\s.,!:;()\-–—️@]", leftover):

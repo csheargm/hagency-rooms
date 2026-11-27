@@ -33,16 +33,40 @@ class QuestionsNeverSwitch(RoomBase, unittest.TestCase):
         self.assertIn(pm_chat.LEVEL_WORDS["autonomous"], self.said[-1])
         self.assertIn(pm_chat.ONLY_MODERATORS, self.said[-1])
 
-    def test_a_plain_command_still_switches_at_once(self):
-        """As on origin/master: an explicit phrase from the owner or a maintainer needs no extra 👍."""
-        self.tell(ANNA, "@pm take it all the way")
+    def test_autonomous_from_words_always_asks_even_a_plain_command(self):
+        """GPT re-check: "So what does autonomous mode do" (no "?") switched at once; autonomous from text
+        never relies on question detection: always one 👍 first."""
+        for words in ("@pm So what does autonomous mode do", "@pm take it all the way"):
+            self.lp.pending.clear()
+            self.tell(ANNA, words)
+            self.assertEqual((self.levels, self.lp.pending["!r"]["kind"]), ([], "mode"), words)
+        self.react(ANNA)
         self.assertEqual(self.levels, ["autonomous"])
 
     def test_questions_are_told_from_commands(self):
-        for text in ("what does assist do", "Is autonomous safe?", "how do we go all the way"):
+        for text in ("what does assist do", "Is autonomous safe?", "how do we go all the way",
+                     "So what does autonomous mode do", "ok so does it work", "hey, can you finish it", "well um is it ok"):
             self.assertTrue(intents.is_question(text), text)
-        for text in ("take it all the way", "let us approve each change", "go all in!"):
+        for text in ("take it all the way", "let us approve each change", "go all in!", "do it", "so let's build it"):
             self.assertFalse(intents.is_question(text), text)
+
+
+class QuestionsNeverApprove(RoomBase, unittest.TestCase):
+    def test_a_question_never_confirms_a_waiting_mode_change(self):
+        """GPT re-check: "@pm is it good" from the person asked passed is_approval and switched the room."""
+        self.lp.pending["!r"] = {"kind": "mode", "level": "autonomous", "event_id": "$q", "by": ANNA,
+                                 "until": time.time() + 300}
+        for words in ("@pm is it good", "@pm does that look ok", "@pm so is it fine"):
+            self.tell(ANNA, words)
+        self.assertEqual(self.levels, [])
+        self.tell(ANNA, "@pm ok go ahead")            # a plain affirmation still confirms
+        self.assertEqual(self.levels, ["autonomous"])
+
+    def test_only_plain_affirmations_are_approvals(self):
+        for text in ("is it good", "does it work", "ok so is it good", "can we go", "are we good", "would that be ok"):
+            self.assertFalse(intents.is_approval(text), text)
+        for text in ("ok go ahead", "sounds good, let's build it", "yes please", "lgtm", "that is fine"):
+            self.assertTrue(intents.is_approval(text), text)
 
 
 class UnnamedQuestionsNeedMore(RoomBase, unittest.TestCase):

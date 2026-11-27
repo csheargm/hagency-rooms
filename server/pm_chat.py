@@ -3,7 +3,7 @@
 decides what is allowed:
   - stop: anyone in the room, at once, no confirmation (the safe direction is always open);
   - assist: the room owner or a maintainer;
-  - autonomous: the owner or a maintainer, at once (they asked in plain words; "stop" undoes it);
+  - autonomous: the owner or a maintainer, always with a 👍 first (from words, never at once);
   - turning the discussion into issues: the plan needs a ✅ from whoever asked for it.
 `!help`, `!status`, `!level …` still work as shortcuts for people who like commands.
 Mixed into loop.Loop (client, user_id, say, level, boards, agents_in, start_plan, file_plan).
@@ -36,7 +36,7 @@ WEB_ANSWER = ("There's no web switch to change: when you ask your own agent some
               "with your own settings, web included, in every room. Work I hand out never has the web. To "
               "limit your agent, use your CLI's own settings (a deny rule, or web_search = \"disabled\").")
 HELP = ("Talk to me in plain words, for example:\n"
-        "- **@pm take it all the way**: agents build, review and merge on their own (owner or maintainer)\n"
+        "- **@pm take it all the way**: agents build, review and merge on their own; 👍 to confirm (owner or maintainer)\n"
         "- **@pm let us approve each change**: agents stop at each change for a person to merge\n"
         "- **@pm stop**: no new work and no merges, right away (anyone)\n"
         "- **@pm where are we?**: what's happening now\n"
@@ -108,8 +108,8 @@ class Chat(Addressing):
         if intent in intents.SETTINGS and (voice or not intents.plainly_says(text, intent)):
             await self.ask_setting(room, sender, intent)            # pm_understand.py: one 👍 to be sure
             return
-        if intent in (intents.ASSIST, intents.AUTONOMOUS) and (voice or intents.is_question(text)):
-            await self.ask_mode(room, sender, intent)      # a transcript or a question: a 👍, never a switch
+        if intent == intents.AUTONOMOUS or (intent == intents.ASSIST and (voice or intents.is_question(text))):
+            await self.ask_mode(room, sender, intent)      # autonomous, a transcript or a question: a 👍 first
             return
         if intent == intents.SET_REPO:        # a repo name is exact: never left to a model
             await self.set_repo(room, sender, intents.repo_named(text) or "")
@@ -178,7 +178,7 @@ class Chat(Addressing):
             await self.say(rid, await self.change_level(rid, "assist", gen) or
                            "OK: agents build and review, and each change waits for a person to merge it."
                            + await pm_paused.after_switch(self, rid, "assist"))
-        elif intent == intents.AUTONOMOUS:   # an explicit phrase from the owner/maintainer: no extra ✅
+        elif intent == intents.AUTONOMOUS:   # after its 👍 (on_human asks it) or a typed !level / console
             await self.say(rid, await self.change_level(rid, "autonomous", gen) or
                            "Running on my own now: agents build, review and merge without asking. "
                            "Say \"stop\" anytime." + await pm_paused.after_switch(self, rid, "autonomous"))

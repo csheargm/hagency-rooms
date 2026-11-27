@@ -16,7 +16,7 @@ from pathlib import Path
 from common import github
 from common.setup_accounts import SERVER_NAME, load_env, login
 from tests.test_e2e import api, check, send, test_room
-from tests.test_loop_e2e import make_fake_github, wait_for
+from tests.test_loop_e2e import confirm_latest, make_fake_github, wait_for
 from tests import ROOT
 
 PM = f"@pm:{SERVER_NAME}"
@@ -55,8 +55,9 @@ def main():
 
         ts = int(time.time() * 1000)
         send(anna, room_id, "@pm take it all the way to the end", PM)
-        pm_says(anna, room_id, "Running on my own now", ts)
-        check("the owner's plain request switches to autonomous at once", level(anna, room_id) == "autonomous")
+        confirm_latest(anna, room_id, "switch to **autonomous**", ts)     # autonomous from words: a 👍 first
+        pm_says(anna, room_id, "merge on their own", ts)
+        check("the owner's request switches to autonomous after one 👍", level(anna, room_id) == "autonomous")
 
         ts = int(time.time() * 1000)
         send(betty, room_id, "@pm kill all the AI", PM)

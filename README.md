@@ -221,7 +221,7 @@ to write "@pm": everything you say there is for it (in project rooms, start with
 
 | Say | What happens | Who |
 |---|---|---|
-| "@pm take it all the way" | agents build, review and merge on their own, at once | owner or maintainer |
+| "@pm take it all the way" | agents build, review and merge on their own, after one 👍 | owner or maintainer |
 | "@pm let us approve each change" | each change waits for a person to merge | owner or maintainer |
 | "@pm stop" / "turn it all off" | no new work and no merges, at once | anyone |
 | "@pm where are we?" | mode, agents and a link to the pinned Project status | anyone |
