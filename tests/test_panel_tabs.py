@@ -40,14 +40,35 @@ def node(src: str) -> str:
 @unittest.skipIf(NODE is None, "node not installed")
 class Tabs(unittest.TestCase):
     def test_which_tabs_a_view_has(self):
-        out = node(TABS_JS + "\nprocess.stdout.write(JSON.stringify([tabsOf(null), tabsOf({personal: true}),"
-                             " tabsOf({cards: null}), tabsOf({cards: {items: []}})]));")
-        self.assertEqual(json.loads(out), [[], ["agents"], ["room", "agents"], ["room", "agents", "cards"]])
+        out = node(TABS_JS + "\nconst before = tabsOf({cards: {items: []}}); globalThis.showCards = () => {};"
+                             "process.stdout.write(JSON.stringify([tabsOf(null), tabsOf({personal: true}),"
+                             " tabsOf({cards: null}), tabsOf({cards: {items: []}}), before]));")
+        self.assertEqual(json.loads(out), [[], ["agents"], ["room", "agents"], ["room", "agents", "cards"],
+                                           ["room", "agents"]])          # GPT review: no Cards script, no blank tab
 
     def test_a_remembered_tab_that_isnt_there_falls_back_to_the_first(self):
         out = node(TABS_JS + "\nprocess.stdout.write([pickTab(['room', 'agents'], 'cards'), pickTab(['room', 'agents'],"
                              " 'agents'), pickTab([], 'room')].join('|'));")
         self.assertEqual(out, "room|agents|")
+
+    def test_a_newcomer_without_an_agent_starts_on_my_agents(self):
+        """GPT review: "Get my agent" was behind a tab nobody had opened yet; a choice made since still wins."""
+        out = node(TABS_JS + "\nconst s = {first_pick: true}, tabs = ['room', 'agents'];"
+                             "process.stdout.write([pickTab(tabs, '', s), pickTab(tabs, 'room', s), pickTab(tabs, '', {})].join('|'));")
+        self.assertEqual(out, "agents|room|room")
+
+    def test_a_chosen_tab_comes_back_when_its_tab_does(self):
+        """GPT review: Cards gone for one view (Room shown) must not replace the choice of Cards."""
+        fake_dom = ("const panes = ['room', 'agents', 'cards'].map(t => ({dataset: {tab: t}, hidden: false, setAttribute() {},"
+                    " removeAttribute() {}})); globalThis.localStorage = {getItem: () => null, setItem() {}};"
+                    "globalThis.showCards = () => {};"
+                    "globalThis.document = {body: {classList: {toggle() {}}}, getElementById: () => ({}),"
+                    " querySelectorAll: q => q === '[data-tab]' ? panes : []};")
+        out = node(fake_dom + TABS_JS + "\nconst open = () => panes.find(p => !p.hidden).dataset.tab, seen = [];"
+                   "tabsFor({cards: {}}); selectTab('cards'); seen.push(open());"
+                   "tabsFor({cards: null}); seen.push(open()); tabsFor({cards: {}}); seen.push(open());"
+                   "process.stdout.write(seen.join('|'));")
+        self.assertEqual(out, "cards|room|cards")
 
     def test_blocked_storage_never_breaks_the_tabs(self):
         out = node("globalThis.localStorage = {getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }};"
@@ -115,6 +136,8 @@ const sel = () => [...document.querySelectorAll("[role=tab]")].filter(b => b.get
 async function flow() {
   const out = {first: sel(), tabs: [...document.querySelectorAll("[role=tab]")].map(b => b.textContent)};
   out.roomFirst = [shown("controls"), shown("agents"), shown("cards")];
+  const pane = document.getElementById("pane-room");
+  out.roles = [pane.getAttribute("role"), pane.getAttribute("aria-labelledby"), !!document.getElementById("tab-room")];
   document.querySelector("[data-tab-btn=agents]").click(); await wait(50);
   out.agentsTab = [shown("controls"), shown("agents"), shown("cards"), localStorage.getItem("hagency-panel-tab")];
   out.closed = [shown("adet-cx-claude"), shown("adet-cx-codex"), shown("addform"), shown("rename-cx-claude"), shown("rename-cx-codex")];
@@ -172,6 +195,7 @@ class TabsInABrowser(unittest.TestCase):
             self.assertEqual(out["tabs"], ["Room", "My agents", "Cards"])
             self.assertEqual(out["first"], ["Room"])
             self.assertEqual(out["roomFirst"], [True, False, False])
+            self.assertEqual(out["roles"], ["tabpanel", "tab-room", True])        # labelled by a tab that exists
             self.assertEqual(out["agentsTab"], [False, True, False, "agents"])     # remembered
             self.assertEqual(out["closed"], [False] * 5)          # its fields too (a <li> once escaped it)
             self.assertEqual(out["one"], [True, False, True, False])

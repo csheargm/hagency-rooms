@@ -4,7 +4,7 @@
 // route it) the panel stays one page, as before. Keyboard: the WAI-ARIA tabs pattern (arrows, Home, End).
 const PANEL_TABS = [{id: "room", label: "Room"}, {id: "agents", label: "My agents"}, {id: "cards", label: "Cards"}];
 const TAB_KEY = "hagency-panel-tab";
-let tabNow = "", tabsShown = [];
+let tabChosen = "", tabsShown = [];      // tabChosen: clicked here, or remembered; kept while its tab is away (GPT review)
 function savedTab() {
   try { return localStorage.getItem(TAB_KEY) || ""; } catch (e) { return ""; }   // storage blocked: the first tab
 }
@@ -12,13 +12,16 @@ function saveTab(id) {
   try { localStorage.setItem(TAB_KEY, id); } catch (e) { /* storage blocked: remembered for this page only */ }
 }
 // Which tabs a view has: My Hagency (personal) and a room without cards have fewer; null (signed out): none.
+// Cards only with its script (GPT review: a blank tab otherwise).
 function tabsOf(s) {
   if (!s) return [];
   if (s.personal) return ["agents"];
-  return PANEL_TABS.map(t => t.id).filter(id => id !== "cards" || !!s.cards);
+  return PANEL_TABS.map(t => t.id).filter(id => id !== "cards" || (!!s.cards && typeof showCards === "function"));
 }
-function pickTab(shown, wanted) {
-  return shown.includes(wanted) ? wanted : shown[0] || "";
+// No choice yet: a newcomer with no agent starts on My agents, where "Get my agent" is (GPT review).
+function pickTab(shown, wanted, s) {
+  if (shown.includes(wanted)) return wanted;
+  return !wanted && s && s.first_pick && shown.includes("agents") ? "agents" : shown[0] || "";
 }
 // panel.html's show() calls this on every view; it draws the tab bar only when the tabs change.
 function tabsFor(s) {
@@ -32,18 +35,25 @@ function tabsFor(s) {
       data-tab-btn="${t.id}" aria-controls="pane-${t.id}">${t.label}</button>`).join("");
   }
   bar.hidden = shown.length < 2;              // one tab only (My Hagency): no bar
-  selectTab(pickTab(shown, tabNow || savedTab()), false);
+  showTab(pickTab(shown, tabChosen || savedTab(), s));
 }
-function selectTab(id, remember) {
-  tabNow = id;
-  for (const pane of document.querySelectorAll("[data-tab]"))   // signed out: every section, as before tabs
+function selectTab(id) {                     // a person's choice: remembered
+  tabChosen = id;
+  saveTab(id);
+  showTab(id);
+}
+function showTab(id) {
+  const tabbed = tabsShown.length > 1;       // panes are tab panels only under a tab bar (GPT review)
+  for (const pane of document.querySelectorAll("[data-tab]")) {   // signed out: every section, as before tabs
     pane.hidden = tabsShown.length > 0 && pane.dataset.tab !== id;
+    for (const [k, v] of [["role", "tabpanel"], ["aria-labelledby", "tab-" + pane.dataset.tab], ["tabindex", "0"]])
+      tabbed ? pane.setAttribute(k, v) : pane.removeAttribute(k);
+  }
   for (const b of document.querySelectorAll("[data-tab-btn]")) {
     const on = b.dataset.tabBtn === id;
     b.setAttribute("aria-selected", String(on));
     b.tabIndex = on ? 0 : -1;
   }
-  if (remember) saveTab(id);
 }
 const TAB_KEYS = {ArrowRight: 1, ArrowLeft: -1, Home: "first", End: "last"};
 function tabKey(e) {
@@ -52,13 +62,13 @@ function tabKey(e) {
   e.preventDefault();
   const all = Array.from(document.querySelectorAll("[data-tab-btn]")), i = all.indexOf(b);
   const next = step === "first" ? all[0] : step === "last" ? all[all.length - 1] : all[(i + step + all.length) % all.length];
-  selectTab(next.dataset.tabBtn, true);
+  selectTab(next.dataset.tabBtn);
   next.focus();
 }
 if (typeof document !== "undefined" && document.addEventListener) {
   document.addEventListener("click", e => {
     const b = e.target.closest && e.target.closest("[data-tab-btn]");
-    if (b) selectTab(b.dataset.tabBtn, true);
+    if (b) selectTab(b.dataset.tabBtn);
   });
   document.addEventListener("keydown", tabKey);
 }
