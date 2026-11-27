@@ -94,8 +94,8 @@ def traffic() -> tuple[int | None, str | None]:
         return month_tx(json.loads(out.stdout), iface, datetime.date.today()), None
     except SystemExit as e:                   # month_tx: an interface vnstat doesn't watch; said in the alert
         return None, str(e).removeprefix("✗ ")
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, subprocess.TimeoutExpired) as e:   # no vnstat,
-        return None, f"can't read this month's traffic ({type(e).__name__}: {str(e)[:200]})"   # bad JSON: in the alert
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, subprocess.TimeoutExpired) as e:
+        return None, f"can't read this month's traffic ({type(e).__name__}: {str(e)[:200]})"   # no vnstat, bad JSON: said
 
 
 def measure() -> tuple[float, int | None, str | None]:

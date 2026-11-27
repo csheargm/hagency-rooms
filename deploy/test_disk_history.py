@@ -208,7 +208,8 @@ class GuardWithoutVnstat(unittest.TestCase):
     def test_valid_json_of_the_wrong_shape_still_records_the_disk(self):
         """GPT review: "interfaces": null or a month without "tx" raised before the disk was recorded."""
         month = {"date": {"year": datetime.date.today().year, "month": datetime.date.today().month}}
-        for payload in ({"interfaces": None}, {"interfaces": [{"name": "ens3", "traffic": {"month": [month]}}]}):
+        for payload in ({"interfaces": None}, {"interfaces": [{"name": "ens3", "traffic": {"month": [month]}}]},
+                        {"interfaces": [{"name": "ens3", "traffic": {"month": [{**month, "tx": float("inf")}]}}]}):
             vnstat = mock.Mock(returncode=0, stdout=json.dumps(payload))
             with self.subTest(payload=payload), \
                     mock.patch.object(guard.subprocess, "run", side_effect=[vnstat, mock.Mock(returncode=0)]) as run, \
