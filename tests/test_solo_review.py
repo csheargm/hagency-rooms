@@ -58,7 +58,7 @@ class Base(unittest.TestCase):
                               ("server.ownership.own_agent_id", {CX: CXA, BETTY: BA}.get),
                               ("common.room_state.is_moderator", mock.AsyncMock(side_effect=lambda c, r, u: u == CX)),
                               ("common.room_state.owners", mock.AsyncMock(return_value=[CX])),
-                              ("server.pm_solo.cannot", lambda owner, agent: None)):
+                              ("server.pm_solo_rules.cannot", lambda owner, agent: None)):
             patcher = mock.patch(target, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -75,6 +75,18 @@ class Base(unittest.TestCase):
                               "task_ids": ["B"], "title": "t"}
         self.run_(self.lp.on_result(self.room, CXA, {"kind": "build", "issue": 7, "pr": 9, "task_id": "B"}))
         return self.lp.state[KEY]
+
+    def job(self) -> dict:
+        """The latest ruleset ask, with its task id."""
+        task_id, job = list(self.lp.solo_jobs().items())[-1]
+        return {**job, "task_id": task_id}
+
+    def answer(self, job, **result):
+        self.run_(self.lp.on_result(self.room, job["agent"], {"kind": solo_review.TASK_KIND, "task_id": job["task_id"],
+                                                              **result}))
+
+    def recorded(self):
+        return solo_review.state_in(list(self.lp.client.events.values()), PM)
 
     def enable(self, who=CX):
         self.run_(self.lp.act(self.room, who, intents.classify("@pm allow solo review")))
@@ -161,7 +173,7 @@ class Room(Base):
 
     def test_switching_off_takes_out_only_the_bypass_hagency_added(self):
         self.enable()
-        job = self.lp.solo_jobs()["!r"]
+        job = self.job()
         self.run_(self.lp.on_result(self.room, job["agent"], {"kind": solo_review.TASK_KIND, "on": True, "changed": [42],
                                                               "already": [], "task_id": job["task_id"]}))
         self.assertEqual(solo_review.state_in(list(self.lp.client.events.values()), PM)["bypass_added"], [42])
@@ -172,7 +184,7 @@ class Room(Base):
 
     def test_an_existing_bypass_counts_as_done_and_is_never_taken_out(self):
         self.enable()
-        job = self.lp.solo_jobs()["!r"]
+        job = self.job()
         self.run_(self.lp.on_result(self.room, job["agent"], {"kind": solo_review.TASK_KIND, "on": True, "changed": [],
                                                               "already": [42], "task_id": job["task_id"]}))
         self.assertIn("already lets repo admins", self.said[-1][0])
@@ -181,7 +193,7 @@ class Room(Base):
 
     def test_a_failed_ruleset_update_is_said_with_what_to_change(self):
         self.enable()
-        job = self.lp.solo_jobs()["!r"]
+        job = self.job()
         self.run_(self.lp.on_result(self.room, job["agent"], {"kind": solo_review.TASK_KIND, "error": "HTTP 403",
                                                               "task_id": job["task_id"]}))
         self.assertIn("couldn't update GitHub's review rule", self.said[-1][0])
@@ -190,11 +202,51 @@ class Room(Base):
 
     def test_a_result_from_anyone_but_the_asked_agent_is_ignored(self):
         self.enable()
-        job = self.lp.solo_jobs()["!r"]
+        job = self.job()
         before = len(self.said)
         self.run_(self.lp.on_result(self.room, CXC if job["agent"] != CXC else CXA,
                                     {"kind": solo_review.TASK_KIND, "changed": [1], "task_id": job["task_id"]}))
         self.assertEqual(len(self.said), before)
+
+    def test_switched_off_while_the_bypass_was_added_it_is_taken_out_and_never_turns_solo_back_on(self):
+        """GPT review: a late "added" answer wrote on=True back from a stale read, and left the bypass in place."""
+        self.enable()
+        job = self.job()
+        self.run_(self.lp.act(self.room, BETTY, intents.SOLO_OFF))   # nothing recorded yet: no removal asked
+        self.answer(job, on=True, changed=[42], already=[])
+        self.assertEqual((self.recorded()["on"], self.recorded()["bypass_added"]), (False, [42]))
+        removal = self.tasks(solo_review.TASK_KIND)[-1]
+        self.assertEqual((removal["on"], removal["rulesets"]), (False, [42]))
+        self.answer(self.job(), on=False, changed=[42], already=[])
+        self.assertEqual(self.recorded()["bypass_added"], [])
+
+    def test_switched_on_again_while_it_was_taken_out_it_is_put_back(self):
+        self.enable()
+        self.answer(self.job(), on=True, changed=[42], already=[])
+        self.run_(self.lp.act(self.room, CX, intents.SOLO_OFF))
+        removal = self.job()
+        self.run_(self.lp.solo_from_panel(self.room, CX, "on"))
+        asks = len(self.tasks(solo_review.TASK_KIND))
+        self.answer(removal, on=False, changed=[42], already=[])
+        self.assertEqual(len(self.tasks(solo_review.TASK_KIND)), asks + 1)
+        self.assertTrue(self.tasks(solo_review.TASK_KIND)[-1]["on"])
+
+    def test_a_partial_failure_still_records_what_was_changed(self):
+        self.enable()
+        self.answer(self.job(), on=True, changed=[42], already=[], error="HTTP 403 on 43")
+        self.assertEqual(self.recorded()["bypass_added"], [42])
+        self.assertIn("couldn't update", self.said[-1][0])
+
+    def test_retry_when_the_step_cant_be_announced_stays_paused(self):
+        item = self.built()
+        self.enable()
+
+        async def broken(*a, **k):
+            raise RuntimeError("Matrix refused")
+        self.lp.say = broken
+        with self.assertRaises(RuntimeError):
+            self.run_(self.lp.retry(self.room, CX, 7))
+        self.assertEqual((item["stage"], item["no_checker"]), ("stopped", True))
 
     def test_from_the_panel_on_needs_a_moderator_off_does_not(self):
         self.assertIn("only the room owner", self.run_(self.lp.solo_from_panel(self.room, BETTY, "on")))
@@ -258,6 +310,8 @@ class Words(unittest.TestCase):
                      "no solo review", "stop solo review"):
             self.assertEqual(intents.classify(text), intents.SOLO_OFF, text)
         self.assertEqual(intents.classify("stop everything and turn off solo review"), intents.OFF)   # stop wins
+        self.assertEqual(intents.classify("stop everything, solo review off"), intents.OFF)          # GPT review
+        self.assertNotEqual(intents.classify("turn off solo reviewer"), intents.SOLO_OFF)
         self.assertEqual(intents.classify("@pm stop"), intents.OFF)
         self.assertEqual(intents.classify("turn it off"), intents.OFF)
 

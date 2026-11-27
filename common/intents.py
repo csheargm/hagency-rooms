@@ -15,7 +15,7 @@ RETRY = "retry"
 START = "start"        # "what should we do first?": the next steps, for this room
 SOLO_ON, SOLO_OFF = "solo_on", "solo_off"   # solo review (ADR 0023): a person's own agents check each other
 SOLO = (SOLO_ON, SOLO_OFF)
-_SOLO = r"solo[ -]?review(ing)?"
+_SOLO = r"solo[ -]?review(ing)?\b"
 # "this room works on owner/name", "set the repo to owner/name", "use https://github.com/owner/name":
 # the repo is the command's own argument (never any other owner/name-looking text in the message).
 SET_REPO_RE = re.compile(
@@ -27,8 +27,9 @@ NEGATED = re.compile(r"\b(don'?t|do not|never|not|no longer|stop using)\b", re.I
 _RULES = [   # checked in order; the first match wins, so the safest meanings come first
     # Solo review off is the safe direction, so before "stop" ("turn off solo review" isn't a halt); a stop said
     # in the same message still wins (classify).
-    (SOLO_OFF, rf"\b(turn|switch) (\w+ )?off {_SOLO}|\b{_SOLO}\b.{{0,20}}\boff\b|\b(stop|disable|disallow|end|no more|"
-               rf"no longer allow|don'?t allow|do not allow|never allow)\b.{{0,20}}\b{_SOLO}\b|\bno {_SOLO}\b"),
+    # The verb right before the words only (GPT review: "stop everything, solo review off" must stay a stop).
+    (SOLO_OFF, rf"\b(turn|switch) off (the )?{_SOLO}|\b{_SOLO} (is |to |now )?off\b|\b(stop|disable|disallow|end|no more|"
+               rf"no longer allow|don'?t allow|do not allow|never allow) (the |using |any )?{_SOLO}|\bno {_SOLO}"),
     # The follow-me settings mention "my agent" explicitly, so they can go before "stop" without
     # ever swallowing a real stop ("stop bringing my agent" is a setting, not a halt).
     # The old per-room web switch (ADR 0006 retired it), only ever answered. Either way round, and

@@ -9,23 +9,22 @@ Switching it off is open to anyone, at once, like "stop".
 GitHub never lets an account approve its own PR, and in the live test every agent used the owner's one account.
 So a solo checker posts its verdict as a comment (adapters/agents/tasks.submit_review), and where the repo's
 ruleset requires an approval the merge goes past it as the repo's admin (solo_github.admin_merge). Switching on
-asks the room owner's agent to let repo admins past that rule (solo_github.ruleset); what Hagency added is
-recorded and taken out again when it is switched off. Mixed into loop.Loop (client, say, dispatch, stop, ...).
+asks the room owner's agent to let repo admins past that rule (pm_solo_rules.py). Mixed into loop.Loop (client,
+say, dispatch, stop, pick_reviewer, lock, ...).
 """
 import asyncio
-import time
-import uuid
 
 from nio import MatrixRoom
 
 from common import github, intents, room_state, solo_review
 from common.redact import room_safe
 from server import ownership, routing
-from server.pm_cards import cannot, local
+from server.pm_cards import local
 from server.pm_chat import ONLY_MODERATORS
 from server.pm_implicit import TO_CONFIRM
 from server.pm_paused import num
 from server.pm_settings import NEED_POWER
+from server.pm_solo_rules import SoloRules
 
 SOLO_TASK = solo_review.TASK_KIND
 QUESTION = ("Turn on **solo review**? When no other person's agent is here, another of the builder's owner's own "
@@ -38,17 +37,11 @@ HINT = ("**Testing alone?** Say **@pm allow solo review** (or switch on Solo rev
         "other agent check it, then **@pm retry #{n}**.")
 NO_OTHER = ("Solo review is on, but none of the builder's owner's other agents is here (an agent never checks its own "
             "work). Bring a second agent of yours into the room, then say **@pm retry #{n}**.")
-NO_OWNER_AGENT = "No agent of the room owner's is here to update GitHub's review rule on {repo}. "
 SOLO_READY = ("PR #{pr} ready — a person merges. GitHub's review rule can't count a review by your own agent, so as "
               "the repo's admin use **Merge without waiting for requirements** on GitHub.")
-WAIT_S = 600          # a ruleset task with no answer by then is forgotten (the panel's toggle may ask again)
 
 
-class Solo:
-    def solo_jobs(self) -> dict:
-        """room → the ruleset task in flight {task_id, agent, on, at}."""
-        return self.__dict__.setdefault("_solo_jobs", {})
-
+class Solo(SoloRules):
     async def solo_on(self, room_id: str) -> bool:
         return await solo_review.enabled(self.client, room_id)
 
@@ -77,12 +70,14 @@ class Solo:
             return "only the room owner or a maintainer can turn solo review on"
         return await self.solo_confirmed(room, user) or "ok"
 
-    async def write_solo(self, rid: str, on: bool, added: list[int] | None = None) -> tuple[str | None, dict]:
-        """(an error line or None, the state before). added: replaces the recorded rulesets (None keeps them)."""
+    async def write_solo(self, rid: str, on: bool | None, change=None) -> tuple[str | None, dict]:
+        """Read and write the switch under one lock: (an error line or None, the state before). on None keeps it;
+        change: recorded rulesets → new ones (GPT review: never written back from a stale read)."""
         async with self.__dict__.setdefault("_solo_lock", asyncio.Lock()):
             before = await solo_review.read(self.client, rid)
+            added = set(before["bypass_added"])
             resp = await self.client.room_put_state(rid, solo_review.SOLO_EVENT, solo_review.content(
-                on, before["bypass_added"] if added is None else added))
+                before["on"] if on is None else on, sorted(change(added) if change else added)))
         if hasattr(resp, "event_id"):
             return None, before
         if getattr(resp, "status_code", "") == "M_FORBIDDEN":
@@ -115,58 +110,6 @@ class Solo:
         waiting = sorted(num(k) for k, v in self.state.items()
                          if v.get("room") == rid and v["stage"] == "stopped" and v.get("no_checker"))
         return "".join(f" #{n} is waiting for a check: say \"@pm retry #{n}\"." for n in waiting)
-
-    async def ruleset_agent(self, room: MatrixRoom, sender: str) -> str | None:
-        """The room owner's agent that can run the ruleset task (the asker's first, when they are an owner)."""
-        owners = await room_state.owners(self.client, room)
-        here = self.agents_in(room)
-        for owner in sorted(owners, key=lambda o: o != sender):
-            mine = [a for a in here if ownership.owner_id(a) == owner]
-            main = ownership.own_agent_id(owner)
-            for agent in sorted(mine, key=lambda a: a != main):
-                if cannot(owner, agent) is None and self.agent_online(local(agent)) is not False:
-                    return agent
-        return None
-
-    async def ask_ruleset(self, room: MatrixRoom, sender: str, on: bool, ids: list[int]) -> None:
-        """Ask the room owner's agent (GitHub's repo admin) to let admins merge past the review rule, or to take
-        the entries Hagency added out again. Never silent: what can't be done is said, with what to change."""
-        rid = room.room_id
-        repo = self.room_repos.get(rid) or await room_state.repo_of(self.client, rid)
-        if not repo:
-            return                            # nothing on GitHub yet; the merge says what to change if needed
-        agent = await self.ruleset_agent(room, sender)
-        if agent is None:
-            await self.say(rid, NO_OWNER_AGENT.format(repo=repo) + (solo_review.BYPASS_STEPS.format(repo=repo) if on else
-                           "If you don't want it anymore, take **Repository admin** out of the rule's Bypass list on GitHub."))
-            return
-        task_id = uuid.uuid4().hex
-        self.solo_jobs()[rid] = {"task_id": task_id, "agent": agent, "on": on, "at": time.time()}
-        what = "let repo admins merge past" if on else "take the admin bypass Hagency added out of"
-        await self.say(rid, f"{agent}: {what} GitHub's review rule on {repo}", agent,
-                       {"kind": solo_review.TASK_KIND, "task_id": task_id, "repo": repo, "on": on, "rulesets": ids})
-
-    async def on_solo_result(self, room: MatrixRoom, sender: str, result: dict) -> None:
-        """The owner's agent's answer to ask_ruleset: recorded (what Hagency added) and said plainly."""
-        rid = room.room_id
-        job = self.solo_jobs().get(rid)
-        if not job or job["task_id"] != result.get("task_id") or job["agent"] != sender or time.time() - job["at"] > WAIT_S:
-            return
-        self.solo_jobs().pop(rid, None)
-        repo = self.room_repos.get(rid) or await room_state.repo_of(self.client, rid) or "the repo"
-        if result.get("error"):
-            fix = solo_review.BYPASS_STEPS.format(repo=repo) if job["on"] else \
-                "Take **Repository admin** out of the rule's Bypass list on GitHub if you don't want it anymore."
-            await self.say(rid, f"⚠️ {local(sender)} couldn't update GitHub's review rule on {repo}: "
-                                f"{room_safe(result['error'])}\n\n{fix}")
-            return
-        changed = {i for i in result.get("changed") or [] if isinstance(i, int)}
-        now = await solo_review.read(self.client, rid)
-        added = set(now["bypass_added"]) | changed if job["on"] else set(now["bypass_added"]) - changed
-        if added != set(now["bypass_added"]) and (err := (await self.write_solo(rid, now["on"], sorted(added)))[0]):
-            await self.say(rid, f"{err} (I couldn't note which review rules Hagency changed on {repo}.)")
-            return
-        await self.say(rid, ruleset_line(repo, job["on"], bool(changed), bool(result.get("already"))))
 
     async def checkers(self, room: MatrixRoom, item: dict) -> tuple[list[str], bool]:
         """(who may check this item's work, whether that is solo review)."""
@@ -205,16 +148,21 @@ class Solo:
 
     async def check_again(self, room: MatrixRoom, key: str, item: dict) -> None:
         """"@pm retry #N" for an issue paused only for want of a checker: back at that step, its PR kept (a fresh
-        build would race the open PR: pm_paused.requeue)."""
+        build would race the open PR: pm_paused.requeue). If the step can't be handed out, it stays paused (GPT
+        review: never left at "reviewing" with the previous step's task for the watchdog to resend)."""
         async with self.lock:
-            if self.state.get(key) is not item or item["stage"] != "stopped":
-                await self.say(room.room_id, f"#{num(key)} isn't paused anymore (it changed meanwhile).")
+            if self.state.get(key) is not item or item["stage"] != "stopped" or not item.get("no_checker"):
+                await self.say(room.room_id, f"#{num(key)} isn't waiting for a check anymore (it changed meanwhile).")
                 return
             item.pop("no_checker", None)
-            item.pop("why", None)
-            item["stage"] = "reviewing" if item.get("pr") else "verifying"
-            await self.ask_checker(room, item, key)
-            self.save()
+            item.update(stage="reviewing" if item.get("pr") else "verifying", task_ids=[])
+            try:
+                await self.ask_checker(room, item, key)
+            except RuntimeError:              # loop.SendError / GitHub: paused as it was, said by the caller's log
+                item.update(stage="stopped", no_checker=True)
+                raise
+            finally:
+                self.save()
 
     async def past_review_rule(self, room_id: str, key: str, item: dict, info: dict, lvl: str) -> None:
         """Solo review in a repo whose ruleset requires an approval GitHub won't take from the author's own
@@ -232,20 +180,14 @@ class Solo:
             await self.say(room_id, SOLO_READY.format(pr=item["pr"]))
 
     async def checks_green(self, room_id: str, key: str, item: dict) -> bool:
-        """Every check on the PR passed; a failed one pauses the item (an unfinished one: wait for it)."""
-        info = await github.run_json(["pr", "view", str(item["pr"]), "-R", item["repo"], "--json", "statusCheckRollup"])
+        """No check on the PR failed or is still running (a failed one pauses the item). When @pm can't read the
+        checks (the GitHub App's reads don't cover them), the merging agent's own check decides: it waits for
+        unfinished checks and refuses a red one (solo_github.admin_merge)."""
+        try:
+            info = await github.run_json(["pr", "view", str(item["pr"]), "-R", item["repo"], "--json", "statusCheckRollup"])
+        except github.GitHubError:
+            return True                       # fail-safe: the agent re-checks every check itself before --admin
         state = solo_review.checks_state(info.get("statusCheckRollup") if isinstance(info, dict) else None)
         if state == "failed":
             await self.stop(room_id, key, item, f"a check on PR #{item['pr']} didn't pass")
         return state == "passed"
-
-
-def ruleset_line(repo: str, on: bool, changed: bool, already: bool) -> str:
-    if on and changed:
-        return (f"✓ GitHub's review rule on {repo} now lets repo admins merge pull requests past it. I'll take that "
-                "out again when solo review is switched off.")
-    if on:
-        return (f"✓ GitHub's review rule on {repo} already lets repo admins merge pull requests past it." if already
-                else f"✓ {repo} has no GitHub review rule to change.")
-    return (f"✓ I took the admin bypass Hagency added out of GitHub's review rule on {repo}." if changed
-            else f"Nothing to take out of GitHub's review rule on {repo}.")

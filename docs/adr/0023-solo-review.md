@@ -25,16 +25,22 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
   item pauses and says so.
 - **On GitHub**: a solo checker posts its verdict as a COMMENT review, never APPROVE (`tasks.submit_review`).
   Where the repo's rules then report `REVIEW_REQUIRED`, Autonomous asks the builder to merge with
-  `gh pr merge --admin` (`solo_github.admin_merge`): only at the reviewed commit, only when every check passed
-  (an unfinished check waits, a red one pauses), only when GitHub says this account may bypass every review
-  rule there, and only while the agent adapter itself reads the switch as on. Assist tells the person to merge as
-  the repo's admin.
+  `gh pr merge --admin` (`solo_github.admin_merge`). `--admin` goes past the whole ruleset, not only the review
+  (GPT review), so it runs only: at the reviewed commit, into the default branch, with a merge state of BLOCKED or
+  CLEAN (never BEHIND, DIRTY, UNSTABLE); when every reported check passed (unfinished ones are waited for up to
+  10 minutes, a red one pauses) and every check a ruleset requires is there and passed; when every other rule type
+  on the branch is one a squash merge meets anyway (deletion, non-fast-forward, linear history, creation;
+  anything else, e.g. a merge queue, leaves the merge to a person); when GitHub says this account may bypass
+  every review ruleset there; and only while the agent adapter itself reads the switch as on. Assist tells the
+  person to merge as the repo's admin.
 - **The ruleset is changed from Hagency, never by hand**: switching on asks the room owner's agent (it runs
   `gh` as the owner, the repo's admin) to add `{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode":
   "pull_request"}` to each repository ruleset that requires a review on the default branch (GET/PUT
   `repos/{repo}/rulesets/{id}`, sending only `bypass_actors`: existing entries and every rule stay). An equal entry
   already there counts as done and is not recorded. The rulesets Hagency changed are recorded in the room's
-  switch; switching off takes out only those entries. Anything that fails (not admin, an organization ruleset,
+  switch (also after a partial failure, and for an answer that comes late: asks are kept on disk by task id);
+  switching off takes out only those entries, by their ids. If the switch moved while the agent worked, @pm
+  follows it with another ask. Anything that fails (not admin, an organization ruleset,
   no owner agent here) is said plainly in the room, with exactly what to change on GitHub.
 - **Paused items go on**: an item paused for want of a checker is marked `no_checker`; its pause message offers
   solo review (chat and panel), and `@pm retry #N` returns it to the review/verify step with its PR kept, instead
@@ -45,5 +51,8 @@ at this testing stage". GUI first: everything is doable from Hagency Rooms, with
   owner's explicit choice for testing; the default and every other room keep the two-person rule.
 - While the bypass is in a ruleset, any repo admin may merge a pull request without an approval (never push
   directly). `docs/github-ruleset.json` itself keeps no bypass.
+- GitHub's ruleset API has no compare-and-set: the PUT sends the bypass list read a moment before, so a bypass
+  entry someone edits on GitHub in that same moment could be undone. Classic branch protection (not rulesets) is
+  not inspected; its required checks count only through "every reported check passed".
 - Hermes agents (MCP tools) can't run the ruleset task yet; @pm says the agent couldn't, with the manual steps.
 - Supersedes ADR 0016's "always another person's agent" for rooms that switched solo review on.

@@ -133,11 +133,11 @@ def review_prompt(n: int, pr: int, issue: dict, diff: str) -> str:
 
 
 async def review(agent: str, backend: str, base: Path, task: dict) -> dict:
-    n, pr, issue, head, diff = await review_material(agent, task)
+    (n, pr, issue, head, diff), solo = await review_material(agent, task), task.get("solo") is True
     if len(diff) > MAX_DIFF_CHARS:   # never approve what the reviewer couldn't fully see
-        return await submit_review(agent, n, pr, head, "REQUEST_CHANGES", "Diff too large to review in full.", task["repo"])
+        return await submit_review(agent, n, pr, head, "REQUEST_CHANGES", "Diff too large to review in full.", task["repo"], solo)
     text = await agents.run_turn(backend, base / f"review-pr-{pr}", review_prompt(n, pr, issue, diff), fresh=True)
-    return await submit_review(agent, n, pr, head, parse_verdict(text), text, task["repo"], task.get("solo") is True)
+    return await submit_review(agent, n, pr, head, parse_verdict(text), text, task["repo"], solo)
 
 
 async def submit_review(agent: str, n: int, pr: int, head: str, verdict: str, text: str, repo: str, solo: bool = False) -> dict:
