@@ -68,6 +68,14 @@ Welcome room (`project_rooms.is_front_door`): only "@pm" there. A reply to @pm t
 gets the same "didn't catch that" (with why) as a named message, never silence; a reply to the plan
 waiting for ✅ asks "redraft the plan with that?" and a 👍 from that person redrafts it.
 
+A message that comes **right after @pm's own message** (nothing else said in between, within 3
+minutes; a task to an agent or an edit doesn't count as @pm speaking) also goes to the understanding
+step, whatever it looks like: people answer @pm's status messages ("#13 is paused…") without naming it
+(live, 2026-11-27). It is read like any unnamed message (the 6-a-minute cap, no typing shown, `none`
+with an empty reply means silence, no phrase-rule fallback, an exact repo or issue never acted on).
+"Who spoke last" is noted from the sync itself (`Implicit.note_said`, registered before the first
+sync), with no extra network call.
+
 Acted on without being named, @pm only answers low-impact things directly (status, the plan, help,
 about, first steps, the console link). Stop, a mode change, a plan, a repo, a retry are **asked first**
 with the usual 👍 question (pending kind `implicit`), confirmed only by the person asked; the action's
