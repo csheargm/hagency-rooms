@@ -55,6 +55,12 @@ class SoloRules(SoloCode):
         return isinstance(result, dict) and result.get("kind") == solo_review.TASK_KIND and \
             str(result.get("task_id")) in self.solo_jobs()
 
+    async def on_early_solo(self, room: MatrixRoom, event) -> None:
+        """listen_early: an awaited ruleset answer also in the first sync of a start without a hand-off, which
+        on_message (added after it) never sees (GPT review). on_message handles it: sync_point.first_time, once."""
+        if self.awaited_solo(event):
+            await self.on_message(room, event)
+
     def unanswered_add(self, rid: str) -> dict | None:
         """The latest ask to add the bypass in this room whose answer hasn't come yet."""
         asks = [j for j in self.solo_jobs().values() if j.get("room") == rid and j.get("on")]

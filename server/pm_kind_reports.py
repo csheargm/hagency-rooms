@@ -11,7 +11,7 @@ pm_presence.Presence): listen_early registers it before @pm's first sync, so a r
 """
 import logging
 
-from nio import InviteMemberEvent, RoomMessage, UnknownToDeviceEvent
+from nio import InviteMemberEvent, RoomMessage, RoomMessageText, UnknownToDeviceEvent
 
 from common import code_report
 from common import github_login
@@ -91,6 +91,7 @@ class KindReports:
         spoke last in each room (pm_implicit.note_said: @pm's own messages too; no network)."""
         self.client.add_event_callback(self.on_invite, InviteMemberEvent)
         self.client.add_event_callback(self.note_said, RoomMessage)
+        self.client.add_event_callback(self.on_early_solo, RoomMessageText)   # pm_solo_rules: a ruleset answer awaited
         self.client.add_to_device_callback(self.on_kind_report, UnknownToDeviceEvent)
 
     async def on_kind_report(self, event: UnknownToDeviceEvent) -> None:
