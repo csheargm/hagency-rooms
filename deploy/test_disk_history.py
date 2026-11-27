@@ -209,7 +209,8 @@ class GuardWithoutVnstat(unittest.TestCase):
         """GPT review: "interfaces": null or a month without "tx" raised before the disk was recorded."""
         month = {"date": {"year": datetime.date.today().year, "month": datetime.date.today().month}}
         for payload in ({"interfaces": None}, {"interfaces": [{"name": "ens3", "traffic": {"month": [month]}}]},
-                        {"interfaces": [{"name": "ens3", "traffic": {"month": [{**month, "tx": float("inf")}]}}]}):
+                        {"interfaces": [{"name": "ens3", "traffic": {"month": [{**month, "tx": float("inf")}]}}]},
+                        {"interfaces": [{"name": "ens3", "traffic": {"month": [{**month, "tx": 10 ** 400}]}}]}):
             vnstat = mock.Mock(returncode=0, stdout=json.dumps(payload))
             with self.subTest(payload=payload), \
                     mock.patch.object(guard.subprocess, "run", side_effect=[vnstat, mock.Mock(returncode=0)]) as run, \
@@ -217,7 +218,7 @@ class GuardWithoutVnstat(unittest.TestCase):
                 self.assertEqual(guard.main(MON), 1)
                 record.assert_called_once_with(MON, over=True)
                 self.assertIn("90% full", run.call_args.kwargs["input"])
-                self.assertIn("can't read this month's traffic", run.call_args.kwargs["input"])
+                self.assertIn("Traffic not checked", run.call_args.kwargs["input"])
 
 
 class Timer(unittest.TestCase):

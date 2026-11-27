@@ -25,6 +25,7 @@ DISK_WARN = 0.80
 TB = 10 ** 12
 TRAFFIC_WARN = 1 * TB
 TRAFFIC_PAUSE = 5 * TB
+MAX_TX = 10 ** 6 * TB                         # an exabyte a month: anything above is a broken counter
 SCHEDULE = "*-*-* 05:00:00 America/Los_Angeles"
 ALERT = ["docker", "compose", "--env-file", ".env", "exec", "-T", "pm", ".venv/bin/python", "deploy/pm_alert.py"]
 
@@ -91,7 +92,10 @@ def traffic() -> tuple[int | None, str | None]:
         out = subprocess.run(["vnstat", "--json", "m"], capture_output=True, text=True, timeout=60)
         if out.returncode != 0 or not iface:
             return None, f"can't read this month's traffic (vnstat: {out.stderr.strip()[:200]}, interface {iface})"
-        return month_tx(json.loads(out.stdout), iface, datetime.date.today()), None
+        tx = month_tx(json.loads(out.stdout), iface, datetime.date.today())
+        if tx is not None and not 0 <= tx < MAX_TX:   # GPT review: 10**400 broke tx / TB later, before the disk
+            return None, f"vnstat reported an impossible traffic figure ({str(tx)[:40]})"
+        return tx, None
     except SystemExit as e:                   # month_tx: an interface vnstat doesn't watch; said in the alert
         return None, str(e).removeprefix("✗ ")
     except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError, subprocess.TimeoutExpired) as e:
