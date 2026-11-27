@@ -66,8 +66,9 @@ def approvals(main_rules: list[dict]) -> int:
 
 
 def _reviewers_short(identities: dict[str, dict], need: int) -> bool:
-    """Too few other GitHub accounts here to give the approvals (an account never approves its own PR)."""
-    return need > 0 and len(_by_login(identities)) - 1 < need
+    """Too few other GitHub accounts here to give the approvals (an account never approves its own PR), or more
+    approvals than the loop asks for: it has one checker approve (GPT review)."""
+    return need > 1 or need == 1 and len(_by_login(identities)) < 2
 
 
 def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: str, solo: bool, bypass: bool) -> str | None:
@@ -76,11 +77,13 @@ def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: s
     if not _reviewers_short(identities, need):
         return None
     shared = [(login, agents) for login, agents in _by_login(identities).items() if len(agents) > 1]
-    why = (f"{_names(shared[0][1])} share the GitHub account @{shared[0][0]}" if shared
-           else f"only {len(_by_login(identities))} GitHub account is here")
+    rule = f"{branch}'s review rule ({need} approving review{'s' * (need > 1)})"
+    if not solo and need > 1:
+        return f"{rule} can't be met (the loop has one checker approve each PR): {SOLO_FIX}"
     if not solo:
-        return (f"{why}, so {branch}'s review rule ({need} approving review{'s' * (need > 1)}) can't be met (GitHub "
-                f"never lets an account approve its own PR): {SOLO_FIX}")
+        why = (f"{_names(shared[0][1])} share the GitHub account @{shared[0][0]}" if shared
+               else "only 1 GitHub account is here")
+        return f"{why}, so {rule} can't be met (GitHub never lets an account approve its own PR): {SOLO_FIX}"
     not_admin = [login for login, agents in _by_login(identities).items() if identities[agents[0]].get("admin") is not True]
     if not_admin:
         return (f"Solo review is on, but only a repo admin may merge past {branch}'s review rule, and "
@@ -124,10 +127,13 @@ async def identity(agent: str, repo: str = REPO) -> dict:
     """An agent this server runs itself (older local test agents): `gh` here, in its own folder."""
     try:
         login = (await run_json(["api", "user"], agent))["login"]
-        perms = (await run_json(["api", f"repos/{repo}"], agent)).get("permissions", {})
-        return {"login": login, "push": bool(perms.get("push")), "admin": bool(perms.get("admin"))}
     except GitHubError as e:
         return {"error": str(e)[:200]}   # reported as a problem by evaluate()
+    try:
+        perms = (await run_json(["api", f"repos/{repo}"], agent)).get("permissions", {})
+    except GitHubError:                  # signed in, the repo unreadable: unknown, never "not signed in" (GPT review)
+        return {"login": login, "push": None, "admin": None}
+    return {"login": login, "push": bool(perms.get("push")), "admin": bool(perms.get("admin"))}
 
 
 async def agent_identity(agent: str, repo: str) -> dict:

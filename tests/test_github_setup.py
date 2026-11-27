@@ -66,7 +66,8 @@ class Evaluate(unittest.TestCase):
         alone = {"anna-agent": {"login": "a", "push": True}}
         self.assertIn("only 1 GitHub account is here", evaluate(alone, GATED)[0])
         two = [{"type": "pull_request", "parameters": {"required_approving_review_count": 2}}]
-        self.assertIn("2 approving reviews", evaluate(OK, two)[0])
+        three = {**OK, "cx-agent": {"login": "c", "push": True}}
+        self.assertIn("2 approving reviews) can't be met (the loop has one checker", evaluate(three, two)[0])
         self.assertEqual(github_setup.approvals(two + GATED), 2)
         self.assertEqual(github_setup.approvals([{"type": "deletion"}]), 0)
 
@@ -98,6 +99,17 @@ class Readiness(unittest.TestCase):
         self.assertEqual(problems, [])
         self.assertIn("the 'agent-ok' label is on o/r", seen)
         self.assertIn("repos/o/r/rules/branches/trunk", calls)
+
+    def test_a_server_agent_signed_in_but_repo_unreadable_is_unknown(self):
+        """GPT review: a confirmed login whose repo read failed was called "not signed in"."""
+        async def run_json(args, agent=None):
+            if args == ["api", "user"]:
+                return {"login": "a"}
+            raise GitHubError("gh api failed: 502")
+        with mock.patch.object(github_setup, "run_json", run_json):
+            ident = asyncio.run(github_setup.identity("anna-agent", "o/r"))
+        self.assertEqual(ident, {"login": "a", "push": None, "admin": None})
+        self.assertIn("couldn't check its Write access", evaluate({"anna-agent": ident}, [])[0])
 
     def test_a_missing_label_says_githubs_own_steps(self):
         async def run_json(args, agent=None):
