@@ -112,7 +112,8 @@ class Tokens(AppCase):
 
     def test_readiness_says_how_to_install_it(self):
         with mock.patch.object(github_setup, "identity", mock.AsyncMock(return_value={"login": "a", "push": True})):
-            _, problems = asyncio.run(github_setup.readiness(OTHER, ["anna-agent"], detail=False))
+            _, problems, seen = asyncio.run(github_setup.readiness(OTHER, ["anna-agent"], detail=False))
+        self.assertEqual(seen, [])
         self.assertEqual(len(problems), 1)
         self.assertIn("isn't installed on octo/other", problems[0])
         self.assertIn("/apps/hagency-rooms/installations/new", problems[0])

@@ -12,6 +12,7 @@ from server import github_setup
 from common import intents
 from server import pm_brain
 from common import room_state
+from common import solo_review
 from server.loop import Loop
 from server.loop_progress import migrate
 from server.pm_settings import NO_REPO
@@ -257,6 +258,11 @@ class ConsoleRepo(unittest.TestCase):
             q = mock.patch.object(room_state, name, fn)
             q.start()
             self.addCleanup(q.stop)
+        self.solo = False
+        q = mock.patch.object(solo_review, "read", lambda c, rid: asyncio.sleep(0, {
+            **solo_review.content(self.solo, repo=HELLO, ok=True), "bound": HELLO}))
+        q.start()
+        self.addCleanup(q.stop)
 
     def act(self, user, action, value=""):
         return asyncio.run(console.act(self.loop, "!r", user, action, value))
@@ -266,14 +272,15 @@ class ConsoleRepo(unittest.TestCase):
         self.assertEqual(self.calls, [(ANNA, "octocat/hello")])      # set_repo itself checks the moderator
 
     def test_check_reports_problems_and_who_fixes_them(self):
-        found = mock.AsyncMock(return_value=({}, ["no 'agent-ok' label on " + HELLO]))
+        found = mock.AsyncMock(return_value=({}, ["no 'agent-ok' label on " + HELLO], []))
+        self.solo = True
         with mock.patch.object(github_setup, "readiness", found):
             text = self.act(ANNA, "check")
-        found.assert_awaited_once_with(HELLO, ["anna-agent"], detail=False)     # no raw CLI errors in the console
+        found.assert_awaited_once_with(HELLO, ["anna-agent"], detail=False, solo=True, bypass=True)   # no raw CLI errors here
         self.assertIn("✗ no 'agent-ok' label", text)
-        self.assertIn(f"github_setup.py ruleset --repo {HELLO}", text)
-        with mock.patch.object(github_setup, "readiness", mock.AsyncMock(return_value=({}, []))):
-            self.assertIn("is ready", self.act(ANNA, "check"))
+        self.assertNotIn("github_setup.py", text)            # GUI only: each problem says its own fix
+        with mock.patch.object(github_setup, "readiness", mock.AsyncMock(return_value=({}, [], ["the label"]))):
+            self.assertEqual(self.act(ANNA, "check"), f"✓ {HELLO} is ready. Checked:\n✓ the label")
 
     def test_only_moderators_run_the_check(self):
         with mock.patch.object(github_setup, "readiness", mock.AsyncMock()) as found:
