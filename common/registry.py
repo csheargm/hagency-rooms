@@ -18,6 +18,7 @@ from pathlib import Path
 
 from common import test_limits
 from common import code_report
+from common import github_login
 from common import pm_kinds
 from common import bridge_config
 from common import identity
@@ -33,6 +34,7 @@ MORE = "more"                        # a person's further agents, in their line
 FIRST_GONE = "first_removed"         # their first agent was removed for good: only named ones from now on
 REPORTED = "reported"                # the AI its computer says it runs (pm_kind_reports.py)
 CODE = "code"                        # the code it says it runs (code_report.py, ADR 0020)
+GITHUB = "github"                    # its GitHub sign-in, as it says (github_login.state, ADR 0021)
 PER_PERSON_DEFAULT = test_limits.pick(3, 5)
 LOCALPART_RE = re.compile(r"[a-z0-9._=-]{1,120}")   # a recorded agent account name (Matrix localpart characters)
 LOCK = threading.RLock()             # @pm's read-modify-writes of this file (its loop and set-up threads)
@@ -178,8 +180,9 @@ def _picked(entry: dict) -> dict:
     """The AI an agent runs (pm_kinds.py), as picked, and as its computer reported it ("reported":
     pm_kind_reports.py, shown only, never offered back); a damaged record: none."""
     found = pm_kinds.choice(*(entry.get(k) if isinstance(entry.get(k), str) else "" for k in pm_kinds.FIELDS))
-    said, code = pm_kinds.reported(entry.get(REPORTED)), code_report.stored(entry.get(CODE))
-    return {**(found if isinstance(found, dict) else {}), **({REPORTED: said} if said else {}), **({CODE: code} if code else {})}
+    said, code, gh = pm_kinds.reported(entry.get(REPORTED)), code_report.stored(entry.get(CODE)), github_login.state(entry.get(GITHUB))
+    return {**(found if isinstance(found, dict) else {}), **({REPORTED: said} if said else {}), **({CODE: code} if code else {}),
+            **({GITHUB: gh} if gh else {})}
 
 
 def name_of(agent: dict) -> str:

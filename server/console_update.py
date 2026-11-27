@@ -52,6 +52,11 @@ def _clicks(loop) -> dict:
     return loop.__dict__.setdefault("_updates", {})   # agent localpart → {"at", "from", "id", "result"}
 
 
+def is_hermes(a: dict) -> bool:
+    """A Hermes agent (named so, or so reported): its own gateways, no self-update, no bridge (also console_github)."""
+    return "hermes" in (a.get("agent_kind"), (a.get(registry.REPORTED) or {}).get("agent_kind"))
+
+
 def status(loop, a: dict) -> dict:
     """What My agents shows about one agent's code: "code" (current, behind, own, unknown or ""),
     "code_version" (its label, in UTC), "code_name" and "code_time" (the label's parts, the time for the
@@ -60,7 +65,7 @@ def status(loop, a: dict) -> dict:
     if a.get("agent") != registry.REMOTE:
         return {"code": "", "code_version": "", "code_name": "", "code_time": "", "code_says": "", "code_updating": False, "code_fallback": False}
     code = a.get(registry.CODE)
-    hermes = "hermes" in (a.get("agent_kind"), (a.get(registry.REPORTED) or {}).get("agent_kind"))
+    hermes = is_hermes(a)
     word = ("unknown" if code is None or hermes or SERVER is None else "own" if code["own"]
             else "current" if version.current(code, SERVER) else "behind")
     click = _clicks(loop).get(a["localpart"])

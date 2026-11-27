@@ -9,6 +9,7 @@ from nio import RoomGetStateResponse
 from common import github
 from common import room_state
 from adapters.agents import planning
+from server import pm_plan
 from server.loop import Loop
 
 ANNA, BETTY = "@anna:bridge.localhost", "@betty:bridge.localhost"
@@ -98,6 +99,23 @@ class Flow(unittest.TestCase):
         self.assertIn("Opened #5", self.sent[-1][0])
         self.assertIn("take it all the way", self.sent[-1][0])              # level off: tells them how to start
 
+    def test_a_filing_that_failed_on_github_sign_in_says_how_to_file_again(self):
+        """Review 2026-11-26: NO_IDENTITY said "@pm retry", which answers "Nothing is paused here" for a plan."""
+        items = [{"title": "Add index.html", "criteria": ["exists"]}]
+        self.run_(self.lp.start_plan(self.room, ANNA))
+        self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "plan", "task_id": self.sent[-1][2]["task_id"],
+                                                                 "items": items}))
+        self.assertTrue(self.run_(self.lp.confirm(self.room, ANNA)))
+        failed = github.NO_IDENTITY.format(agent="anna-agent")
+        self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "file_issues", "error": failed,
+                                                                 "task_id": self.sent[-1][2]["task_id"]}))
+        self.assertTrue(self.sent[-1][0].endswith(pm_plan.FILE_AGAIN), self.sent[-1][0])
+        self.run_(self.lp.show_plan("!r"))                  # what it says: "@pm show the plan", then 👍
+        self.assertIn("**Issue 1: Add index.html**", self.sent[-1][0])
+        self.assertTrue(self.run_(self.lp.confirm(self.room, ANNA)))
+        self.assertEqual((self.sent[-1][1], self.sent[-1][2]["kind"], self.sent[-1][2]["items"]),
+                         (ANNA_AGENT, "file_issues", items))    # filed again
+
     def test_a_failed_plan_says_what_to_do_in_plain_words(self):
         """Live test 2026-11-23: a 3B local model's plan failed with "⚠️ plan didn't work: the plan wasn't
         valid JSON: Expecting ',' delimiter…", and the agent's own line said "plan failed for #None"."""
@@ -125,6 +143,17 @@ class Flow(unittest.TestCase):
         self.assertIn("plan stays as it was", self.sent[-2][0])
         self.assertIn("**Issue 1: Add index.html**", self.sent[-1][0])
         self.assertEqual(self.lp.pending["!r"]["items"], items)     # still ✅-able
+
+    def test_a_filing_that_failed_partway_never_offers_to_file_again(self):
+        """GPT re-check: approving again after some issues were opened would open them twice."""
+        items = [{"title": "Add index.html", "criteria": ["serves a page"]}]
+        self.run_(self.lp.start_plan(self.room, ANNA))
+        self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "plan", "task_id": self.sent[-1][2]["task_id"],
+                                                                 "items": items}))
+        self.assertTrue(self.run_(self.lp.confirm(self.room, ANNA)))
+        self.run_(self.lp.on_plan_result(self.room, ANNA_AGENT, {"kind": "file_issues", "error": "HTTP 502 from GitHub",
+                                                                 "task_id": self.sent[-1][2]["task_id"]}))
+        self.assertFalse(self.sent[-1][0].endswith(pm_plan.FILE_AGAIN), self.sent[-1][0])
 
     def test_show_the_plan_again(self):
         self.lp.last_plans["!r"] = {"items": [{"title": "X", "criteria": ["y"]}], "agent": ANNA_AGENT, "by": ANNA}

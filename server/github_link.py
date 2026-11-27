@@ -13,7 +13,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import time
 import urllib.error
 import urllib.parse
@@ -22,17 +21,16 @@ import urllib.request
 from common import github
 from common import github_app
 from common.bridge_config import ROOT
+from common.github_login import DEVICE_PAGE, USER_CODE_RE   # one place: an agent's sign-in uses them too
 from common.saved_dict import SavedDict
 
 log = logging.getLogger("loop")
 CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID", "").strip()
 WEB = os.environ.get("GITHUB_WEB_URL", "https://github.com").rstrip("/")     # tests: a local fake
-DEVICE_PAGE = "https://github.com/login/device"
 DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 MAX_FLOW_S = 15 * 60          # GitHub's device codes last 15 minutes; never wait longer
 MIN_INTERVAL_S = 5            # GitHub's own minimum between polls
 SLOW_DOWN_S = 5               # what GitHub adds to the interval after "slow_down"
-USER_CODE_RE = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{4}$")
 WRITE = ("admin", "write")    # GitHub's permission field: maintain counts as write, triage as read
 LINKS_FILE = ROOT / "data" / "github-links.json"
 FLOWS: dict[str, dict] = {}   # Matrix user → their one pending sign-in (pm_github.py starts and ends them)

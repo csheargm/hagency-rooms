@@ -253,8 +253,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
                 log.error("%s was disconnected: ask @pm for a new code", self.user_id)
                 raise SystemExit(0)           # a clean exit, so the background service doesn't retry
             raise SystemExit(f"login failed for {self.user_id}: {resp}")
-        # Pending invites go through the same check as live ones. Messages from before startup are
-        # skipped, except those sent while a previous process was restarting (lifecycle hand-off).
+        # Pending invites get the live check; older messages are skipped, except during a hand-off (lifecycle).
         if not self.buttons_only:     # Hermes joins its own invites (and records DMs); a race here lost them
             self.client.add_event_callback(self.on_invite, InviteMemberEvent)
 
@@ -266,9 +265,10 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
             self.client.add_event_callback(self.on_voice, RoomMessageAudio)     # bridge_voice.py
             self.client.add_event_callback(self.on_encrypted, MegolmEvent)
             self.client.add_event_callback(self.on_custom_reaction, ReactionEvent)  # bridge_custom.py
+        self.listen_to_pm()              # agent_update.py: @pm's clicks, also those the first sync brings
         await lifecycle.first_sync(self.client, f"{self.owner}-agent", self.sync_point, register,
                                    lambda ms: setattr(self, "started_ms", ms))
-        await self.report_and_listen()   # agent_update.py: the AI and code I run; my owner's Update clicks
+        await self.report_to_pm()        # agent_update.py: the AI and code I run, and my GitHub sign-in
         log.info("%s online (backend=%s, allow_members=%s)", self.user_id, self.backend, self.allow_members)
         await self.serve_until_updated()   # agent_update.py: an update restarts me on the new code
 

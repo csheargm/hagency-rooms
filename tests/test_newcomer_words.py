@@ -15,20 +15,23 @@ from server import pm_plan
 
 
 class NoGitHubIdentity(unittest.TestCase):
-    def test_a_long_agent_name_still_fits_the_rooms_limit(self):
+    """Live test 2026-11-26: the words were a shell command, no use on a phone (ADR 0021)."""
+    def test_a_long_agent_name_still_fits_pms_cut(self):
         said = room_safe(github.NO_IDENTITY.format(agent="alice-at-matrix-org-a5829e99c7-agent"))
-        self.assertTrue(said.endswith("--insecure-storage"), said)
-        self.assertIn("@pm retry", said)
+        self.assertLessEqual(len(said), 200, said)        # pm_plan.on_plan_result shows 200 characters
+        self.assertTrue(said.endswith("then ask @pm again."), said)
+        self.assertNotIn("retry", said)                  # review: retry resumes only a paused issue (test_planning)
 
-    def test_it_says_what_to_run_where_and_survives_the_rooms_path_filter(self):
+    def test_it_points_at_the_button_and_survives_the_rooms_path_filter(self):
         with mock.patch.object(github, "IDENTITY_ROOT", Path(tempfile.mkdtemp())), \
                 self.assertRaises(github.GitHubError) as e:
             asyncio.run(github.run(["issue", "list"], agent="nt-agent"))
         said = room_safe(e.exception)                    # what the room shows (local paths cut)
-        self.assertIn("needs a GitHub sign-in", said)
-        self.assertIn("A=nt-agent; GH_CONFIG_DIR=.gh/$A GIT_CONFIG_GLOBAL=.gh/$A/gitconfig gh auth login --web --insecure-storage", said)
-        self.assertIn("@pm retry", said)
+        self.assertIn("nt-agent isn't signed in to GitHub", said)
+        self.assertIn("My agents → Sign in to GitHub", said)
+        self.assertIn("ask @pm again", said)
         self.assertNotIn("<local path>", said)
+        self.assertNotIn("gh auth", said)                # the command is for its owner, in the panel
 
 
 class PlanWords(unittest.TestCase):

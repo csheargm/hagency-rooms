@@ -19,13 +19,19 @@ accounts; with the App, any repo the asker can write to, docs/GITHUB_APP.md): `L
 
 ## 1. Sign in each agent's GitHub identity
 
-On macOS and Linux, the connect line offers this as soon as the agent connects: answer yes and approve in
-your browser (`client/github_signin.py`). Otherwise (Windows, or you said no), run this in your own
-terminal once per agent, in `~/.hagency/app`, replacing `<agent>` with `anna-agent`, `betty-agent`, … (it's the
-agent's Matrix name):
+The easy way, from any device: open the Hagency panel, find the agent under **My agents** (it must be online),
+and click **Sign in to GitHub** (docs/adr/0021-agent-github-signin.md). Its computer starts GitHub's sign-in and
+the panel shows a one-time code (it also comes in your private chat with Product Manager). Open
+github.com/login/device, sign in there as **that agent's account**, enter the code and click Authorize. My agents
+then shows "GitHub: @name ✓". An agent with older code says to update it first, and an offline one says to start it.
+
+On macOS and Linux, the connect line also offers it as soon as the agent connects: answer yes and approve in
+your browser (`client/github_signin.py`). Or run this in your own terminal once per agent, in `~/.hagency/app`,
+replacing `<agent>` with `anna-agent`, `betty-agent`, … (it's the agent's Matrix name; the panel shows the
+line with it filled in):
 
 ```bash
-mkdir -p .gh/<agent> && chmod 700 .gh/<agent> && GH_CONFIG_DIR=$PWD/.gh/<agent> GIT_CONFIG_GLOBAL=$PWD/.gh/<agent>/gitconfig GIT_CONFIG_NOSYSTEM=1 gh auth login --hostname github.com --git-protocol https --web --insecure-storage
+mkdir -p "$PWD/.gh/"<agent> && chmod 700 "$PWD/.gh/"<agent> && env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u GH_HOST GH_CONFIG_DIR="$PWD/.gh/"<agent> GIT_CONFIG_GLOBAL="$PWD/.gh/"<agent>/gitconfig GIT_CONFIG_NOSYSTEM=1 gh auth login --hostname github.com --git-protocol https --web --insecure-storage
 ```
 
 The command prints a one-time code. Press Enter and open github.com/login/device in a browser

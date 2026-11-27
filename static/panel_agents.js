@@ -15,7 +15,7 @@ function agentStatus(a) {
   // Screen test: a never-connected agent's only way to a fresh code was typing a command in the chat.
   const fresh = a.online !== true && !a.connected
     ? `<button data-a="code" data-v="" data-g="${esc(a.name)}">Get a fresh code</button>` : "";
-  return `<span class="chip">${word}</span>${a.stopped ? ' <span class="chip">Stopped</span>' : ""} ${codeChip(a)} ${stopButton(a)} ${disconnect}
+  return `<span class="chip">${word}</span>${a.stopped ? ' <span class="chip">Stopped</span>' : ""} ${codeChip(a)} ${ghChip(a)} ${stopButton(a)} ${disconnect}
     ${fresh} ${removeButton(a)}`;
 }
 // Versions (console_update.py, ADR 0020): its code against this server's. Update: it updates itself on its
@@ -54,6 +54,36 @@ function codeHint(a) {
   const says = a.code_says;               // console_update.status: the words, one place
   const ver = codeVersion(a) ? `Version ${esc(codeVersion(a))}` : "";
   return says || ver ? `<div class="hint">${[esc(says), ver].filter(Boolean).join(" · ")}</div>` : "";
+}
+// Sign in to GitHub (console_github.py, ADR 0021): the agent's own GitHub account, for issues and pull requests.
+// GitHub's code shows only here (My agents is its owner's alone) and in their chat with Product Manager.
+const ghSeen = a => a.remote && (a.online === true || a.connected) && !!a.gh;
+function ghChip(a) {
+  if (!ghSeen(a)) return "";
+  const can = a.gh !== "old" && a.online === true && !a.gh_busy;
+  if (a.gh === "signed_in")             // its token may be revoked since: a quiet way to sign in again (GPT re-check)
+    return `<span class="chip">GitHub: ${a.gh_login ? "@" + esc(a.gh_login) : "signed in"} ✓</span>` +
+      (can ? ` <button data-a="github_signin" data-v="" data-g="${esc(a.name)}" class="quiet">Sign in again</button>` : "");
+  return can ? `<button data-a="github_signin" data-v="" data-g="${esc(a.name)}">Sign in to GitHub</button>` : "";
+}
+// The code with Copy, as on the GitHub card (panel_github.js: copyCode, its click handler, copiedUntil).
+const ghFieldId = a => "ghcode-" + a.name;
+function ghCodeField(a) {
+  const copied = typeof copiedUntil !== "undefined" && Date.now() < copiedUntil;
+  return `<input id="${esc(ghFieldId(a))}" class="code" readonly size="10" value="${esc(a.gh_code)}">
+    <button data-copy="${esc(a.gh_code)}" data-field="${esc(ghFieldId(a))}">${copied ? "Copied ✓" : "Copy"}</button>`;
+}
+// panel.html's redraw guard: a focused code field stays while its agent still shows that code.
+const ghCodeKept = (typing, s, value) => !!typing && (s.agents || []).some(a => ghFieldId(a) === typing && a.gh_code === value);
+function ghHint(a, personal) {
+  if (!ghSeen(a) || !(a.gh_says || a.gh_code)) return "";
+  const where = personal === true ? "this chat" : chatLink("your chat with Product Manager");
+  const code = a.gh_code ? `Open <a href="${esc(a.gh_url)}" target="_blank" rel="noopener noreferrer">${esc(a.gh_url)}</a>
+    and enter ${ghCodeField(a)}, signed in as the GitHub account this agent should use. It works
+    for 15 minutes, and it's also in ${where}.` : esc(a.gh_says);
+  const cli = a.gh_cli && a.gh !== "old" && !a.gh_code ? `<br>Or in a terminal on its computer, in <code>~/.hagency/app</code>:
+    <code>${esc(a.gh_cli)}</code>` : "";       // plain, not a <details>: the panel's redraw would close it
+  return `<div class="hint">${code}${cli}</div>`;
 }
 // Stop / Start (pm_stop.py): it stays signed in on its computer and ignores messages until Start. Only for
 // one that has connected; Hermes answers through its own gateways, so it is stopped on its computer.
@@ -106,7 +136,7 @@ function agentRow(a, version, several, personal) {
     + (a.runs ? ` <span class="chip">${esc(a.runs)}</span>` : "");   // the AI it runs (pm_kinds.describe)
   const where = a.here ? ' <span class="chip">in this room</span>'
     : a.invited ? ' <span class="chip">invited to this room</span>' : "";
-  return `<li><div>${title}${where}${agentHint(a, personal)}${stopHint(a)}${codeHint(a)}</div>
+  return `<li><div>${title}${where}${agentHint(a, personal)}${stopHint(a)}${codeHint(a)}${ghHint(a, personal)}</div>
     <div>${agentStatus(a)}</div></li>${renameRow(a)}
     <li><div class="hint">Comes along when I join a project room${a.first ? "" : " (or invite it yourself)"}</div>${agentSeg("follow", a.name, ["always", "ask", "never"], a.follow)}</li>
     ${a.first && version ? `<li><div class="hint">Code it runs: your own version (${esc(version)})</div>

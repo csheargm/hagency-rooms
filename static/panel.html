@@ -25,6 +25,7 @@ a.chip{color:var(--accent);font-weight:600;text-decoration:none}a.chip:hover{bor
 button{font:inherit;padding:5px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer}
 button:hover:not(:disabled){border-color:var(--accent)}button:disabled{opacity:.5;cursor:default}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.quiet{border:0;background:transparent;color:var(--accent);padding:2px 4px;font-size:12px;text-decoration:underline}
 .field{display:flex;gap:8px;flex-wrap:wrap}input{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:8px;
 background:var(--bg);color:var(--ink);flex:1;min-width:12em}input.code{flex:0;min-width:0;font-family:ui-monospace,Menlo,monospace}
 #msg:empty{display:none}#msg{padding:8px 12px;border-radius:8px;background:var(--accent-soft);color:var(--accent);white-space:pre-line}
@@ -252,7 +253,8 @@ async function show() {
   expired = 0; clearTimeout(watchdog); pmChat = s.pm_chat || null; inPmChat = !!s.personal;
   if (msgMark && typeof githubMsgAfter === "function" && !(msgMark = githubMsgAfter(msgMark, s))) $("msg").textContent = "";
   const typing = document.activeElement && document.activeElement.id;
-  const sameCode = typing === "ghcode" && s.github && s.github.code === $("ghcode").value;   // a code gone: redrawn
+  const sameCode = typing === "ghcode" && s.github && s.github.code === $("ghcode").value   // a code gone: redrawn
+    || typeof ghCodeKept === "function" && ghCodeKept(typing, s, typing && $(typing).value);   // My agents' code too
   const fields = ["repo", "newagent", "newkind", "newmodel", "newbase"];
   if (typing && (fields.includes(typing) || sameCode || typing.startsWith("rename-"))) return;   // don't wipe what's being typed
   $("me").textContent = "";
