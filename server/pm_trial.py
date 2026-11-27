@@ -117,8 +117,10 @@ class TrialOffer:
         return {"on": person in self.trial.visitors, "left": max(0, per_day - self.trial.usage.used(person)),
                 "per_day": per_day, "model": self.trial.model_of(person), "models": trial_models.names()}
 
-    async def trial_action(self, person: str, action: str = "trial", value: str = "") -> str:
-        """The panel's "Try it" button (the same as 🧪, answered in our private chat too), or its model picker."""
+    async def trial_action(self, person: str, action: str = "trial", value: str = "") -> str | dict:
+        """The panel's "Try it" / "Open its chat again" button (the same as 🧪, answered in our private chat too):
+        with the trial chat's room, which the panel opens (GPT review: "again" left them where they were); or its
+        model picker."""
         if action == "trial_model":
             said = self.choose_model(person, value) if self.trial_on() else UNAVAILABLE
             return "ok" if said.startswith("🧪") else said
@@ -126,4 +128,5 @@ class TrialOffer:
         if dm is None:
             return "I couldn't open our private chat; please try again."
         said = await self.start_trial(dm, person)
-        return "ok" if said.startswith("🧪") else said
+        chat = self.trial.dm_of(person) if said.startswith("🧪") else None
+        return {"result": "ok", "chat": chat} if chat else "ok" if said.startswith("🧪") else said

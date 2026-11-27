@@ -113,7 +113,7 @@ class TrialFlow(TrialBase):
     def test_the_panel_card_and_its_button(self):
         self.assertEqual(self.lp.trial_view(NEW), {"on": False, "left": 2, "per_day": 2, "model": "glm-5.3",
                                                        "models": trial_models.names()})
-        self.assertEqual(self.run_(self.lp.trial_action(NEW)), "ok")
+        self.assertEqual(self.run_(self.lp.trial_action(NEW))["result"], "ok")   # with its chat: test_trial_open_chat
         self.assertTrue(self.lp.trial_view(NEW)["on"])
         self.assertIn("trial", console.console_personal.ACTIONS)
 

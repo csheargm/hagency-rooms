@@ -230,6 +230,14 @@ function trialCard(t) {
   return `<section class="card"><h2>Trial agent (shared, limited)</h2><div class="set"><div>${what}<div class="hint">What you write to it goes to Ollama Cloud.</div></div>
     <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat again" : "Try it"}</button></div>${pick}</section>`;
 }
+// "Try it" / "Open its chat again" (pm_trial.trial_action): the trial chat's room. Its link opens like our private
+// chat's (panel.html, a[data-pmchat]: in Element through the widget API, at once; elsewhere a new tab, by a click).
+function openChat(roomId) {
+  const msg = document.getElementById("msg");
+  msg.innerHTML = `${esc(msg.textContent)} <a id="trialchat" href="https://matrix.to/#/${esc(encodeURIComponent(roomId))}"
+    target="_blank" rel="noopener noreferrer" data-pmchat="1">Open the Trial agent chat</a>`;
+  if (embedded && canNavigate) document.getElementById("trialchat").click();
+}
 // Auto-update (console_auto_update.py, ADR 0024): one switch for all of a person's agents on their computers, on by
 // default. Small (owner request); what it does is in its tooltip.
 function autoSwitch(s) {

@@ -187,7 +187,7 @@ let msgMark = "";                         // the line came from Connect GitHub: 
 async function act(action, value, agent) { $("msg").textContent = "…";
   const r = await post("/console/action", {room, action, value, agent: agent || ""});
   $("msg").textContent = r.result === "ok" ? (r.says || "Done.") : (r.result || r.error);   // says: Update my agent
-  if (r.link) showLink(r.link);             // the invite link: shown with Copy, and copied at once
+  if (r.link) showLink(r.link); else if (r.chat && typeof openChat === "function") openChat(r.chat);   // invite link; trial chat
   msgMark = action === "github" && value === "connect" ? "pending" : "";
   if (msgMark && pmChat && !inPmChat) $("msg").innerHTML = esc($("msg").textContent) + " " + pmChatLink("Open our private chat");
   refresh(); }
