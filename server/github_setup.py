@@ -71,13 +71,15 @@ def _owner(agent: str) -> str:
 
 
 def _reviewers_short(identities: dict[str, dict], need: int) -> bool:
-    """No checker here whose approval GitHub counts (an account never approves its own PR, and the loop's checker
-    is another PERSON's agent: routing.checkers_for; GPT review: one owner's two accounts are solo review), or more
-    approvals than the loop asks for: it has one checker approve (GPT review)."""
+    """Some PR's approval can't count: the loop's checker is another PERSON's agent (routing.checkers_for; GPT
+    review: one owner's two accounts are solo review), any of them may get any builder's PR, and an account never
+    approves its own PR; so every builder–checker pair of different owners needs two accounts. Or more approvals
+    than the loop asks for: it has one checker approve (GPT review)."""
     if need != 1:
         return need > 1
     pairs = [(ident["login"].lower(), _owner(agent)) for agent, ident in identities.items() if "login" in ident]
-    return not any(login != other and owner != theirs for login, owner in pairs for other, theirs in pairs)
+    cross = [login == other for login, owner in pairs for other, theirs in pairs if owner != theirs]
+    return not cross or any(cross)
 
 
 def _review_problem(identities: dict[str, dict], need: int, repo: str, branch: str, solo: bool, bypass: bool) -> str | None:

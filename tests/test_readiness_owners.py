@@ -33,6 +33,12 @@ class OwnerPairing(unittest.TestCase):
     def test_another_persons_agent_on_another_account_meets_it(self):
         self.assertEqual(evaluate({**CX_TWO, "betty-agent": {"login": "b", "push": True}}, GATED), [])
 
+    def test_any_checker_on_the_builders_account_is_a_problem(self):
+        """GPT review: one good pair passed, but betty-agent (on cx's account) may get cx-agent's PR."""
+        problems = evaluate({**CX_TWO, "betty-agent": {"login": "CX", "push": True}}, GATED)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("cx-agent and betty-agent share the GitHub account @cx", problems[0])
+
 
 if __name__ == "__main__":
     unittest.main()
