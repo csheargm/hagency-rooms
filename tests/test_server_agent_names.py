@@ -48,7 +48,8 @@ class WhoItHears(unittest.TestCase):
         lookalike = [f"@server-agent:{S}"]
         self.assertTrue(mine(event("@a:" + S, f"{SHARED}, can you review this for Server agent?", lookalike), SHARED))
         self.assertTrue(mine(event("@a:" + S, "hagency.trial-agent, hi", lookalike), SHARED))
-        self.assertTrue(mine(event("@a:" + S, "Server agent, hi", ["@server-agent:elsewhere.test"]), SHARED))
+        self.assertFalse(mine(event("@a:" + S, "Server agent, hi", ["@server-agent:elsewhere.test"]), SHARED))   # any server
+        self.assertFalse(mine(event("@a:" + S, f"prefix{SHARED} hi"), SHARED))       # not its id: no boundary before "@"
         for body in ("hagency.trial-agent: hi", f"{SHARED}: hi"):   # a colon as the delimiter
             self.assertTrue(mine(event("@a:" + S, body), SHARED), body)
 

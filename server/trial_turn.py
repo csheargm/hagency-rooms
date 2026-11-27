@@ -81,13 +81,13 @@ def mentions(event: RoomMessageText, me: str) -> bool:
     content = event.source.get("content", {}) if isinstance(event.source, dict) else {}
     named = (content.get("m.mentions") or {}).get("user_ids") if isinstance(content.get("m.mentions"), dict) else None
     own = without_quote(event.body or "")             # never a mention inside the quoted message
-    if isinstance(named, list) and me in named or re.search(re.escape(me) + identity.ID_END, own):
+    if isinstance(named, list) and me in named or re.search(r"(?<![\w.-])" + re.escape(me) + identity.ID_END, own):
         return True                                    # pilled, or my exact id (not a longer one): always mine
     m = NAME_RE.search(own)
     if not m or m.group("id"):
         return bool(m)                                 # nothing, or my localpart
-    # Only the words "Server agent, …": not mine when they pill a real local @server-agent / @trial-agent (GPT review)
-    return not any(isinstance(u, str) and identity.split(u)[0] in identity.LOOKALIKE_AGENTS and identity.split(u)[1] == SERVER_NAME
+    # Only the words "Server agent, …": not mine when they pill a real @server-agent / @trial-agent, any server (GPT review)
+    return not any(isinstance(u, str) and identity.split(u)[0] in identity.LOOKALIKE_AGENTS
                    for u in (named if isinstance(named, list) else ()))
 
 
