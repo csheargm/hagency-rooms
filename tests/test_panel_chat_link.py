@@ -44,7 +44,7 @@ const send = async data => { listener({origin: element, source: ctx.parent, data
   const asked = posted.find(m => m.requestId === "c1").response.capabilities;
   if (scenario !== "not_approved")
     await send({api: "toWidget", requestId: "c2", action: "notify_capabilities", data: {requested: asked, approved: asked}});
-  const html = els.controls.innerHTML;
+  const html = (els.controls.innerHTML + el("agents").innerHTML);
   const href = (html.match(/<a href="([^"]+)"[^>]*data-pmchat/) || [])[1];
   let prevented = false;
   const a = {href, closest: sel => sel.includes("pmchat") ? a : null};

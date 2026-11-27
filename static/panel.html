@@ -34,10 +34,21 @@ background:var(--bg);color:var(--ink);flex:1;min-width:12em}input.code{flex:0;mi
 .agents li+li{border-top:1px solid var(--line)}.agents b{font-weight:600}.muted{color:var(--muted)}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 8px}
 #password{display:grid;gap:6px;max-width:340px;margin-top:14px}#password h2{margin:0 0 2px}#password button{justify-self:start}
+[hidden]{display:none!important}.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}.tabs button{border:0;border-radius:0;
+background:transparent;color:var(--muted);padding:6px 12px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}.tabbed .grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.agents li.arow{display:block;padding:6px 0}.aline{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;cursor:pointer}
+.ahead{border:0;background:transparent;padding:2px 0;display:inline-flex;gap:6px;align-items:center;text-align:left}.aline button:not(.ahead){padding:2px 8px;font-size:12.5px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}.dot.on{background:var(--accent)}.dot.stop{background:var(--warn)}
+.dot.new{background:transparent;border:1.5px solid var(--muted)}.adet{display:grid;gap:6px;padding:6px 0 2px 14px}.small{font-size:12px}
 </style>
 <div class="wrap"><header><div><h1 id="title">Hagency</h1><div class="sub" id="sub"></div></div><div class="sub"><a class="chip" href="__ELEMENT_HOME__" target="_blank" rel="noopener" data-home="1">🏠 Welcome steps</a><span id="who"></span></div></header>
-<div id="me" class="muted">Signing in…</div><div id="msg"></div><div id="controls" class="stack"></div><div id="cards" class="stack"></div><div id="p" class="stack"></div>
-<footer>Change anything here or by telling @pm in the chat.__VERSION__</footer></div>
+<div id="me" class="muted">Signing in…</div><div id="msg"></div><div id="waiting"></div>
+<nav id="tabs" class="tabs" role="tablist" aria-label="Hagency panel" hidden></nav>
+<div id="pane-room" data-tab="room" role="tabpanel" aria-labelledby="tab-room" class="stack"><div id="controls" class="stack"></div><div id="p" class="stack"></div></div>
+<div id="pane-agents" data-tab="agents" role="tabpanel" aria-labelledby="tab-agents" class="stack"><div id="agents" class="stack"></div></div>
+<div id="pane-cards" data-tab="cards" role="tabpanel" aria-labelledby="tab-cards"><div id="cards" class="stack"></div></div>
+<footer>Change anything here or by telling @pm in the chat.<br>Minimised it? In Element: Room info (ⓘ) → Extensions → 📌 next to Hagency.__VERSION__</footer></div>
 __SCRIPTS__
 <script src="/auth/signin.js"></script>
 <script>
@@ -247,6 +258,7 @@ async function show() {
     if (r.status === 401) { if (sent !== session) return;
       session = null; try { sessionStorage.removeItem("hagency-session"); } catch (e) { /* blocked */ }
       if (!embedded) { $("p").innerHTML = ""; $("controls").innerHTML = ""; $("title").textContent = "Hagency"; if (typeof showCards === "function") showCards(null);
+        $("agents").innerHTML = $("waiting").innerHTML = ""; if (typeof tabsFor === "function") tabsFor(null);   // sign-in: no tabs
         return start(); }                    // popped out: back to its sign-in, never Element's error (GPT review)
       return ++expired > 2 ? failed(NO_ANSWER) : start(); }
     s = await r.json(); } catch (e) { return failed(OFFLINE); }
@@ -263,16 +275,18 @@ async function show() {
   if (s.personal) return personal(s);       // My Hagency: their own cards only (console_personal.py)
   $("sub").innerHTML = s.repo ? `<span class="chip code">${esc(s.repo)}</span>` : `<span class="chip">Pick a project repo</span>`;
   $("who").innerHTML = `<span class="chip">${esc(s.user)}</span> <span class="chip role">${s.moderator ? "Owner / maintainer" : "Contributor"}</span>`;
-  let h = "";
+  let h = "";              // "Waiting for you" stays above the tabs (#waiting); the rest goes in its tab
   if (s.waiting && s.waiting.mine) h += `<section class="card attn"><h2>Waiting for you</h2><div class="set"><div>${esc(cap(s.waiting.kind))}${
     s.waiting.items.length ? ": " + s.waiting.items.map(esc).join(" · ") : ""}</div>
     <button class="primary" data-a="approve" data-v="${esc(s.waiting.id)}">Approve 👍</button></div></section>`;
   const mode = typeof window.modeCard === "function" ? card("modeCard", s)   // its script missing: still a way to pause
     : `<section class="card"><h2>Mode</h2>${buttons("mode", ["off"], s.mode, s.moderator)}</section>`;
-  h += `<div class="grid">${card("repoCard", s)}${mode}</div>`;   // the repo first, then its mode (GPT review)
-  h += card("projectCard", s) + card("githubCard", s) + card("agentCards", s);   // panel_project.js, panel_github.js, panel_agents.js
-  $("controls").innerHTML = h; $("p").innerHTML = s.html;      // s.html: server-escaped board (panel.render)
+  $("waiting").innerHTML = h;     // Room tab: the repo first, then its mode (GPT review), then Who can join
+  $("controls").innerHTML = `<div class="grid">${card("repoCard", s)}${mode}${card("projectCard", s)}</div>`;
+  $("agents").innerHTML = card("agentCards", s) + card("githubCard", s);   // panel_agents.js, panel_github.js
+  $("p").innerHTML = s.html;      // s.html: server-escaped board (panel.render)
   if (typeof showCards === "function") showCards(s);           // Your cards (panel_cards.js): kept, not redrawn
+  if (typeof tabsFor === "function") tabsFor(s);               // panel_tabs.js: Room · My agents · Cards
 }
 // The shared trial agent (pm_trial.py, ADR 0025): only while it runs and you have no agent of your own.
 function trialCard(t) {
@@ -287,9 +301,11 @@ function trialCard(t) {
 function personal(s) {
   $("sub").innerHTML = '<span class="chip">Your agents and GitHub, the same in every room</span>';
   $("who").innerHTML = `<span class="chip">${esc(s.user)}</span>`;
-  $("controls").innerHTML = card("agentCards", s) + trialCard(s.trial) + card("githubCard", s);
+  $("agents").innerHTML = card("agentCards", s) + trialCard(s.trial) + card("githubCard", s);
+  $("controls").innerHTML = $("waiting").innerHTML = "";
   if (typeof showCards === "function") showCards(null);
   $("p").innerHTML = "";
+  if (typeof tabsFor === "function") tabsFor(s);               // My Hagency: My agents only, no tab bar
 }
 start(); setInterval(refresh, __REFRESH_MS__);
 </script>

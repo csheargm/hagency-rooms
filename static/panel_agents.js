@@ -15,8 +15,9 @@ function agentStatus(a) {
   // Screen test: a never-connected agent's only way to a fresh code was typing a command in the chat.
   const fresh = a.online !== true && !a.connected
     ? `<button data-a="code" data-v="" data-g="${esc(a.name)}">Get a fresh code</button>` : "";
-  return `<span class="chip">${word}</span>${a.stopped ? ' <span class="chip">Stopped</span>' : ""} ${codeChip(a)} ${ghChip(a)} ${stopButton(a)} ${disconnect}
-    ${fresh} ${removeButton(a)}`;
+  // Its version and GitHub buttons are on its summary line (agentLine); "Sign in again" here, once signed in.
+  return `<span class="chip">${word}</span>${a.stopped ? ' <span class="chip">Stopped</span>' : ""} ${a.gh === "signed_in" ? ghChip(a) : ""}
+    ${stopButton(a)} ${disconnect} ${fresh} ${removeButton(a)}`;
 }
 // Versions (console_update.py, ADR 0020): its code against this server's. Update: it updates itself on its
 // computer; one whose code predates that gets "Update my agent" (its Connect page, run there once).
@@ -133,20 +134,67 @@ function agentHint(a, personal) {
 }
 // Rename: only the name people see (pm_rename.py); its Matrix ID stays. Plain text, up to 40 characters.
 function renameRow(a) {
-  return `<li><div class="field"><input id="rename-${esc(a.name)}" maxlength="40" placeholder="Name people see"
-    value="${esc(a.display || "")}"><button data-a="rename" data-v="" data-g="${esc(a.name)}">Rename</button></div></li>`;
+  return `<div class="field"><input id="rename-${esc(a.name)}" maxlength="40" placeholder="Name people see"
+    value="${esc(a.display || "")}"><button data-a="rename" data-v="" data-g="${esc(a.name)}">Rename</button></div>`;
 }
+// One line per agent (owner request: My agents took the whole panel); a click on it shows the rest, one
+// agent at a time. The panel redraws every few seconds, so which one is open lives here.
+let agentOpen = null;                    // null: not chosen yet (one waiting to connect opens); "": all closed
+let agentAuto = "";                      // the one opened for that, this view (agentCards)
 function agentRow(a, version, several, personal) {
   const called = a.display || (several ? a.label : "");     // the name its person gave it, then its account
-  const title = (called ? `<b>${esc(called)}</b> <span class="muted">· ${esc(a.name)}</span>` : `<b>${esc(a.name)}</b>`)
-    + (a.runs ? ` <span class="chip">${esc(a.runs)}</span>` : "");   // the AI it runs (pm_kinds.describe)
   const where = a.here ? ' <span class="chip">in this room</span>'
     : a.invited ? ' <span class="chip">invited to this room</span>' : "";
-  return `<li><div>${title}${where}${agentHint(a, personal)}${stopHint(a)}${codeHint(a)}${ghHint(a, personal)}</div>
-    <div>${agentStatus(a)}</div></li>${renameRow(a)}
-    <li><div class="hint">Comes along when I join a project room${a.first ? "" : " (or invite it yourself)"}</div>${agentSeg("follow", a.name, ["always", "ask", "never"], a.follow)}</li>
-    ${a.first && version ? `<li><div class="hint">Code it runs: your own version (${esc(version)})</div>
-      <button data-a="goback" data-v="">Go back to official</button></li>` : ""}`;
+  const open = agentOpen === null ? agentAuto === a.name : agentOpen === a.name, id = "adet-" + a.name;
+  return `<li class="arow">${agentLine(a, called, open, id)}${ghHint(a, personal)}
+    <div class="adet" id="${esc(id)}"${open ? "" : " hidden"}><div>${called ? `<b>${esc(called)}</b> <span class="muted">· ${esc(a.name)}</span>`
+      : `<b>${esc(a.name)}</b>`}${where}</div>${agentHint(a, personal)}${stopHint(a)}${codeHint(a)}<div>${agentStatus(a)}</div>${renameRow(a)}
+    <div><div class="hint">Comes along when I join a project room${a.first ? "" : " (or invite it yourself)"}</div>${agentSeg("follow", a.name, ["always", "ask", "never"], a.follow)}</div>
+    ${a.first && version ? `<div><div class="hint">Code it runs: your own version (${esc(version)})</div>
+      <button data-a="goback" data-v="">Go back to official</button></div>` : ""}</div></li>`;
+}
+// The summary line: status dot, name, the AI it runs (pm_kinds.describe), its version, GitHub. Its buttons act;
+// a click anywhere else on it opens or closes the agent.
+function agentLine(a, called, open, id) {
+  const on = !a.remote || a.online === true, fresh = a.remote && a.online !== true && !a.connected;
+  const word = !a.remote ? "Runs on this server" : a.stopped ? "Stopped" : on ? "Online" : fresh ? "Not connected yet" : "Offline";
+  const dot = a.stopped ? "stop" : on ? "on" : fresh ? "new" : "off";
+  return `<div class="aline" data-open="${esc(a.name)}"><button class="ahead" aria-expanded="${open}" aria-controls="${esc(id)}"
+    data-open="${esc(a.name)}"><span class="dot ${dot}"></span><b>${esc(called || a.name)}</b></button>${
+    a.runs ? `<span class="chip">${esc(a.runs)}</span>` : ""}<span class="muted small">${word}</span>${lineVersion(a)}${lineGithub(a)}</div>`;
+}
+function lineVersion(a) {                // "v1.2.0 · updates automatically", or Updating… / Retry update / Update
+  const chip = codeChip(a), short = String(a.code_name || a.code_version || "").split(" · ")[0];
+  if (chip && a.code === "current" && a.code_auto) return `<span class="muted small">${esc(short)} · updates automatically</span>`;
+  return chip ? `${short ? `<span class="muted small">${esc(short)}</span>` : ""}${chip}` : "";
+}
+const lineGithub = a => a.gh === "signed_in" && ghSeen(a)        // its @login and "Sign in again": in its details
+  ? `<span class="chip">GitHub ✓</span>` : ghChip(a);
+// A click opens that agent and closes the one open before, at once (not at the next redraw).
+function toggleAgent(name) {
+  const now = agentOpen === null ? agentAuto : agentOpen;
+  agentOpen = now === name ? "" : name;
+  for (const d of document.querySelectorAll(".adet")) d.hidden = d.id !== "adet-" + agentOpen;
+  for (const b of document.querySelectorAll(".ahead")) b.setAttribute("aria-expanded", String(b.dataset.open === agentOpen));
+}
+let addOpen = false;                     // "+ Add agent" shows its form (owner request: it was always there)
+function toggleAdd(b) {
+  addOpen = !addOpen;
+  b.setAttribute("aria-expanded", String(addOpen));
+  document.getElementById("addform").hidden = !addOpen;
+  if (addOpen) document.getElementById("newagent").focus();
+}
+let rowsListened = false;                // the click listener, added once, at the first draw (as showNeeds)
+function listenRows() {
+  if (rowsListened || typeof document === "undefined" || !document.addEventListener) return;
+  rowsListened = true;
+  document.addEventListener("click", e => {
+    const t = e.target && e.target.closest ? e.target : null;
+    if (!t || t.closest("button[data-a], button[data-copy], input, select, a")) return;   // the line's own buttons act
+    const line = t.closest("[data-open]"), add = t.closest("[data-addtoggle]");
+    if (line) toggleAgent(line.dataset.open);
+    if (add) toggleAdd(add);
+  });
 }
 // The picker for their FIRST agent too (console_agents.first_pick: none yet, or none has connected; screen
 // test: a newcomer could only get Codex or Claude Code). No name: the first agent has its own.
@@ -160,19 +208,24 @@ function firstPick(s) {
 const KEY_NOTE = "A remote model's API key is asked for on your computer when it connects, never here.";
 function agentCards(s) {
   if (!s.agents || (!s.agents.length && !s.can_add && !s.first_pick)) return "";   // none, and none to add
-  const add = s.first_pick ? firstPick(s) : s.can_add ? `<div class="set"><div class="field"><input id="newagent" maxlength="9" placeholder="name, e.g. codex">
+  listenRows();
+  const add = s.first_pick ? firstPick(s) : s.can_add ? `<button data-addtoggle="1" aria-expanded="${addOpen}" aria-controls="addform">+ Add agent</button>
+    <div class="set" id="addform"${addOpen ? "" : " hidden"}><div class="field"><input id="newagent" maxlength="9" placeholder="name, e.g. codex">
     ${kindPicker(s.kinds)}<button data-a="add" data-v="">Add an agent</button></div>
     <div class="hint">@pm sends its Connect page ${s.personal ? "here, in this chat" : "in " + chatLink("your private chat")}. ${KEY_NOTE}</div></div>` : "";
-  return `<section class="card"><h2>My agents · ${s.agents.length}</h2><div class="hint">The same in every room.</div>
+  const waiting = s.agents.find(a => a.remote && a.online !== true && !a.connected);   // opens until one is clicked
+  agentAuto = waiting ? waiting.name : "";
+  return `<section class="card"><h2>My agents · ${s.agents.length}</h2><div class="hint">The same in every room. Click an agent for its settings.</div>
     <ul class="agents">${s.agents.map(a => agentRow(a, s.version, s.agents.length > 1, s.personal)).join("")}</ul>${autoSwitch(s)}${add}</section>`;
 }
-// Auto-update (console_auto_update.py, ADR 0024): one switch for all of a person's agents on their computers, on by default.
+// Auto-update (console_auto_update.py, ADR 0024): one switch for all of a person's agents on their computers, on by
+// default. Small (owner request); what it does is in its tooltip.
 function autoSwitch(s) {
   const one = (s.agents || []).find(a => a.remote);
   if (!one) return "";
-  return `<div class="set"><div class="field"><b>Auto-update</b> ${agentSeg("autoupdate", "", ["on", "off"], one.auto_update ? "on" : "off")}</div>
-    <div class="hint">On: your agents update themselves to the latest Hagency version when they have nothing running,
-    and Product Manager tells you in your chat with it. Off: you click Update on each agent.</div></div>`;
+  return `<div class="set small" title="On: your agents update themselves to the latest Hagency version when they have nothing running,
+    and Product Manager tells you in your chat with it. Off: you click Update on each agent."><span>Auto-update, all my agents</span>
+    ${agentSeg("autoupdate", "", ["on", "off"], one.auto_update ? "on" : "off")}</div>`;
 }
 // The AI a new agent runs: s.kinds is agent_kinds.kinds() (the one list: kind, name, needs, windows);
 // "" = the one its computer finds, as before. A kind that can't run on Windows says so, and is greyed
