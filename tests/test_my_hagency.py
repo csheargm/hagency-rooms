@@ -115,7 +115,7 @@ const ctx = {console, URLSearchParams, JSON, String, Promise, Date, encodeURICom
   fetch: async () => ({status: 200, json: async () => (__VIEW__)})};
 ctx.window = ctx; ctx.parent = ctx; ctx.addEventListener = () => {};   // a window has it (panel_cards.js)
 vm.createContext(ctx); vm.runInContext(__CARDS__, ctx); vm.runInContext(__PAGE__, ctx);
-setTimeout(() => {}, 0); setImmediate(() => setImmediate(() => setImmediate(() => process.stdout.write(els.title.textContent + "|" + els.controls.innerHTML))));
+setTimeout(() => {}, 0); setImmediate(() => setImmediate(() => setImmediate(() => process.stdout.write(els.title.textContent + "|" + (els.controls.innerHTML + el("agents").innerHTML)))));
 """
         source = harness.replace("__VIEW__", json.dumps(view)).replace("__PAGE__", json.dumps(page)).replace("__CARDS__", json.dumps(cards))
         done = subprocess.run([shutil.which("node"), "-e", source], capture_output=True, text=True, timeout=30)

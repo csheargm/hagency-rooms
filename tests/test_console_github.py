@@ -41,7 +41,7 @@ ctx.window = ctx; ctx.parent = ctx; ctx.addEventListener = () => {};
 vm.createContext(ctx); vm.runInContext(process.argv[3], ctx); vm.runInContext(process.argv[2], ctx);
 const later = f => setImmediate(() => setImmediate(() => setImmediate(f)));
 later(() => {
-  const html = els.controls.innerHTML, m = /<button data-a="github_signin" data-v="([^"]*)" data-g="([^"]*)"[^>]*>/.exec(html);
+  const html = (els.controls.innerHTML + el("agents").innerHTML), m = /<button data-a="github_signin" data-v="([^"]*)" data-g="([^"]*)"[^>]*>/.exec(html);
   if (m) {                                  // the person clicks it: every click listener the page added gets it
     const b = {dataset: {a: "github_signin", v: m[1], g: m[2]}};
     b.closest = s => s.startsWith("button[data-a]") ? b : null;

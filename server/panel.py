@@ -36,7 +36,8 @@ STATIC = paths.ROOT.resolve() / "static"
 SCRIPTS = {"panel-agents.js": STATIC / "panel_agents.js",      # "My agents"
            "panel-project.js": STATIC / "panel_project.js",    # "Project repo", "Who can join", "Run from another room"
            "panel-github.js": STATIC / "panel_github.js",      # "Connect GitHub" (pm_github.py)
-           "panel-cards.js": STATIC / "panel_cards.js"}        # "Your cards" (pm_cards.py, ADR 0019)
+           "panel-cards.js": STATIC / "panel_cards.js",        # "Your cards" (pm_cards.py, ADR 0019)
+           "panel-tabs.js": STATIC / "panel_tabs.js"}          # the tabs: Room · My agents · Cards
 REFRESH_MS = 3000
 SIGNIN_MS = 20000                 # no answer from Element by then: the panel says so instead of "Signing in…"
 EMBEDDERS = panel_embedders()      # who may frame the panel (no X-Frame-Options: it can't name several)
