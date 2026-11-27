@@ -19,7 +19,7 @@ KEEP_DAYS = 90
 GB = 10 ** 9
 DAILY_GROWTH_WARN = 3 * GB
 TOP_CONTRIBUTORS = 3
-DU_TIMEOUT = 300                                          # seconds per area; the sandbox can be large
+DU_TIMEOUT = 120                                          # seconds per area: five areas stay within ~10 min
 AREAS = {                                                 # label in the message -> the folders it adds up
     "sandbox": [HOME / "sandbox"],
     "Docker images": [Path("/var/lib/containerd"), Path("/var/lib/docker")],
@@ -53,19 +53,32 @@ def measure_areas() -> tuple[dict[str, int | None], list[str]]:
     return sizes, failed
 
 
+def valid(entry: object) -> bool:
+    """A whole row: a date, used and total bytes, and each area's bytes (or None)."""
+    try:
+        datetime.date.fromisoformat(entry["date"])
+        return (isinstance(entry["used"], int) and isinstance(entry["total"], int) and entry["total"] > 0
+                and all(v is None or isinstance(v, int) for v in entry["sizes"].values()))
+    except (TypeError, KeyError, ValueError, AttributeError):
+        return False
+
+
 def load(path: Path | None = None) -> list[dict]:
-    """The saved entries; a damaged line is skipped (the next write drops it), not fatal."""
+    """The saved entries; a damaged row is skipped (the next write drops it), not fatal. Only a
+    regular file is read (never a link or a FIFO); anything else is an OSError."""
     path = path or HISTORY                                # looked up at call time (tests point it elsewhere)
-    if not path.exists():
+    if not path.exists() and not path.is_symlink():
         return []
+    if path.is_symlink() or not path.is_file():
+        raise OSError(f"{path} isn't a regular file")
     entries = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(errors="replace").splitlines():
         try:
             entry = json.loads(line)
-            datetime.date.fromisoformat(entry["date"])
-            entries.append(entry)
-        except (ValueError, KeyError, TypeError):
+        except ValueError:
             continue
+        if valid(entry):
+            entries.append(entry)
     return entries
 
 
@@ -79,6 +92,8 @@ def trim(entries: list[dict], today: datetime.date) -> list[dict]:
 def save(entries: list[dict], path: Path | None = None) -> None:
     path = path or HISTORY
     path.parent.mkdir(mode=0o700, exist_ok=True)
+    if path.parent.is_symlink():
+        raise OSError(f"{path.parent} is a link")
     hostfiles.replace(path, "".join(json.dumps(e, sort_keys=True) + "\n" for e in entries), 0o600)
 
 
@@ -106,12 +121,18 @@ def change_text(now: dict, then: dict, since: str = "") -> str:
     return gb(now["used"] - then["used"]) + since + (f": {parts}" if parts else "")
 
 
+def period(then: dict, today: datetime.date) -> str:
+    """'This week', or the real start when the figure from a week ago is missing ('Since Nov 2')."""
+    start = datetime.date.fromisoformat(then["date"])
+    return "This week" if start == today - datetime.timedelta(days=7) else f"Since {start:%b} {start.day}"
+
+
 def notes(entries: list[dict], today: datetime.date, over: bool) -> list[str]:
     """What @pm tells the operator about the disk today (nothing on a quiet day). `entries` ends with today's."""
     now = entries[-1]
     lines = []
     week_ago = before(entries, today - datetime.timedelta(days=7))
-    week = f"This week {change_text(now, week_ago)}." if week_ago else "No figure from a week ago yet."
+    week = f"{period(week_ago, today)} {change_text(now, week_ago)}." if week_ago else "No figure from a week ago yet."
     if over:
         lines.append(week)                                # after guard's "disk is 81% full" warning
     elif today.weekday() == 0:                            # Mondays: the weekly summary
@@ -132,8 +153,12 @@ def record(today: datetime.date, over: bool) -> tuple[list[str], list[str]]:
     print("disk areas: " + ", ".join(f"{k} {'?' if v is None else gb(v, sign=False)}" for k, v in sizes.items()))
     problems = [f"Couldn't measure: {', '.join(failed)}."] if failed else []
     try:
-        entries = trim(load() + [entry], today)
+        saved = load()
+    except OSError as e:                                  # today's figures still count; nothing is overwritten
+        return notes([entry], today, over), problems + [f"Couldn't read the disk history: {e}"]
+    entries = trim(saved + [entry], today)
+    try:
         save(entries)
-    except OSError as e:                                  # the traffic check still runs
-        return [], problems + [f"Couldn't save the disk history: {e}"]
+    except OSError as e:                                  # today's messages still go out
+        problems.append(f"Couldn't save the disk history: {e}")
     return notes(entries, today, over), problems

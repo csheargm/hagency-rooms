@@ -39,9 +39,25 @@ class History(unittest.TestCase):
             path = Path(d) / "state" / "disk-history.jsonl"
             dh.save([entry(MON, 20, sandbox=1)], path)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-            path.write_text(path.read_text() + "{not json\n" + '{"date": "never"}\n')
+            with path.open("ab") as f:                                      # GPT review: whole rows, any bytes
+                f.write(b'{not json\n{"date": "never"}\n{"date": "2026-11-22", "sizes": {}}\n\xff\xfe\n')
             self.assertEqual(dh.load(path), [entry(MON, 20, sandbox=1)])
             self.assertEqual(dh.load(Path(d) / "missing"), [])
+
+    def test_a_linked_history_is_neither_read_nor_written_through(self):
+        with tempfile.TemporaryDirectory() as d:
+            victim = Path(d) / "victim"
+            victim.write_text("keep")
+            (Path(d) / "state").mkdir()
+            path = Path(d) / "state" / "h.jsonl"
+            path.symlink_to(victim)
+            with self.assertRaises(OSError):
+                dh.load(path)
+            (Path(d) / "elsewhere").mkdir()
+            (Path(d) / "linked").symlink_to(Path(d) / "elsewhere")
+            with self.assertRaises(OSError):
+                dh.save([entry(MON, 20)], Path(d) / "linked" / "h.jsonl")
+            self.assertEqual((victim.read_text(), list((Path(d) / "elsewhere").iterdir())), ("keep", []))
 
     def test_contributors_ranked_by_size_of_change_skipping_unknown_and_zero(self):
         then = entry(days_ago(MON, 7), 20, sandbox=5, logs=1, system=3, hagency=None, **{"Docker images": 8})
@@ -77,6 +93,12 @@ class Notes(unittest.TestCase):
         del entries[2]                                                      # no figure from yesterday: no daily note
         self.assertEqual(dh.notes(entries, TUE, over=False), [])
 
+    def test_a_missing_week_ago_figure_names_the_real_start(self):
+        entries = self.week(MON)
+        del entries[1]                                                      # 7 days ago is missing: 8 days ago is used
+        self.assertEqual(dh.notes(entries, MON, over=False)[0],
+                         "Disk 59% (26 GB). Since Nov 15 +3.1 GB: sandbox +2.8 GB, Docker images +0.3 GB.")
+
     def test_a_new_history_says_so_on_monday(self):
         self.assertEqual(dh.notes([entry(MON, 26.1)], MON, over=False),
                          ["Disk 59% (26 GB). No figure from a week ago yet."])
@@ -107,7 +129,12 @@ class Measure(unittest.TestCase):
             self.assertEqual(dh.load(dh.HISTORY)[0]["sizes"], {"sandbox": GB})
             with mock.patch.object(dh, "save", side_effect=OSError("read-only")):
                 lines, problems = dh.record(MON, over=False)
-            self.assertEqual((lines, problems[-1]), ([], "Couldn't save the disk history: read-only"))
+            self.assertTrue(lines[0].startswith("Disk "))                    # the Monday note still goes out
+            self.assertEqual(problems[-1], "Couldn't save the disk history: read-only")
+            with mock.patch.object(dh, "load", side_effect=OSError("a link")), mock.patch.object(dh, "save") as save:
+                lines, problems = dh.record(MON, over=False)
+            save.assert_not_called()                                        # a history it couldn't read is kept as is
+            self.assertEqual((lines[0][:5], problems[-1]), ("Disk ", "Couldn't read the disk history: a link"))
 
 
 class GuardDisk(unittest.TestCase):
