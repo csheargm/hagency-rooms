@@ -257,9 +257,15 @@ server per UTC day, `TRIAL_MAX_SHARE` 0.5 of the plan's month (all users of the 
 "trial agent paused" (`docker compose logs pm`). `TRIAL_MAX_SHARE` is checked between calls and the key may be
 shared, so also set a pay-as-you-go spending limit in the Ollama account for a hard stop. Its counts are in `~/hagency/pm/data/trial-*.json`.
 
+## Trial builds (docs/adr/0027-trial-builds.md)
+
+Off until the owner sets them up: [TRIAL_BUILDER_SETUP.md](TRIAL_BUILDER_SETUP.md) (an E2B account with prepaid
+credit, the `hagency-trials` org and its demo repos, the "Hagency Trial Builder" App, `deploy/trial.env`). They run in
+their own `trial-worker` container, which only orchestrates E2B sandboxes; its logs: `docker compose logs trial-worker`.
+Talk and builds share one Ollama slot (a lock in `~/hagency/trial-shared`), talk first.
+
 ## Next (separate steps)
 
-- **Trial agent step 2**: tools and building, in a sandbox (step 1, talk only, is above).
 - **@pm's GitHub:** the read-only "Hagency Rooms" GitHub App, and optionally `HAGENCY_REPOS` to allow
   only certain repos (empty: any repo with the App and the asker's write access; docs/GITHUB_APP.md);
   the owner registers the App and puts its key in `deploy/secrets/`.
