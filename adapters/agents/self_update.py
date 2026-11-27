@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from common import paths
@@ -29,6 +30,8 @@ GIT = ["git", "-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never
 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": "", "GIT_CONFIG_NOSYSTEM": "1",
            "GIT_CONFIG_GLOBAL": os.devnull, "GIT_NO_REPLACE_OBJECTS": "1"}
 LOCK_NAME = "hagency-update.lock"             # in .git: several agents of one computer share the install
+LOCK_WAIT_S = PIP_TIMEOUT_S + 3 * GIT_TIMEOUT_S   # another agent's whole update: waited for, never "failed" (live test)
+LOCK_POLL_S = 1
 
 
 class Refused(Exception):
@@ -98,12 +101,14 @@ def install_requirements(app: Path, target: str, run=subprocess.run) -> None:
 
 
 class _Lock:
-    """One update of this install at a time, across processes (each agent of this computer has its own)."""
+    """One update of this install at a time, across processes (each agent of this computer has its own).
+    Live test 2026-11-27: two agents of one owner asked together; the second found the lock taken and said
+    "failed" while the first moved the shared install. Now it waits for the first, then finds the install
+    at the target ("current"), and agent_update.stale() restarts it onto the new code."""
     def __init__(self, app: Path) -> None:
         self.path = app / ".git" / LOCK_NAME
 
-    def __enter__(self):
-        self.file = open(self.path, "a+")
+    def _try(self) -> bool:
         try:
             if os.name == "nt":
                 import msvcrt
@@ -112,8 +117,17 @@ class _Lock:
                 import fcntl
                 fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            self.file.close()
-            raise Refused("failed") from None   # another agent of this computer is updating it right now
+            return False                      # another agent of this computer is updating it right now
+        return True
+
+    def __enter__(self):
+        self.file = open(self.path, "a+")
+        until = time.monotonic() + LOCK_WAIT_S
+        while not self._try():
+            if time.monotonic() >= until:
+                self.file.close()
+                raise Refused("failed")       # held far longer than an update takes: said, and asked again later
+            time.sleep(LOCK_POLL_S)
         return self
 
     def __exit__(self, *exc) -> None:

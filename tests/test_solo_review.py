@@ -66,7 +66,9 @@ class Base(unittest.TestCase):
                               ("server.ownership.own_agent_id", {CX: CXA, BETTY: BA}.get),
                               ("common.room_state.is_moderator", mock.AsyncMock(side_effect=lambda c, r, u: u == CX)),
                               ("common.room_state.owners", mock.AsyncMock(return_value=[CX])),
-                              ("server.pm_solo_rules.cannot", lambda owner, agent: None)):
+                              ("server.pm_solo_rules.cannot", lambda owner, agent: None),
+                              ("common.code_report.runs_task", lambda code, kind: True)):   # older code: test_auto_update_flows
+            # TODO(R4): this file is over 300 lines; split Merging (and Words) into test_solo_merging.py
             patcher = mock.patch(target, value)
             patcher.start()
             self.addCleanup(patcher.stop)

@@ -43,6 +43,9 @@ function codeChip(a) {
   const chip = (word, tip) => `<span class="chip"${tip ? ` title="${esc(tip)}"` : ""}>${word}</span>`;
   if (a.code === "current") return chip("Up to date", codeVersion(a));
   if (a.code === "own") return chip("Your own version", codeVersion(a));
+  if (a.code_auto && a.code === "behind")   // Auto-update (ADR 0024): no Update button; Retry update after a failure
+    return chip(a.code_updating ? "Updating…" : "Update available", codeVersion(a)) + (a.code_retry && a.online === true
+      ? ` <button data-a="selfupdate" data-v="" data-g="${esc(a.name)}">Retry update</button>` : "");
   if (a.code !== "behind" && !a.code_fallback) return "";
   const button = a.online !== true || a.code_updating ? ""
     : a.code_fallback ? `<button data-a="update" data-v="agents" data-g="${esc(a.name)}">Update my agent</button>`
@@ -52,7 +55,7 @@ function codeChip(a) {
 function codeHint(a) {
   if (!a.remote || !(a.online === true || a.connected)) return "";
   const says = a.code_says;               // console_update.status: the words, one place
-  const ver = codeVersion(a) ? `Version ${esc(codeVersion(a))}` : "";
+  const ver = codeVersion(a) ? `Version ${esc(codeVersion(a))}${a.code_auto && a.code === "current" ? " · updates automatically" : ""}` : "";
   return says || ver ? `<div class="hint">${[esc(says), ver].filter(Boolean).join(" · ")}</div>` : "";
 }
 // Sign in to GitHub (console_github.py, ADR 0021): the agent's own GitHub account, for issues and pull requests.
@@ -158,7 +161,15 @@ function agentCards(s) {
     ${kindPicker(s.kinds)}<button data-a="add" data-v="">Add an agent</button></div>
     <div class="hint">@pm sends its Connect page ${s.personal ? "here, in this chat" : "in " + chatLink("your private chat")}. ${KEY_NOTE}</div></div>` : "";
   return `<section class="card"><h2>My agents · ${s.agents.length}</h2><div class="hint">The same in every room.</div>
-    <ul class="agents">${s.agents.map(a => agentRow(a, s.version, s.agents.length > 1, s.personal)).join("")}</ul>${add}</section>`;
+    <ul class="agents">${s.agents.map(a => agentRow(a, s.version, s.agents.length > 1, s.personal)).join("")}</ul>${autoSwitch(s)}${add}</section>`;
+}
+// Auto-update (console_auto_update.py, ADR 0024): one switch for all of a person's agents on their computers, on by default.
+function autoSwitch(s) {
+  const one = (s.agents || []).find(a => a.remote);
+  if (!one) return "";
+  return `<div class="set"><div class="field"><b>Auto-update</b> ${agentSeg("autoupdate", "", ["on", "off"], one.auto_update ? "on" : "off")}</div>
+    <div class="hint">On: your agents update themselves to this server's version once they have nothing running, and
+    Product Manager tells you in your chat with it. Off: you click Update on each.</div></div>`;
 }
 // The AI a new agent runs: s.kinds is agent_kinds.kinds() (the one list: kind, name, needs, windows);
 // "" = the one its computer finds, as before. A kind that can't run on Windows says so, and is greyed

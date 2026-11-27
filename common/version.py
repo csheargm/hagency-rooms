@@ -1,7 +1,7 @@
 """Which code runs here: a commit and its time (docs/adr/0020-versions-and-agent-self-update.md).
 
 @pm's folder on the server is a `git archive` copy with no .git: deploy/deploy.sh writes REVISION
-there (line 1 the commit, line 2 its commit time in Unix seconds). A git checkout (an agent's
+there (line 1 the commit, line 2 its commit time in Unix seconds, then the commit's message: summary()). A git checkout (an agent's
 ~/.hagency/app, a developer's copy) has no such file, so git is asked. The panel's footer shows the
 server's; My agents compares each agent's with it.
 
@@ -21,6 +21,9 @@ SHORT = 7
 GIT_TIMEOUT_S = 10
 TIME_RE = re.compile(r"[0-9]{1,10}")   # up to the year 2286: a date always formats (GPT review)
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")          # a full commit id (customize.py and self_update.py too)
+MERGE_RE = re.compile(r"^Merge pull request #[0-9]+ ")   # GitHub's merge commit: its pull request's title is the next line
+SUMMARY_MAX = 100
+UNSAFE_RE = re.compile(r"[<>\[\]`*\\]")      # never markup in @pm's chat line (pm_auto_update.py)
 
 
 def parse(commit: object, when: object) -> dict | None:
@@ -70,6 +73,19 @@ def of(root: Path) -> dict | None:
         return _from_git(root)                # no file: a checkout
     lines = text.split()
     return _numbered(parse(*lines[:2]), _read(root / NUMBER_FILE)) if len(lines) >= 2 else None   # deploy.sh's copy
+
+
+def summary(root: Path) -> str:
+    """What the code at `root` changed, in one line: its commit's subject, or for GitHub's merge commit
+    the pull request's title; "" when unknown. For @pm's line after an automatic update (ADR 0024)."""
+    text = _read(root / REVISION_FILE)
+    lines = (text.splitlines()[2:] if text is not None else (_git(root, "log", "-1", "--format=%s%n%b") or "").splitlines())
+    lines = [line.strip() for line in lines if line.strip()]
+    if not lines:
+        return ""
+    said = lines[1] if MERGE_RE.match(lines[0]) and len(lines) > 1 else lines[0]
+    said = " ".join(UNSAFE_RE.sub("", said).split())
+    return said if len(said) <= SUMMARY_MAX else said[:SUMMARY_MAX - 1].rstrip() + "…"
 
 
 def name(v: dict | None) -> str:

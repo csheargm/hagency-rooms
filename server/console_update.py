@@ -7,6 +7,8 @@ only: @pm sends that agent UPDATE_TYPE with the server's commit, and the agent m
 along the official master (self_update.py), then restarts. Its answer (RESULT_TYPE) and the click are
 kept here, in @pm's memory only, for the panel's line under the agent. An agent whose code predates
 this reports nothing: the panel offers "Update my agent" (its Connect page, console_agents.fresh_code).
+Automatic updates (auto_update.py, ADR 0024) ask through ask() too, with "auto": the agent first waits
+until it has no task running, so its answer may take up to code_report.IDLE_WAIT_S longer.
 """
 import asyncio
 import logging
@@ -41,6 +43,7 @@ SAYS = {
     "edited": "Its code was changed on that computer, so it wasn't replaced. Click Update my agent to set it up again.",
     "not_newer": "That computer runs a version this server can't update it to.",
     "failed": "The update didn't finish on its computer, so it still runs its old version. Try again in a few minutes.",
+    "busy": "It was busy the whole time, so it hasn't updated yet. It updates once it has nothing running.",
 }
 BY_HAND = ("Product Manager is sending you its Connect page in your private chat with it. Run the command it shows "
            "on the computer where your agent runs. After that, Update takes one click.")   # My agents' Update my agent
@@ -48,7 +51,7 @@ FALLBACK = ("not_official", "edited")         # these need the Connect page once
 log = logging.getLogger("loop")
 
 
-def _clicks(loop) -> dict:
+def clicks(loop) -> dict:
     return loop.__dict__.setdefault("_updates", {})   # agent localpart → {"at", "from", "id", "result"}
 
 
@@ -68,11 +71,12 @@ def status(loop, a: dict) -> dict:
     hermes = is_hermes(a)
     word = ("unknown" if code is None or hermes or SERVER is None else "own" if code["own"]
             else "current" if version.current(code, SERVER) else "behind")
-    click = _clicks(loop).get(a["localpart"])
+    click = clicks(loop).get(a["localpart"])
+    wait = WAIT_S + (code_report.IDLE_WAIT_S if click and click.get("auto") else 0)
     says = ""
     if click and code and code["commit"] != click["from"]:
-        _clicks(loop).pop(a["localpart"], None)   # it restarted on new code: done
-    elif click and time.time() - click["at"] < {None: WAIT_S, "updated": DRAIN_S}.get(click["result"], 0):
+        clicks(loop).pop(a["localpart"], None)   # it restarted on new code: done
+    elif click and time.time() - click["at"] < {None: wait, "updated": DRAIN_S}.get(click["result"], 0):
         says = UPDATING
     elif click and time.time() - click["at"] < SHOW_S + DRAIN_S:
         says = SAYS.get(click["result"]) or NO_ANSWER   # no answer: a click lost while it started, say
@@ -84,8 +88,9 @@ def status(loop, a: dict) -> dict:
             "code_fallback": fallback}
 
 
-async def request(loop, user: str, agent: str | None) -> str:
-    """The owner's Update click: "ok" once @pm has asked the agent, else why not (said in the panel)."""
+async def request(loop, user: str, agent: str | None, auto: bool = False) -> str:
+    """The owner's Update click: "ok" once @pm has asked the agent, else why not (said in the panel).
+    `auto`: it waits until it has no task running first (Retry update with Auto-update on: auto_update.py)."""
     found = registry.find(user, agent)
     if found is None or not registry.owns(user, found["localpart"]) or found["agent"] != registry.REMOTE:
         return "that isn't one of your agents on your own computer"
@@ -95,19 +100,26 @@ async def request(loop, user: str, agent: str | None) -> str:
             shown["code"], "This agent can't update itself yet: click Update my agent.")
     if loop.agent_online(found["localpart"]) is not True:
         return "It's offline: start its computer, then click Update."
-    last = _clicks(loop).get(found["localpart"])
+    last = clicks(loop).get(found["localpart"])
     if last and time.time() - last["at"] < CLICK_GAP_S:
         return UPDATING if last["result"] in (None, "updated") else "Wait a minute, then try again."
-    click = {"at": time.time(), "from": found[registry.CODE]["commit"], "id": uuid.uuid4().hex, "result": None}
-    _clicks(loop)[found["localpart"]] = click   # before sending: a second click meanwhile waits (GPT review)
-    if not await send(loop, f"@{found['localpart']}:{SERVER_NAME}", click["id"]):
-        _clicks(loop).pop(found["localpart"], None)
-        return "I couldn't reach your agent just now; please try again."
-    return "ok"
+    return "ok" if await ask(loop, found, auto) else "I couldn't reach your agent just now; please try again."
 
 
-async def send(loop, agent_id: str, ask: str) -> bool:
-    message = ToDeviceMessage(code_report.UPDATE_TYPE, agent_id, "*", {"commit": SERVER["commit"], "id": ask})
+async def ask(loop, found: dict, auto: bool = False) -> bool:
+    """Ask this agent (registry.find's entry, checked by the caller) to update to the server's commit;
+    False when it couldn't be reached. The click is kept first: a second one meanwhile waits (GPT review)."""
+    click = {"at": time.time(), "from": found[registry.CODE]["commit"], "id": uuid.uuid4().hex, "result": None, "auto": auto}
+    clicks(loop)[found["localpart"]] = click
+    if await send(loop, f"@{found['localpart']}:{SERVER_NAME}", click["id"], auto):
+        return True
+    clicks(loop).pop(found["localpart"], None)
+    return False
+
+
+async def send(loop, agent_id: str, ask_id: str, auto: bool = False) -> bool:
+    message = ToDeviceMessage(code_report.UPDATE_TYPE, agent_id, "*",
+                              {"commit": SERVER["commit"], "id": ask_id, **({"auto": True} if auto else {})})
     try:
         resp = await asyncio.wait_for(loop.client.to_device(message, uuid.uuid4().hex), kind_report.SEND_TIMEOUT_S)
     except (OSError, asyncio.TimeoutError, ClientError) as e:
@@ -123,9 +135,17 @@ def answered(loop, agent: str | None, content: object) -> bool:
     """An agent's (localpart: pm_kind_reports.own_agent) answer to an Update click: kept only for a
     click of its owner's still waiting."""
     result = content.get("result") if isinstance(content, dict) else None
-    click = _clicks(loop).get(agent) if agent else None
+    click = clicks(loop).get(agent) if agent else None
     if click is None or click["result"] is not None or result not in code_report.RESULTS or content.get("id") != click["id"]:
         return False                          # nobody asked, already answered, an older click's answer, or not our word
     click["result"] = result
     log.info("%s: update %s", agent, result)
     return True
+
+
+async def act(loop, user: str, action: str, value: str, agent: str | None) -> str:
+    """console.act's "selfupdate" (Update, Retry update) and "autoupdate" (the switch): console_auto_update.py."""
+    from server import console_auto_update    # here: it builds on this module
+    if action == "autoupdate":
+        return await console_auto_update.toggle(loop, user, value)
+    return await console_auto_update.request(loop, user, agent)

@@ -19,6 +19,7 @@ from nio import MatrixRoom, ReactionEvent
 from common import admin_session
 from common import matrix_calls
 from common import registry
+from server import auto_update
 from server import remote_agent
 from common.bridge_config import ROOT, SERVER_NAME
 from server.pm_kind_reports import KindReports
@@ -94,6 +95,7 @@ class Presence(Removal, StopStart, KindReports):   # pm_remove.py: Remove, forge
             for found in registry.agents_of(person, people):
                 if found["agent"] == registry.REMOTE and not self.is_deactivated(found["localpart"]):
                     await self.check_agent(person, found["localpart"], now)
+        await auto_update.sweep(self, now)    # ADR 0024: agents on older code update themselves (also after a deploy)
 
     async def check_agent(self, person: str, agent: str, now: float) -> None:
         try:
