@@ -33,7 +33,7 @@ class Setup(Base):
             q.start()
             self.addCleanup(q.stop)
         self.lp.install_watches, self.lp.state, self.lp.open_issues = {}, {}, {"!a": [{"number": 1, "title": "x"}]}
-        self.lp.pending, self.lp.plans, self.lp.last_plans = {}, {}, {}
+        self.lp.pending, self.lp.plans, self.lp.last_plans, self.lp.generation = {}, {}, {}, {}
         self.lp.boards, self.lp.board_file = {}, Path(tempfile.mkdtemp()) / "boards.json"
         self.lp.client.room_send = mock.AsyncMock(side_effect=lambda rid, kind, content: RoomSendResponse("$b", rid))
         for rid in ("!a", "!b"):

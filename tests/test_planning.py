@@ -60,6 +60,7 @@ class Flow(unittest.TestCase):
         self.lp = Loop.__new__(Loop)
         self.lp.room_repos = {}
         self.lp.user_id, self.lp.pending, self.lp.plans, self.lp.boards = "@pm:bridge.localhost", {}, {}, {}
+        self.lp.generation = {}
         self.lp.last_plans = {}
         self.sent = []
 

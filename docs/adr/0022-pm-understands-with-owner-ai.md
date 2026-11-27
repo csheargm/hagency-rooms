@@ -31,7 +31,17 @@ OWNER's agent, not the speaker's).
   stopped, Hermes (each said as such), offline, over its cap (below), no ack (older code, asleep: then not asked again for 10 minutes), slow, failed, or an action
   outside the list: @pm uses its phrase rules, and where those don't catch it, says plainly that the
   room owner's agent is offline or not answering, so it is using simple phrases.
-- A plain "@pm stop" never waits for any model. A stop meanwhile drops the late answer (generation).
+- Only a named message the phrase rules don't recognize goes to a model. "@pm stop" stays instant;
+  help, status and every other recognized command keep their fixed answers and never wait for a model
+  (so an older adapter never adds its 8 s wait to them). Whatever the model picks that CHANGES anything
+  (stop, a mode, a plan or a redraft, approve, a follow setting) is only its reading of the words, so
+  @pm asks the usual 👍 first, even in a named message; read-only answers (status, the plan, the
+  console link, a plain reply) come at once. An approval stays a click (or a typed OK on the question).
+- Every stop, whatever triggered it ("@pm stop", a 👍 on "stop?", `!level off`, the console), goes
+  through one place (`pm_understand.invalidate`): it advances the room's generation and drops the
+  question waiting. A 👍 question is installed only if no stop came and the waiting question is still
+  the one seen before it was sent (`ask_once`); a 👍 or typed OK is consumed under the same check. A
+  plan question is never replaced: a change to it is asked on the side (`ask_redraft`).
 
 ### Without "@pm" (`server/pm_implicit.py`)
 In a project room a message that doesn't name @pm counts as for @pm when it **replies to @pm**, comes
@@ -43,7 +53,7 @@ looks like a request, and at most 6 a minute per room; the prompt then says the 
 (a mention, "anna: …", "anna-agent …", an edit) never counts. Nor does anything in the Lobby or the
 Welcome room (`project_rooms.is_front_door`): only "@pm" there. A reply to @pm that nothing understood
 gets the same "didn't catch that" (with why) as a named message, never silence; a reply to the plan
-waiting for ✅ revises it, as a named one does.
+waiting for ✅ asks "redraft the plan with that?" and a 👍 from that person redrafts it.
 
 Acted on without being named, @pm only answers low-impact things directly (status, the plan, help,
 about, first steps, the console link). Stop, a mode change, a plan, a repo, a retry are **asked first**
@@ -66,13 +76,23 @@ on the question. All of this runs in the background, so the sync loop (and a "@p
 - The context is the room's recent conversation as @pm reads it. Accepted risk (GPT review): in a room
   whose history is "joined only", @pm can read lines from before the owner joined, and their agent then
   gets them; planning (pm_plan.py) already sends the same discussion to the requester's agent.
+- Accepted risk (GPT review; the same as ADR 0021): the ask is a to-device message to device `*`, so
+  every device logged into the owner's agent's account receives the room context. Matrix to-device
+  carries no sender device, and agents use a fixed device id, so @pm can't bind it to one device.
+  Mitigation: right before sending, @pm checks again that the agent is still a joined member and that
+  its owner is still one of the room's owners (read now); @pm's check of the answer (full sender id
+  plus the task id) stays as it is.
 - Anyone can send @pm a to-device message: an answer counts only with a string task id @pm issued,
   from the agent it went to.
 
 ## Consequences
 - The room owner's model and account pay for @pm's understanding in their rooms. Every ask of their
   agent, named or not, is capped (`pm_owner_brain.SENDER_CAPS`, `ROOM_CAPS`): 6 a minute and 30 an hour
-  per person, 15 a minute and 100 an hour per room; past that @pm uses the phrase rules (and says so).
+  per person, 15 a minute and 100 an hour per room, and 20 a minute and 150 an hour per owner's agent
+  across all its rooms (`AGENT_CAPS`); past that @pm uses the phrase rules (and says so). Admission
+  is checked before any context is collected or history fetched, so a refused burst does no work, and
+  at most 12 understanding jobs run at once (`pm_understand.MAX_JOBS`; past that, the phrase rules
+  answer a named message and an unnamed one is skipped).
   Unaddressed reads are capped again at 6 a minute per room; ordinary chat that the rules don't read as
   anything is never sent. A plain "@pm stop" never counts against any cap.
 - @pm's "about" answer tells everyone in the room that recent messages, including ones that may not

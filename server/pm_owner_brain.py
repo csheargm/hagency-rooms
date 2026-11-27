@@ -31,10 +31,12 @@ FAILED = "The room owner's agent couldn't read that just now," + SIMPLE
 CANNOT = {STOPPED: "The room owner's agent is stopped," + SIMPLE,
           HERMES: "The room owner's agent can't read requests for me yet (Hermes)," + SIMPLE}
 BUSY = "I've asked the room owner's agent a lot just now," + SIMPLE
-# Every ask is a model turn on the owner's own account: capped per person and per room, on every path
-# (named or not), so nobody can run up their bill; over it, the phrase rules answer. (limit, window s)
+# Every ask is a model turn on the owner's own account: capped per person and per room, and per owner's
+# agent across all its rooms, on every path (named or not), so nobody can run up their bill; over it,
+# the phrase rules answer. (limit, window s)
 SENDER_CAPS = ((6, 60), (30, 3600))
 ROOM_CAPS = ((15, 60), (100, 3600))
+AGENT_CAPS = ((20, 60), (150, 3600))
 log = logging.getLogger("loop")
 
 
@@ -77,14 +79,29 @@ class OwnerBrain:
         used.update({key: times + [now] for key, times in recent.items()})
         return True
 
-    async def ask_owner(self, room: MatrixRoom, ctx: dict) -> tuple[str, str] | str:
-        """(action, reply) from the room owner's agent, or why not (said when the rules don't catch it)."""
+    async def admit_owner(self, room: MatrixRoom, sender: str) -> tuple[str | None, str]:
+        """(the agent to ask, "") with one ask spent from every budget, or (None, why not). Checked before
+        any context is read or history fetched, so a refused burst does no work (GPT review)."""
         agent, why = await self.owner_agent(room)
         if agent is None:
-            return why
-        if not self.spend(((("owner", room.room_id, ctx.get("sender")), SENDER_CAPS),
-                           (("owner", room.room_id), ROOM_CAPS))):
-            return BUSY
+            return None, why
+        if not self.spend(((("owner", room.room_id, sender), SENDER_CAPS), (("owner", room.room_id), ROOM_CAPS),
+                           (("agent", agent), AGENT_CAPS))):
+            return None, BUSY
+        return agent, ""
+
+    async def still_owners_agent(self, room: MatrixRoom, agent: str) -> bool:
+        """Right before the context goes out: the agent is still joined and its owner still owns the room
+        (read now). A to-device message reaches every device of that account: accepted risk, ADR 0022."""
+        if agent not in room.users or agent in room.invited_users:
+            return False
+        return any(self.own_agent(room, owner) == agent for owner in await room_state.owners(self.client, room))
+
+    async def ask_owner(self, room: MatrixRoom, agent: str, ctx: dict) -> tuple[str, str] | str:
+        """(action, reply) from the room owner's agent (admit_owner chose it), or why not (said when the
+        rules don't catch it)."""
+        if not await self.still_owners_agent(room, agent):
+            return NO_AGENT
         task_id = uuid.uuid4().hex
         wait = {"agent": agent, "ack": asyncio.Event(), "answer": asyncio.get_running_loop().create_future()}
         self.brain_waits()[task_id] = wait
@@ -96,7 +113,7 @@ class OwnerBrain:
         finally:
             self.brain_waits().pop(task_id, None)
         if answer is None:                    # sent, and no "ack": don't wait on it for every message
-            self._brain_quiet[agent] = time.monotonic() + QUIET_S
+            self.__dict__.setdefault("_brain_quiet", {})[agent] = time.monotonic() + QUIET_S
             return NOT_ANSWERING
         decision = pm_actions.checked(answer.get("action"), answer.get("reply")) if isinstance(answer, dict) else None
         if decision is None:

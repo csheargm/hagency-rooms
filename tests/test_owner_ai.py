@@ -194,7 +194,7 @@ class PmSide(unittest.TestCase):
 
     def ask(self, *answers):
         self.answers = list(answers)
-        return asyncio.run(self.pm.ask_owner(self.room, CTX))
+        return asyncio.run(self.pm.ask_owner(self.room, ANNA_AGENT, CTX))
 
     def test_the_asked_agents_answer_counts(self):
         self.assertEqual(self.ask((ANNA_AGENT, {"ack": True}), (ANNA_AGENT, {"action": "status", "reply": "ok"})),
@@ -214,12 +214,12 @@ class PmSide(unittest.TestCase):
 class ExplicitModeChange(unittest.TestCase):
     def test_any_explicit_mode_change_drops_a_question_asked_without_being_named(self):
         """GPT review: "!level off", then a 👍 on the old implicit "switch to autonomous?" restarted it."""
-        from server.pm_settings import Settings
-        s = Settings()
-        s.pending = {"!r": {"kind": "implicit", "intent": "autonomous", "event_id": "$q", "until": time.time() + 60}}
+        from server.loop import Loop
+        s = Loop.__new__(Loop)
+        s.pending, s.generation = {"!r": {"kind": "implicit", "intent": "autonomous", "event_id": "$q", "until": time.time() + 60}}, {}
         s.write_level = mock.AsyncMock(return_value=None)
         asyncio.run(s.change_level("!r", "off"))
-        self.assertEqual(s.pending, {})
+        self.assertEqual((s.pending, s.generation), ({}, {"!r": 1}))   # a stop also drops thoughts in flight
 
 
 if __name__ == "__main__":

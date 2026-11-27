@@ -255,7 +255,7 @@ approval, the plan and the board. The model picks one action from a fixed list a
 short reply.
 - Code still checks who may do what, and code confirms every action, so the model can't claim
   something happened.
-- "stop" is matched by plain rules (`intents.py`) and never waits for a model.
+- Phrases it knows ("stop", "help", "where are we?") are plain rules (`intents.py`): never a model.
 - If the model fails or is slow, @pm uses the rules.
 - The model is the **room owner's own agent** (`PM_BRAIN=owner`, the public server's setting;
   [ADR 0022](docs/adr/0022-pm-understands-with-owner-ai.md)): @pm sends it the same context in one
@@ -265,10 +265,10 @@ short reply.
   `off`, only the rules.
 - In a project room you don't always need "@pm": a reply to @pm, your next words while @pm is talking
   with you, or anything when you're the only person there counts. Other requests are read (a few a
-  minute) only to see whether they're for @pm. Unless you named @pm, it asks for a 👍 before stopping,
-  changing the mode, planning, setting the repo or retrying. Not in the Lobby or the Welcome room.
-- Asks of the owner's agent are capped (6 a minute and 30 an hour per person, 15 a minute and 100 an
-  hour per room, named or not); past that, the rules answer.
+  minute) only to see whether they're for @pm. When only the model read it (or you didn't name @pm), it
+  asks a 👍 before stopping, a mode, planning, a repo or a retry. Not in the Lobby or the Welcome room.
+- Asks of the owner's agent are capped (per minute/hour: 6/30 per person, 15/100 per room, 20/150 per
+  owner's agent across rooms, named or not), checked before any work; past that, the rules answer.
 
 ## Stop / reset
 

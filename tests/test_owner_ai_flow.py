@@ -75,7 +75,7 @@ class Room(RoomBase, unittest.TestCase):
 
     def test_talking_on_with_pm_needs_no_at_pm(self):
         self.model = {"action": "status", "reply": ""}
-        self.tell(ANNA, "@pm where are we?")
+        self.tell(ANNA, "@pm how is the hello page going?")
         self.tell(ANNA, "and how long will the rest take?", mention=False)
         self.assertEqual(len(self.turns), 2)
         self.assertIn("@pm was just talking with them", self.turns[1][0])
@@ -112,7 +112,7 @@ class Room(RoomBase, unittest.TestCase):
         self.lp.set_repo = mock.AsyncMock()
         self.tell(ANNA, "@pm where are we?")
         self.tell(ANNA, "this room works on you/other", mention=False)
-        self.assertEqual(len(self.turns), 1)          # only the first, named message was read
+        self.assertEqual(self.turns, [])              # a phrase the rules know (named or not): never a model
         self.assertIn("Should this room work on **you/other**?", self.said[-1])
         self.react(ANNA)
         self.lp.set_repo.assert_awaited_once_with(self.room, ANNA, "you/other")

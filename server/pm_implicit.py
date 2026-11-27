@@ -10,10 +10,10 @@ A message that doesn't name @pm still counts as for @pm when
       and at most PER_MINUTE such reads a room, so ordinary chat never floods the owner's agent.
 Never when it is plainly for someone else (a mention, a name, an agent's name, an edit). Whatever
 @pm does on such a message is low-impact (status, the plan, help, about), or ASKED first with the 👍
-flow: stop, a mode change, a plan, a repo, a retry. An explicit "@pm stop" stays instant (pm_chat.py).
+flow: stop, a mode change, a plan or a change to it, a repo, a retry (the same goes for a named message
+whose meaning only the model found: pm_understand.apply). An explicit "@pm stop" stays instant (pm_chat.py).
 Mixed into loop.Loop through pm_understand.Understanding (say, act, think, pending, offer_thumb, ...).
 """
-import asyncio
 import logging
 import re
 import time
@@ -21,12 +21,11 @@ import time
 from nio import MatrixRoom, RoomGetEventResponse, RoomMessageText
 
 from common import intents
-from common import pm_actions
 from common import room_state
 from server import pm_brain
 from server import project_rooms
 from server.pm_address import without_pill, without_quote
-from server.pm_chat import CONFIRM_S, LEVEL_WORDS
+from server.pm_chat import CONFIRM_S, LEVEL_WORDS, ONLY_MODERATORS
 
 log = logging.getLogger("loop")
 FOLLOW_S = 180
@@ -51,6 +50,7 @@ QUESTIONS = {intents.OFF: "Do you want me to stop? No new work would be handed o
              intents.PLAN: "Do you want me to turn this discussion into a plan of issues?",
              intents.SET_REPO: "Should this room work on **{repo}**?",
              intents.RETRY: "Should #{issue} go back in the queue?"}
+REDRAFT = "Should I redraft the plan above with that?"
 
 
 def mode_question(level: str) -> str:
@@ -76,10 +76,9 @@ class Implicit:
         if text is not None:
             self.note_talk(room.room_id, event.sender)
             return False
-        job = asyncio.create_task(self.unaddressed_job(room, event, reply_to, voice, self.generation.get(room.room_id, 0)))
-        self.busy.add(job)
-        job.add_done_callback(self.busy.discard)
-        return True
+        if not self.background(self.unaddressed_job(room, event, reply_to, voice, self.generation.get(room.room_id, 0))):
+            log.warning("too many messages being understood; skipped %s's unaddressed one", event.sender)
+        return True                           # (pm_understand.background: bounded; it may not be for me at all)
 
     async def unaddressed_job(self, room: MatrixRoom, event: RoomMessageText, reply_to: str | None, voice: bool,
                               gen: int) -> None:
@@ -147,69 +146,82 @@ class Implicit:
         intent = intents.classify(body)
         if intent in EXACT:                   # a repo name or an issue number: never left to a model
             if how is not None:
-                await self.act_implicit(room, sender, intent, body)
+                await self.act_implicit(room, sender, intent, body, gen)
             return
         if intent == intents.UNKNOWN and reply_to and reply_to == (self.pending.get(rid) or {}).get("event_id") \
-                and await self.revise_plan(room, sender):
-            return                            # a change asked for in reply to the plan waiting for ✅
+                and await self.ask_redraft(room, sender, gen):
+            return                            # a change asked for in reply to the plan waiting for ✅: 👍 first
         if how is None and intent == intents.UNKNOWN and not REQUEST_RE.search(body):
             return                            # ordinary chat: nothing is read, nothing sent
         why = await self.brain_why_not(room) if self.spend_read(rid) else ""
         if why is None:
             await self.decide(room, sender, body, intent, reply_to, gen, how=how or MAYBE)
         elif how is not None and self.generation.get(rid, 0) == gen:
-            await self.fall_back(room, sender, intent, body, how, why)
+            await self.fall_back(room, sender, intent, body, how, why, gen)
 
-    async def after_implicit(self, room: MatrixRoom, sender: str, decision: object, text: str, how: str) -> None:
+    async def after_implicit(self, room: MatrixRoom, sender: str, decision: object, text: str, how: str, gen: int) -> None:
         """What the understanding step made of an unaddressed message (pm_understand.decide)."""
         if isinstance(decision, tuple):
-            await self.apply_implicit(room, sender, *decision, text)
+            await self.apply(room, sender, *decision, text, None, gen, named=False)
         elif how != MAYBE:                    # (a)–(c) without a model: the phrase rules
-            await self.fall_back(room, sender, intents.classify(text), text, how, decision or "")
+            await self.fall_back(room, sender, intents.classify(text), text, how, decision or "", gen)
 
-    async def fall_back(self, room: MatrixRoom, sender: str, intent: str, text: str, how: str, why: str) -> None:
+    async def fall_back(self, room: MatrixRoom, sender: str, intent: str, text: str, how: str, why: str,
+                        gen: int) -> None:
         """No model read it. A reply to my message was plainly said to me: never silence ("didn't catch
         that", with why). Otherwise only what the rules know, quietly (it may be for someone else)."""
         if how == REPLIES and intent == intents.UNKNOWN:
             await self.by_rules(room, sender, text, intent, why)
         else:
-            await self.act_implicit(room, sender, intent, text)
+            await self.act_implicit(room, sender, intent, text, gen)
 
-    async def apply_implicit(self, room: MatrixRoom, sender: str, action: str, reply: str, text: str) -> None:
-        rid = room.room_id
-        if action == "none":
-            if reply:                         # empty: "not for @pm" (pm_actions.UNADDRESSED)
-                await self.say(rid, reply, plain=True)
-        elif action == "approve":
-            if self.pending.get(rid):         # an approval is a click on the question, never a guess
-                await self.say(rid, "To approve it, click 👍 on my question above (or type \"ok\" in reply).")
-        else:
-            await self.act_implicit(room, sender, pm_actions.INTENT_OF[action], text)
-
-    async def act_implicit(self, room: MatrixRoom, sender: str, intent: str, text: str) -> None:
+    async def act_implicit(self, room: MatrixRoom, sender: str, intent: str, text: str, gen: int,
+                           named: bool = False) -> None:
+        """Only low-impact things at once; anything else is asked first with a 👍 (named: it said "@pm",
+        but the model, not the phrase rules, read it as this: pm_understand.apply)."""
         if intent in intents.SETTINGS:
-            await self.ask_setting(room, sender, intent)              # pm_understand.py: one 👍
+            await self.ask_setting(room, sender, intent, gen, named)  # pm_understand.py: one 👍
+        elif intent == intents.PLAN and (self.pending.get(room.room_id) or {}).get("kind") == "plan":
+            await self.ask_redraft(room, sender, gen)
         elif intent in ASKED_FIRST:
-            await self.ask_implicit(room, sender, intent, text)
+            await self.ask_implicit(room, sender, intent, text, gen, named)
         elif intent in LOW_IMPACT:
             await self.act(room, sender, intent)
 
-    async def ask_implicit(self, room: MatrixRoom, sender: str, intent: str, text: str) -> None:
-        """Ask before doing it: they didn't name me, so one 👍 from them makes sure."""
-        rid, waiting = room.room_id, self.pending.get(room.room_id) or {}
-        if waiting and time.time() < waiting.get("until", 0) and (waiting.get("kind") != "implicit"
-                                                                   or waiting.get("by") != sender):
-            return                            # never replace a waiting plan, mode question or someone else's
+    async def ask_implicit(self, room: MatrixRoom, sender: str, intent: str, text: str, gen: int,
+                           named: bool = False) -> None:
+        """Ask before doing it: one 👍 from them makes sure (pm_understand.ask_once: never over another question)."""
+        rid = room.room_id
         if intent in MODERATORS_ONLY and not await room_state.is_moderator(self.client, room, sender):
-            return                            # nothing they could confirm: stay out of their conversation
+            if named:
+                await self.say(rid, ONLY_MODERATORS)
+            return                            # unnamed: nothing they could confirm; stay out of their conversation
         found = {"repo": intents.repo_named(text), "issue": intents.issue_named(text)}
         if (intent == intents.SET_REPO and not found["repo"]) or (intent == intents.RETRY and found["issue"] is None):
             return                            # a repo or an issue number is never guessed
         question = mode_question(intent) if intent in (intents.ASSIST, intents.AUTONOMOUS) else QUESTIONS[intent].format(**found) + TO_CONFIRM
-        event_id = await self.say(rid, question)
-        self.pending[rid] = {"kind": "implicit", "intent": intent, **found, "event_id": event_id,
-                             "until": time.time() + CONFIRM_S, "by": sender}
-        await self.offer_thumb(rid, event_id)
+        await self.ask_once(rid, sender, gen, question, {"kind": "implicit", "intent": intent, **found}, named)
+
+    async def ask_redraft(self, room: MatrixRoom, sender: str, gen: int) -> bool:
+        """A change to the plan waiting for ✅, not in a named message the rules read: ask on the side (the
+        plan question stays where it is); a 👍 on it redrafts (redraft). False: no plan, or not theirs to change."""
+        rid, plan = room.room_id, self.pending.get(room.room_id)
+        if not plan or plan.get("kind") != "plan" or not await room_state.is_moderator(self.client, room, sender):
+            return False
+        if not self.still(rid, gen, plan):
+            return True
+        event_id = await self.say(rid, REDRAFT + TO_CONFIRM)
+        if self.still(rid, gen, plan):        # a stop, or the plan filed, while I asked: nothing to redraft
+            plan["redraft"] = {"event_id": event_id, "by": sender, "until": time.time() + CONFIRM_S}
+            await self.offer_thumb(rid, event_id)
+        return True
+
+    async def redraft(self, room: MatrixRoom, sender: str, plan: dict) -> None:
+        """Their 👍 on ask_redraft's question (pm_chat.on_reaction): only theirs, in time, that plan still waiting."""
+        asked = plan.get("redraft") or {}
+        if asked.get("by") == sender and time.time() < asked.get("until", 0) and self.pending.get(room.room_id) is plan:
+            self.note_outcome(asked["event_id"], "approved")
+            await self.revise_plan(room, sender)
 
     async def do_implicit(self, room: MatrixRoom, sender: str, p: dict) -> None:
         """Their 👍 on ask_implicit's question (pm_chat.confirm): the usual checks run again now."""

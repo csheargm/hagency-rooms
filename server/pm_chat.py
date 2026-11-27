@@ -8,7 +8,6 @@ decides what is allowed:
 `!help`, `!status`, `!level …` still work as shortcuts for people who like commands.
 Mixed into loop.Loop (client, user_id, say, level, boards, agents_in, start_plan, file_plan).
 """
-import asyncio
 import re
 import time
 
@@ -29,6 +28,7 @@ log = logging.getLogger("loop")
 CONFIRM_S = 300
 FOLLOW_SETTINGS = {intents.FOLLOW_ALWAYS: "always", intents.FOLLOW_ASK: "ask", intents.FOLLOW_NEVER: "never"}
 NOTE_WORDS = 6               # a longer message to @pm that isn't a command is a requirement, not noise
+ONLY_MODERATORS = "Only the room owner or a maintainer can change how I run this project."
 LEVEL_WORDS = {"off": "stopped: no new work is handed out and nothing is merged",
                "assist": "assist: agents build and review; a person merges each change",
                "autonomous": "autonomous: agents build, review and merge on their own"}
@@ -121,15 +121,10 @@ class Chat(Addressing):
             else:
                 await self.retry(room, sender, n)
             return
-        if intent == intents.OFF or pm_brain.BRAIN == "off":
-            await self.by_rules(room, sender, text, intent)    # "stop" never waits for a model
+        if intent != intents.UNKNOWN or pm_brain.BRAIN == "off":   # a phrase I know ("stop", "help", "where
+            await self.by_rules(room, sender, text, intent)    # are we?") never waits for a model (GPT review)
             return
-        # The model can take seconds: decide in the background so the sync loop (and a "stop"
-        # right behind this message) is never held up; a stop meanwhile cancels the decision.
-        gen = self.generation.get(room.room_id, 0)
-        job = asyncio.create_task(self.decide(room, sender, text, intent, reply_to, gen, voice))
-        self.busy.add(job)
-        job.add_done_callback(self.busy.discard)
+        await self.understand_later(room, sender, text, intent, reply_to)   # pm_understand.py: in the background
 
     async def by_rules(self, room: MatrixRoom, sender: str, text: str, intent: str, why: str = "") -> None:
         """The phrase rules (intents.py): the fast path for "stop", and the fallback for the model (why: it
@@ -145,7 +140,8 @@ class Chat(Addressing):
     async def revise_plan(self, room: MatrixRoom, sender: str) -> bool:
         """A plan waits for ✅ and the owner/maintainer says what to change: plan again with it."""
         p = self.pending.get(room.room_id)
-        if not p or p.get("kind") != "plan" or not await room_state.is_moderator(self.client, room, sender):
+        if not p or p.get("kind") != "plan" or not await room_state.is_moderator(self.client, room, sender) \
+                or self.pending.get(room.room_id) is not p:   # a stop while I checked: no redraft
             return False
         self.pending.pop(room.room_id)
         await self.say(room.room_id, "Updating the plan with that…")
@@ -162,20 +158,21 @@ class Chat(Addressing):
             log.warning("couldn't add the %s shortcut in %s: %s", key, room_id, e)
 
     async def on_reaction(self, room: MatrixRoom, event: ReactionEvent) -> None:
-        wanted = self.pending.get(room.room_id, {}).get("event_id")
-        if intents.is_confirm_reaction(event.key) and event.reacts_to == wanted:
+        p = self.pending.get(room.room_id) or {}
+        if intents.is_confirm_reaction(event.key) and event.reacts_to == p.get("event_id"):
             await self.confirm(room, event.sender)
+        elif intents.is_confirm_reaction(event.key) and event.reacts_to == p.get("redraft", {}).get("event_id"):
+            await self.redraft(room, event.sender, p)   # pm_implicit.ask_redraft: change the plan waiting
 
     async def act(self, room: MatrixRoom, sender: str, intent: str, why: str = "") -> None:
         rid = room.room_id
         if intent == intents.OFF:                                 # never gated: stopping is always safe
-            self.generation[rid] = self.generation.get(rid, 0) + 1    # drop decisions still being thought about
-            self.pending.pop(rid, None)
+            self.invalidate(rid)              # pm_understand.py: drop decisions in flight and the question waiting
             await self.say(rid, await self.change_level(rid, "off") or
                            "Stopped. No new work is handed out and nothing is merged; steps already "
                            "running finish. Tell me when to continue.")
         elif intent in (intents.ASSIST, intents.AUTONOMOUS) and not await room_state.is_moderator(self.client, room, sender):
-            await self.say(rid, "Only the room owner or a maintainer can change how I run this project.")
+            await self.say(rid, ONLY_MODERATORS)
         elif intent == intents.ASSIST:
             await self.say(rid, await self.change_level(rid, "assist") or
                            "OK: agents build and review, and each change waits for a person to merge it."
@@ -218,14 +215,15 @@ class Chat(Addressing):
 
     async def confirm(self, room: MatrixRoom, sender: str) -> bool:
         """Apply the pending autonomous switch if a moderator confirms in time."""
-        p = self.pending.get(room.room_id)
+        p, gen = self.pending.get(room.room_id), self.generation.get(room.room_id, 0)
         if not p or time.time() > p["until"]:
             return False
         if p.get("kind") != "plan_request" and sender != p.get("by"):
             return False              # only the person who asked confirms (a stray "yes" from anyone else doesn't)
         if p.get("kind") not in ("bring", "setting", "implicit") and not await room_state.is_moderator(self.client, room, sender):
             return False              # authority re-checked now (your OWN agent needs none; implicit: act's own checks)
-
+        if not self.still(room.room_id, gen, p):
+            return False              # a stop (or another question) came while I checked: never act on the old one
         self.pending.pop(room.room_id)
         self.note_outcome(p.get("event_id"), "approved")
         if p.get("kind") == "plan_request":

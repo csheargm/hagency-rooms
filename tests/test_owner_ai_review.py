@@ -1,5 +1,6 @@
 """Review findings on ADR 0022, as user flows (R6) in the simulated room of tests/owner_ai_room.py.
 Run: .venv/bin/python -m unittest tests.test_owner_ai_review"""
+import asyncio
 import time
 import unittest
 from types import SimpleNamespace
@@ -55,12 +56,15 @@ class Review(RoomBase, unittest.TestCase):
         self.assertEqual(self.lp.pending["!r"]["kind"], "plan_request")
         self.assertEqual(self.levels, [])
 
-    def test_a_reply_to_the_plan_without_at_pm_revises_it(self):
+    def test_a_reply_to_the_plan_without_at_pm_revises_it_after_a_thumb(self):
         self.room.power_levels = SimpleNamespace(get_user_level=lambda u: 100 if u == ANNA else 0)
         self.lp.start_plan = mock.AsyncMock()
         self.replies_are_to_pm()
         self.wait_for({"kind": "plan", "event_id": "$plan", "by": ANNA})
         self.tell(ANNA, "drop the French page from it", mention=False, reply_to="$plan")
+        self.lp.start_plan.assert_not_awaited()       # GPT review: asked first, the plan question kept
+        self.assertEqual((self.lp.pending["!r"]["event_id"], self.said[-1]), ("$plan", pm_implicit.REDRAFT + pm_implicit.TO_CONFIRM))
+        asyncio.run(self.lp.on_reaction(self.room, SimpleNamespace(sender=ANNA, key="👍", reacts_to="$m1")))
         self.lp.start_plan.assert_awaited_once_with(self.room, ANNA)
         self.assertEqual(self.asked, [])
 
@@ -71,7 +75,7 @@ class Review(RoomBase, unittest.TestCase):
             said = len(self.said)
             self.tell(BETTY, "we should stop for today", mention=False)
             self.tell(BETTY, "where are we?", mention=False)
-        self.assertEqual((len(self.said), len(self.asked), self.levels), (said, 1, []))
+        self.assertEqual((len(self.said), len(self.asked), self.levels), (said, 0, []))   # "help": the rules
 
     # --- never silence for someone plainly talking to @pm ---------------------------------
     def test_a_bare_yes_from_the_person_asked_is_told_how_to_confirm(self):
