@@ -20,7 +20,8 @@ PREFIX = "/hagency"                           # where Caddy serves OUT's files (
 PM_PLACEHOLDER = "__PM_ID__"
 FIXES_CSS = "element-fixes.css"             # Element's own style bugs; element-nginx.conf links it
 TRANSLATIONS = "translations.json"           # Element's wording, overridden: "Remove this device" → "Sign out"
-STATIC = ("logo.svg", "background.svg", "privacy.html", FIXES_CSS, TRANSLATIONS)   # privacy.html: Google sign-in links it
+DOCK_JS = "panel-dock.js"                    # a "Hagency panel" button when the panel is minimised (ADR 0026)
+STATIC = ("logo.svg", "background.svg", "privacy.html", FIXES_CSS, TRANSLATIONS, DOCK_JS)   # privacy.html: Google sign-in links it
 # Our own panel's widget URL as @pm adds it (panel.widget_url; test_panel checks they agree). Element
 # matches it exactly against the widget's template URL: no other widget is pre-approved.
 PANEL_TEMPLATE = "/panel?room=$matrix_room_id"

@@ -172,7 +172,7 @@ class Written(unittest.TestCase):
                 os.umask(old)
             site = Path(d) / element_home.OUT
             self.assertEqual(site.stat().st_mode & 0o777, 0o755)
-            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "element-fixes.css", "home.html", "logo.svg", "privacy.html",
+            self.assertEqual(sorted(p.name for p in site.iterdir()), ["background.svg", "element-fixes.css", "home.html", "logo.svg", "panel-dock.js", "privacy.html",
                                                                   "translations.json"])
             for f in site.iterdir():
                 self.assertEqual(f.stat().st_mode & 0o777, 0o644, f.name)
