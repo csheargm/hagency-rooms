@@ -96,6 +96,8 @@ class SoloCode:
         except RuntimeError:                  # loop.SendError / GitHub: said by the caller's log
             item.update(stage="stopped", no_checker=True)
             raise
+        finally:
+            self.save()                       # GPT review: the pause (or the sent step) survives a restart
 
 
 def update_line(agent: str, asked: bool, n: int) -> str:

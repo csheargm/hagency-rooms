@@ -64,10 +64,13 @@ class AwayChecker(Base):
                 raise SendError("refused")
             return await real(rid, body, mention, task, **kw)
         self.lp.say = say
+        saved = []
+        self.lp.save = lambda: saved.append(dict(self.lp.state[KEY]))
         with self.assertRaises(SendError):                   # take_result logs it
             self.fix_round(betty_online=True)
         item = self.lp.state[KEY]
         self.assertEqual((item["stage"], item.get("no_checker")), ("stopped", True))
+        self.assertEqual(saved[-1]["stage"], "stopped")      # GPT review: on disk too, a restart keeps the pause
         self.lp.say = real
         self.run_(self.lp.retry(self.room, CX, 7))
         self.assertEqual((item["stage"], item["reviewer"]), ("reviewing", BA))
