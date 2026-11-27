@@ -229,7 +229,7 @@ class Loop(Progress, Boards, Chat, Settings, Planner, Understanding, Follow, Voi
         if not others:
             steps = no_reviewer_steps(num(key), item["repo"], item["pr"]) if item.get("pr") and item.get("repo") else None
             item["no_checker"] = True       # "@pm retry #N" goes back to this step, PR kept (pm_solo.check_again)
-            who = "other agent of the builder's owner" if solo else "second person's agent"
+            who = "other agent of the builder's owner" if solo else f"second person's agent{' online' * ('away_checker' in item)}"
             await self.stop(room.room_id, key, item, f"there's no {who} here to {what.split()[0]} it",
                             self.no_checker_steps(num(key), steps, solo, room, item))
             return False

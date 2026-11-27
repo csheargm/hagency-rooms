@@ -63,7 +63,11 @@ class SoloCode:
     async def review_again(self, room_id: str, key: str, item: dict, why: str) -> None:
         """A fresh review by the item's reviewer (after fixes, or the PR moved); a solo one only to code that does
         solo steps (GPT review: else it pauses, its update is asked, and "@pm retry #N" goes back to the check)."""
-        reviewer = item["reviewer"]
+        reviewer, room = item["reviewer"], getattr(self.client, "rooms", {}).get(room_id)
+        if item.get("solo") is True and room is not None and routing.checkers_for(
+                self.agents_in(room), item["builder"], ownership.owner_id):   # GPT review: another person's agent is
+            item["stage"] = "reviewing"                                       # here now: it checks, never the sibling
+            return await self.ask_checker(room, item, key)
         if item.get("solo") is True and not self.runs_solo(reviewer):
             item["no_checker"] = True
             await self.stop(room_id, key, item, f"{local(reviewer)} runs code from before solo review",
