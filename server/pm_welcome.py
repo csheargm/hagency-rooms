@@ -2,9 +2,9 @@
 created and owned by @pm: deploy/configure_synapse.py, local_signup.py). When a person without an
 agent joins it, @pm opens a private chat with them, once, and offers 🔌 (and 🧪 while the trial agent runs: pm_trial.py):
   🔌 Bring your own: an AI on their own computer (agent_kinds.IN_WORDS; remote_agent.py, connect.py).
-The server agent (one run by this server) isn't built yet, so it is not offered; anyone who types
-"server agent" (or its old name, "house agent") is told so (old offers still carry a 🏠 button: its
-click gets that answer too).
+🧪 is the server agent (pm_trial.py), offered to everyone; typing "server agent" (or its old name,
+"house agent") or 🏠 on an old offer says what it is and how to start it, or, when this server runs
+none, says so (pm_first.SERVER_ON, SERVER_REPLY).
 Only that person's click on that message counts, each button once. Typing "bring my own" in that
 chat works too, and "@pm I want an agent" anywhere offers it again. People from
 other servers (remote_people.py) start by opening a private chat with @pm, or with that sentence.
@@ -43,7 +43,6 @@ from common.saved_dict import SavedDict
 
 log = logging.getLogger("loop")
 SERVER_RE = re.compile(r"\b(server|house) agent\b", re.I)   # "house agent": its old name
-BRING_RE = re.compile(r"\bbring (my|your) own\b", re.I)
 # The whole message, so "@pm I need an agent to review #7" stays a project request (GPT review 21).
 WANT_RE = re.compile(r"^\W*(please\W+)?(i (want|need|would like)|i'?d like|get me|give me|can i (have|get)|how (do|can) i get)"
                      r"\s+(an?|my)\s+(own\s+)?agent(\s+please)?\W*$", re.I)
@@ -212,9 +211,9 @@ class Welcome(Lobby, GitHubLink, FirstAgent, InviteLinks):   # pm_github.py: Con
         if RESEND_RE.search(text) and not intents.NEGATED.search(text):
             await self.resend_code(room, event.sender)
             return True
-        if in_dm and intents.NEGATED.search(text) and (SERVER_RE.search(text) or BRING_RE.search(text)):
+        if in_dm and intents.NEGATED.search(text) and (SERVER_RE.search(text) or intents.BRING_OWN_RE.search(text)):
             return False                      # "I don't want to bring my own": not a choice
-        if in_dm and BRING_RE.search(text):           # "... using ollama llama3.2": the AI it runs (pm_first.py);
+        if in_dm and intents.BRING_OWN_RE.search(text):   # "... using ollama llama3.2": the AI it runs (pm_first.py);
             picked = picked_from(text)                # first, so "... on my server agent box" still brings one
             await (self.say(room.room_id, picked) if isinstance(picked, str) else self.choose(room.room_id, event.sender, BRING, picked))
         elif in_dm and SERVER_RE.search(text):

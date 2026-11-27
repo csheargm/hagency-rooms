@@ -6,7 +6,7 @@ E2E_CONSOLE=https://rooms.<domain> E2E_TOKEN=<invite token> E2E_NAME=pubtest2.
 
 1. sign up through the client API with an invite token, the way Element does;
 2. the new account is in #welcome, and @pm's private chat with the 🔌 button is already joined;
-3. no 🏠 server agent is offered (typing it says it comes later); 🔌 creates <them>-agent and sends one install line with a code;
+3. with no server agent set up (no OLLAMA_API_KEY) none is offered, and typing it says so; 🔌 creates <them>-agent and sends one install line with a code;
 4. connect.py (this checkout, a temporary ~/.hagency) trades the code; the code is then dead;
 5. their agent, running on "their computer", answers "who are you?" in its private chat.
 """
@@ -115,12 +115,12 @@ def welcome_and_code(me, name):
     offer = until("the welcome message", lambda: pm_message(me, dm, "Get your agent"))
     keys = until("the 🔌 button", lambda: {e["content"]["m.relates_to"]["key"] for e in messages(me, dm)
                                            if e["type"] == "m.reaction" and e["sender"] == PM} or None)
-    check("@pm welcomes privately with 🔌 only (no server agent yet)", keys == {"🔌"} and "🏠" not in offer["content"]["body"],
+    check("@pm welcomes privately with 🔌 only (no server agent set up)", keys == {"🔌"} and "🏠" not in offer["content"]["body"],
           offer["content"]["body"][:70])
     api("PUT", f"/_matrix/client/v3/rooms/{urllib.parse.quote(dm)}/send/m.room.message/r{time.time_ns()}", me,
         {"msgtype": "m.text", "body": "server agent"})
-    check("typing server agent says it comes later", True,
-          until("server agent reply", lambda: pm_message(me, dm, "server agent, one that runs on this server for you, isn't here yet"))["content"]["body"][:60])
+    check("typing server agent says this server runs none", True,
+          until("server agent reply", lambda: pm_message(me, dm, "This server doesn't run a server agent"))["content"]["body"][:60])
     react(me, dm, offer["event_id"], "🔌")
     line = until("the install line", lambda: pm_message(me, dm, "connect.sh"))["content"]["body"]
     found = re.search(r"curl -fsSL (\S+)/connect\.sh \| sh -s -- ([A-Z2-9]{5}-[A-Z2-9]{5})", line)

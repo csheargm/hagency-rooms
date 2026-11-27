@@ -1,6 +1,6 @@
 """My Hagency: the Hagency panel at the top of a person's private chat with @pm (Product Manager), with
 only their personal cards: My agents (add with the AI picker, rename, remove, stop / start, disconnect, comes along),
-Connect GitHub, and the Trial agent card while it runs (pm_trial.py). No room cards there, and only that person can use it: the chat is @pm's own with
+Connect GitHub, and the Server agent card while it runs (pm_trial.py). No room cards there, and only that person can use it: the chat is @pm's own with
 them (pm_settings.private_room: only @pm invites; nobody else is in it), checked on every view and
 action. The same widget URL as in project rooms, so the same pre-approval (deploy/element_home.py).
 """

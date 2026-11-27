@@ -1,11 +1,13 @@
-"""One answer from the trial agent (ADR 0025): who it answers, the caps, the model call.
+"""One answer from the server agent (ADR 0025; code name: trial): who it answers, the caps, the model call.
 
 It answers a message only when ALL hold: it's new (not from before it started), from a person (never
-an agent, a bot, @pm or itself), from a visitor who chose the trial and still has no connected agent
-of their own, who brought it into this room and is joined here, and the message is for it (anything
-in its private chat with them; elsewhere, a mention). A reply's quoted part is never read: only what
-the visitor wrote goes to the model (GPT review). Then the visitor's and the server's daily caps
-(trial_limits.py); a reached cap is said once a day, with when it resets and how to bring their own.
+an agent, a bot, @pm or itself), from a visitor who chose it and may use it (eligible: anyone signed in,
+with or without an agent of their own), who brought it into this room and is joined here, and the
+message is for it (anything in its private chat with them; elsewhere, only a mention by name, so it
+never competes with their own agent in a project room). A reply's quoted part is never read: only what
+the visitor wrote goes to the model (GPT review). Then the visitor's (their tier's: trial_tiers.py) and
+the server's daily caps (trial_limits.py); a reached cap is said once a day, with when it resets, more
+usage coming with paid plans (their own caps) and how to connect their own agent.
 
 Matrix sync never waits on a model: each answer runs as its own task (at most MAX_WAITING at once,
 else "busy"), one model call at a time for the whole server (`slot`): a message waits up to
@@ -13,7 +15,7 @@ TRIAL_QUEUE_WAIT_S, then is told the agent is busy (not counted). The plan's mon
 (trial_budget.py) is checked first and a conservative token estimate reserved; a 429 or 402 from
 Ollama pauses every trial, said plainly to the visitor and logged for the operator. Before a PR is read
 and before the answer is posted, the visitor must still be in the room (and the room's repo unchanged).
-Mixed into trial_agent.TrialAgent (client, me, started_ms, visitors, rooms, usage, budget, slot,
+Mixed into trial_agent.TrialAgent (client, me, started_ms, visitors, rooms, usage, tiers, budget, slot,
 ask_model, history, answering, waiting, busy, eligible, sponsors, post).
 """
 import asyncio
@@ -39,26 +41,29 @@ log = logging.getLogger("trial")
 HISTORY_TURNS = 8                     # this visitor's last turns in this room, kept in memory only
 NOTICE_EVERY_S = 60                   # "still answering" / "busy": at most this often per visitor
 MAX_WAITING = 6                       # answers queued or running at once; more: "busy" at once
-NAME_RE = re.compile(r"^\W*(@?hagency\.)?trial[ -]agent\b", re.I)   # "Trial agent, …" at the start
-BRING = "To bring your own agent (no daily cap, with tools and the GitHub loop): type \"bring my own\" in your chat with Product Manager."
-CAPPED = {trial_limits.VISITOR: "You've used today's {n} trial messages.",
-          trial_limits.TOKENS: "You've used today's trial allowance (long questions and pull requests use it faster).",
-          trial_limits.SERVER: "The trial agent has used all of this server's trial messages for today."}
-HAS_OWN = "You have your own agent now, so the trial agent steps aside: talk to your agent instead."
+NAME_RE = identity.SERVER_AGENT_NAME_RE        # "Server agent, …" (or its old name) at the start
+BRING = ("For your own agent (no daily cap, with tools and the GitHub loop): type \"bring my own\" in your chat with "
+         "Product Manager, or talk to the agent you have.")
+CAPPED = {trial_limits.VISITOR: "You've used today's {n} free messages with the server agent.",
+          trial_limits.TOKENS: "You've used today's free allowance with the server agent (long questions and pull requests "
+                               "use it faster).",
+          trial_limits.SERVER: "The server agent has used all of this server's free messages for today."}
+OWN_CAPS = (trial_limits.VISITOR, trial_limits.TOKENS)   # theirs, so their tier's upgrade line is said
+NOT_FOR_YOU = "The server agent isn't available to your account any more."
 FAILED = "⚠️ I couldn't answer just now: {why}. Please try again in a minute."
 QUEUE_WAIT_S = 20                     # TRIAL_QUEUE_WAIT_S: how long a message waits for the one model slot
 BUSY = "I'm busy answering someone else right now. Please try again in a minute."
 STILL = "I'm still answering your last message: one at a time, please."
-RESTING = "The trial agent has used its share of this month's AI budget, so it's resting until next month (00:00 UTC on the 1st)."
-TOO_BIG = ("That request is too big for what's left of today's trial allowance or this month's trial budget. "
+RESTING = "The server agent has used its share of this month's AI budget, so it's resting until next month (00:00 UTC on the 1st)."
+TOO_BIG = ("That request is too big for what's left of today's free allowance or this month's server agent budget. "
            "Try a shorter question, or one without a pull request.")
-STOPPED = {trial_budget.PAUSED: "The trial agent is paused: the AI service it uses said it has reached its limit for now. "
+STOPPED = {trial_budget.PAUSED: "The server agent is paused: the AI service it uses said it has reached its limit for now. "
                                 "It should be back in about {mins} min.",
-           trial_budget.SHARE: "The trial agent has used its share of the AI plan for this period, so it's resting until the "
+           trial_budget.SHARE: "The server agent has used its share of the AI plan for this period, so it's resting until the "
                                "plan's next period.",
-           trial_budget.WINDOW: "The trial agent has used its share of the AI service for now; it comes back when the "
+           trial_budget.WINDOW: "The server agent has used its share of the AI service for now; it comes back when the "
                                 "service's usage window resets (in hours, or at its weekly reset).",
-           trial_budget.DAMAGED: "The trial agent is paused while the server's operator checks its settings. Please try again later.",
+           trial_budget.DAMAGED: "The server agent is paused while the server's operator checks its settings. Please try again later.",
            trial_budget.TOKENS: RESTING}
 
 
@@ -66,28 +71,53 @@ def is_agent_or_bot(user: str) -> bool:
     return identity.split(user)[0].endswith(("-agent", "-bot"))
 
 
+def is_edit(event: RoomMessageText) -> bool:
+    content = event.source.get("content", {}) if isinstance(event.source, dict) else {}
+    rel = content.get("m.relates_to")
+    return isinstance(rel, dict) and rel.get("rel_type") == "m.replace"
+
+
 def mentions(event: RoomMessageText, me: str) -> bool:
     content = event.source.get("content", {}) if isinstance(event.source, dict) else {}
     named = (content.get("m.mentions") or {}).get("user_ids") if isinstance(content.get("m.mentions"), dict) else None
     own = without_quote(event.body or "")             # never a mention inside the quoted message
-    return (isinstance(named, list) and me in named) or me in own or bool(NAME_RE.search(own))
-
-
-def cap_words(cap: str, now: float) -> str:
-    said = CAPPED[cap].format(n=trial_limits.number("TRIAL_PER_VISITOR"))
-    return f"{said} They come back {trial_limits.resets_in(now)}. {BRING}"
+    if isinstance(named, list) and me in named or re.search(r"(?<![\w.-])" + re.escape(me) + identity.ID_END, own):
+        return True                                    # pilled, or my exact id (not a longer one): always mine
+    m = NAME_RE.search(own)
+    if not m or m.group("id"):
+        return bool(m)                                 # nothing, or my localpart
+    # Only the words "Server agent, …": not mine when they pill a real @server-agent / @trial-agent, any server (GPT review)
+    return not any(isinstance(u, str) and identity.split(u)[0] in identity.LOOKALIKE_AGENTS
+                   for u in (named if isinstance(named, list) else ()))
 
 
 class Turns:
+    def cap_words(self, visitor: str, cap: str, now: float) -> str:
+        """A reached cap: which, when it resets, more usage on their tier (their own caps only), their own agent."""
+        said = CAPPED[cap].format(n=self.usage.per_day(visitor))
+        more = self.tiers.upgrade_line(visitor) if cap in OWN_CAPS else ""
+        return " ".join(w for w in (said, f"They come back {trial_limits.resets_in(now)}.", more, BRING) if w)
+
     def for_me(self, room: MatrixRoom, event: RoomMessageText) -> bool:
         """Who and where (see the module docstring); the visitor's eligibility is checked by the caller."""
         sender = event.sender
         if (sender == self.me() or is_agent_or_bot(sender) or lifecycle.is_stale(event, self.started_ms)
-                or sender not in self.visitors or not self.still_here(room.room_id, sender)):
+                or sender not in self.visitors or is_edit(event)):   # GPT review: an edit ("* Server agent, …") isn't new
             return False
         if (self.visitors.get(sender) or {}).get("dm") == room.room_id:
-            return True                   # our private chat: every message is for me
-        return mentions(event, self.me())
+            return self.still_here(room.room_id, sender)   # our private chat: every message is for me
+        if not mentions(event, self.me()):
+            return False
+        self.join_sponsors(room.room_id, sender)
+        return self.still_here(room.room_id, sender)
+
+    def join_sponsors(self, room_id: str, visitor: str) -> None:
+        """Someone else who uses me names me in a room another visitor brought me into: theirs too, so it stays
+        while either is there (GPT review: with everyone eligible, a room has several; only one could invite me)."""
+        room = self.client.rooms.get(room_id)
+        if (visitor not in self.sponsors(room_id) and self.sponsors(room_id) and room is not None and self.eligible(visitor)
+                and visitor in room.users and visitor not in getattr(room, "invited_users", {})):
+            self.add_sponsor(room_id, visitor)
 
     def still_here(self, room_id: str, visitor: str) -> bool:
         """They brought me into this room and are joined there now (asked again before reading and posting)."""
@@ -143,8 +173,8 @@ class Turns:
     async def answer(self, room_id: str, event: RoomMessageText) -> None:
         visitor, now, text = event.sender, event.server_timestamp / 1000, without_quote(event.body or "")
         if not self.eligible(visitor):
-            if self.usage.first_notice(visitor, "own"):
-                await self.post(room_id, HAS_OWN)
+            if self.usage.first_notice(visitor, "ineligible"):   # e.g. this server stopped serving other servers' people
+                await self.post(room_id, NOT_FOR_YOU)
             return
         try:
             await asyncio.wait_for(self.slot.acquire(), max(1.0, trial_budget.setting_or("TRIAL_QUEUE_WAIT_S", QUEUE_WAIT_S)))
@@ -184,7 +214,7 @@ class Turns:
         if stop := await self.budget.stopped():
             return self.notice(visitor, stop, self.stop_words(stop))
         if cap := self.usage.take(visitor):
-            return self.notice(visitor, cap, cap_words(cap, now))
+            return self.notice(visitor, cap, self.cap_words(visitor, cap, now))
         await self.typing(room_id, True)
         try:
             return await self.think(room_id, visitor, text)
@@ -200,12 +230,14 @@ class Turns:
         """The model's answer to `text`, with this visitor's recent turns here and a PR's diff if asked."""
         repo = await self.repo(room_id)
         n = trial_reads.pr_number(text, repo)
-        diff = await trial_reads.pr_diff(repo, n) if n and repo and self.still_here(room_id, visitor) else None
+        # GPT review: never read GitHub (the App's quota, while holding the slot) for a question that can't fit anyway
+        bare = trial_model.messages(self.history.get((room_id, visitor), []), text, None)
+        diff = await trial_reads.pr_diff(repo, n) if n and repo and self.still_here(room_id, visitor) and self.fits(visitor, bare) else None
         if diff and not await self.may_post(room_id, visitor, repo):   # left, or rebound, while GitHub answered
             self.usage.give_back(visitor)
             return None, None, None
-        if not (self.eligible(visitor) and self.still_here(room_id, visitor)):   # GPT review: left, or connected an
-            self.usage.give_back(visitor)          # agent of their own, while it waited for the slot: never sent
+        if not (self.eligible(visitor) and self.still_here(room_id, visitor)):   # GPT review: left, or no longer
+            self.usage.give_back(visitor)          # eligible, while it waited for the slot: never sent
             return None, None, None
         chat = trial_model.messages(self.history.get((room_id, visitor), []), text, diff)
         model = trial_models.chosen((self.visitors.get(visitor) or {}).get("model"))
@@ -217,7 +249,7 @@ class Turns:
         reply = await (self.ask_model or trial_model.ask)(chat, count=lambda used: self.settle(visitor, reserved, used * weight),
                                                           model=model)
         turn = [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
-        return f"{reply}\n\n— Trial agent · {model}", (repo if diff else None), turn   # every reply names its model
+        return f"{reply}\n\n— Server agent · {model}", (repo if diff else None), turn   # every reply names its model
 
     def reserve(self, visitor: str, n: float) -> str | None:
         """Reserve `n` of the visitor's day and of the month; None when both fit, else what to say ("": refused,
@@ -226,9 +258,9 @@ class Turns:
         remote, now = identity.split(visitor)[1] != SERVER_NAME, time.time()
         self.reserved_at = (trial_limits.day(now), trial_budget.month(now))   # one call at a time: one reservation
         if not self.usage.reserve_tokens(visitor, n, remote):
-            if self.usage.tokens_used(visitor) + self.smallest(visitor) <= self.usage.allowance(visitor, remote):
+            if self.fits(visitor):
                 return TOO_BIG                    # a shorter one still fits: say so, every time
-            return cap_words(trial_limits.TOKENS, time.time()) if self.usage.first_notice(visitor, trial_limits.TOKENS) else ""
+            return self.cap_words(visitor, trial_limits.TOKENS, time.time()) if self.usage.first_notice(visitor, trial_limits.TOKENS) else ""
         if not self.budget.reserve(n):            # this answer could pass the month's token cap: not asked
             self.usage.settle_tokens(visitor, n, 0, self.reserved_at[0])
             return TOO_BIG
@@ -239,10 +271,16 @@ class Turns:
         self.budget.settle(reserved, used, in_month)
         self.usage.settle_tokens(visitor, reserved, used, on_day)
 
-    def smallest(self, visitor: str) -> float:
-        """What the shortest possible request reserves on their model: below it, the day is used up."""
+    def fits(self, visitor: str, chat: list | None = None) -> bool:
+        """`chat` (default: the shortest possible request) still fits what's left of their day's tokens."""
+        remote = identity.split(visitor)[1] != SERVER_NAME
+        return self.usage.tokens_used(visitor) + self.smallest(visitor, chat) <= self.usage.allowance(visitor, remote)
+
+    def smallest(self, visitor: str, chat: list | None = None) -> float:
+        """What `chat` (default the shortest possible request) reserves on their model: below it, the day is used up."""
         weight = trial_models.weight(trial_models.chosen((self.visitors.get(visitor) or {}).get("model")))
-        return trial_model.high_estimate(trial_model.messages([], "?"), trial_limits.number("TRIAL_MAX_TOKENS")) * weight
+        chat = chat or trial_model.messages([], "?")
+        return trial_model.high_estimate(chat, trial_limits.number("TRIAL_MAX_TOKENS")) * weight
 
     async def repo(self, room_id: str) -> str | None:
         try:

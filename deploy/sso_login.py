@@ -9,7 +9,7 @@ A new SSO account never takes over an existing one: allow_existing_users stays f
 localpart that is taken (pm, an agent's) is never linked; Synapse appends 1, 2, ... until it finds a
 free one (synapse/handlers/sso.py, _call_attribute_mapper). Names ending -agent or -bot (identity.py's
 agent accounts, admin-bot) get a suffix too, so an SSO account never squats an agent's future name;
-hagency_reserved_names.py refuses @pm and @owner before they exist. No email is taken from Google.
+"server" and "trial" too (RESERVED_PEOPLE); hagency_reserved_names.py refuses @pm, @owner, @server and @trial. No email is taken from Google.
 Redirect URL for both apps: https://<MATRIX_DOMAIN>/_synapse/client/oidc/callback (Caddyfile routes
 /_synapse/client* to Synapse). No value is ever printed.
 """
@@ -23,13 +23,17 @@ PROVIDERS = {"google": ("HAGENCY_GOOGLE_CLIENT_ID", "HAGENCY_GOOGLE_CLIENT_SECRE
 CALLBACK_PATH = "/_synapse/client/oidc/callback"
 RESERVED_SUFFIXES = ("-agent", "-bot")          # identity.AGENT_SUFFIX and the server's bots (admin-bot);
                                                 # also synapse_modules/hagency_reserved_names.py's config
+# People's names that would make "server-agent" / "trial-agent", read as the shared server agent (ADR 0025):
+# an SSO account gets the suffix, and configure_synapse.RESERVED_NAMES refuses them at open sign-up.
+RESERVED_PEOPLE = ("server", "trial")
 
 
 def localpart_template(source: str, tag: str) -> str:
     """Jinja for Synapse's mapper: `source` lower-cased, plus -<tag> when it ends like an agent or bot name."""
     ends = ", ".join(f"'{s}'" for s in RESERVED_SUFFIXES)
+    people = ", ".join(f"'{s}'" for s in RESERVED_PEOPLE)
     return (f"{{% set n = ({source})|trim|lower %}}"
-            f"{{{{ n ~ '-{tag}' if n.endswith(({ends})) else n }}}}")
+            f"{{{{ n ~ '-{tag}' if n.endswith(({ends})) or n in ({people},) else n }}}}")
 
 
 def problems(e: dict, idp: str) -> list[str]:

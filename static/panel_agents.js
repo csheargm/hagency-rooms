@@ -218,24 +218,24 @@ function agentCards(s) {
   return `<section class="card"><h2>My agents · ${s.agents.length}</h2><div class="hint">The same in every room. Click an agent for its settings.</div>
     <ul class="agents">${s.agents.map(a => agentRow(a, s.version, s.agents.length > 1, s.personal)).join("")}</ul>${autoSwitch(s)}${add}</section>`;
 }
-// The shared trial agent (pm_trial.py, ADR 0025): only while it runs and you have no agent of your own (the server
-// sends s.trial only then, in My Hagency). Shown in My agents, under your agents (panel.html: personal).
+// The shared server agent (pm_trial.py, ADR 0025; code name: trial): for everyone while it runs (the server sends
+// s.trial only then, in My Hagency). Shown in My agents, under your agents (panel.html: personal).
 function trialCard(t) {
   if (!t) return "";
-  const what = t.on ? `Its chat is <b>Trial agent</b> (accept the invite under Invites if you haven't). ${esc(t.left)} of ${esc(t.per_day)} messages left today.`
-    : `No agent yet? Talk to a shared, limited AI (${esc(t.per_day)} messages a day): questions, ideas, reading a pull request. It can't run code, build or merge.`;
+  const what = t.on ? `Its chat is <b>Server agent</b> (accept the invite under Invites if you haven't). Today: <b>${esc(t.used)}/${esc(t.per_day)} messages</b>.`
+    : `A shared AI this server runs for everyone (${esc(t.per_day)} messages a day): questions, ideas, reading a pull request. It can't run code, build or merge, and in a project room it answers only when named.`;
   const pick = t.on ? `<div class="set"><div>Model: <b>${esc(t.model)}</b></div><span class="field"><select id="trialmodel">${
     (t.models || []).map(m => `<option ${m === t.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
     <button data-a="trial_model">Use</button></span></div>` : "";
-  return `<section class="card"><h2>Trial agent (shared, limited)</h2><div class="set"><div>${what}<div class="hint">What you write to it goes to Ollama Cloud.</div></div>
-    <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat again" : "Try it"}</button></div>${pick}</section>`;
+  return `<section class="card"><h2>Server agent (free, limited)</h2><div class="set"><div>${what}<div class="hint">What you write to it goes to Ollama Cloud.</div></div>
+    <button class="${t.on ? "" : "primary"}" data-a="trial" data-v="${t.on ? "again" : "start"}">${t.on ? "Open its chat" : "Start it"}</button></div>${pick}</section>`;
 }
-// "Try it" / "Open its chat again" (pm_trial.trial_action): the trial chat's room. Its link opens like our private
+// "Start it" / "Open its chat" (pm_trial.trial_action): the server agent chat's room. Its link opens like our private
 // chat's (panel.html, a[data-pmchat]: in Element through the widget API, at once; elsewhere a new tab, by a click).
 function openChat(roomId) {
   const msg = document.getElementById("msg");
   msg.innerHTML = `${esc(msg.textContent)} <a id="trialchat" href="https://matrix.to/#/${esc(encodeURIComponent(roomId))}"
-    target="_blank" rel="noopener noreferrer" data-pmchat="1" data-label="open the Trial agent chat">Open the Trial agent chat</a>`;
+    target="_blank" rel="noopener noreferrer" data-pmchat="1" data-label="open the Server agent chat">Open the Server agent chat</a>`;
   if (embedded && canNavigate) document.getElementById("trialchat").click();
 }
 // Auto-update (console_auto_update.py, ADR 0024): one switch for all of a person's agents on their computers, on by

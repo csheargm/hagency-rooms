@@ -144,6 +144,13 @@ class FollowUp(unittest.TestCase):
         self.deliver(msg(ANNA, "anna-codex-agent: 95130", "$a1"))
         self.assertEqual(self.prompts[1:], [])
 
+    def test_a_message_for_the_server_agent_is_not_an_answer(self):
+        """GPT review (server agent for everyone): "Server agent, what is a rebase?" is for it, not this one."""
+        self.ask()
+        self.deliver(msg(ANNA, "Server agent, what is a rebase?", "$a1"))
+        self.deliver(msg(ANNA, "> <@anna-agent:x> Which city?\n\nServer agent, what is a rebase?", "$a2"))   # a reply
+        self.assertEqual(self.prompts[1:], [])
+
     def test_a_queued_candidate_never_answers_a_newer_question(self):
         """GPT review 3: the queued turn carries the question it was offered for."""
         self.ask()

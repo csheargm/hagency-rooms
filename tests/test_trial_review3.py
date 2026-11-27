@@ -33,7 +33,8 @@ class TokenAllowance(Base):
             for n in range(3):
                 self.run_(hear(self.agent, self.client.rooms["!trialdm"], message(NEW, f"q{n}")))
         self.assertEqual(len(self.asked), 1)                          # 9000 used: the next estimate doesn't fit
-        self.assertIn("today's trial allowance", self.said()[2])
+        self.assertIn("today's free allowance", self.said()[2])
+        self.assertIn("More usage is coming with paid plans.", self.said()[2])   # free tier: the upgrade line
         self.assertEqual(len(self.said()), 3)                          # said once, then quiet
         self.assertEqual(self.agent.usage.tokens_used(NEW), 9000)      # settled with Ollama's count
         self.assertEqual(self.agent.usage.used(NEW), 1)                # refused ones don't count as messages
@@ -100,7 +101,7 @@ class UseModel(TrialBase):
     def test_try_the_trial_still_starts_it(self):
         self.join_welcome()
         self.assertTrue(self.run_(self.lp.on_welcome_text(DM, text(NEW, "I want to use the trial"))))
-        self.assertTrue(said_to(self, "!dm")[-1].startswith("🧪 Your trial agent is ready"))
+        self.assertTrue(said_to(self, "!dm")[-1].startswith("🧪 Your server agent is ready"))
 
 
 class Down(TrialBase):

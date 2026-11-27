@@ -3,6 +3,8 @@
 ## Status
 Accepted, 2026-11-27 (owner: visitors should be able to try Hagency Rooms before bringing their own agent).
 Step 1 only: talk. (0024 is left for the agent auto-update work.)
+Amended 2026-11-27 (owner): **anyone** may use it, now called the **Server agent (free, limited)**; see
+"For everyone, and tiers" below. Code names keep "trial" (renaming files and data would cost more than it gives).
 
 ## Context
 - A newcomer could do nothing useful until their own agent was connected (🔌 Bring your own, ADR 0002), which
@@ -15,7 +17,7 @@ Step 1 only: talk. (0024 is left for the agent auto-update work.)
 - **One trial account**, `@hagency.trial-agent`, display name "Trial agent (shared, limited)", run inside @pm's
   process with its own Matrix sign-in (`server/trial_agent.py`), only when `OLLAMA_API_KEY` is set. Without it,
   nothing changes: no 🧪, the welcome text and buttons are exactly as before, the words fall through.
-- **Offered GUI-first** to people with no connected agent of their own: a 🧪 button under @pm's welcome next to
+- **Offered GUI-first** to people with no connected agent of their own (amended: to everyone, below): a 🧪 button under @pm's welcome next to
   🔌, "try the trial agent" in their chat with @pm, and a Trial agent card with **Try it** in My Hagency
   (`server/pm_trial.py`). It opens its own private chat with them (an invite they accept, as for people from
   other servers).
@@ -30,7 +32,7 @@ Step 1 only: talk. (0024 is left for the agent auto-update work.)
   (`kimi-k3.1-pro*2`) so a bigger model's tokens count more against the monthly token cap (the balance guard is
   in money, so it already counts them more). Not an owner-AI action (ADR 0022): that needs the room owner's own
   agent, which trial visitors don't have.
-- **Who it answers**: only visitors who chose it, still without a connected agent, only in rooms such a visitor
+- **Who it answers**: only visitors who chose it (amended: with or without an agent of their own), only in rooms such a visitor
   brought it into and is joined, and in a project room only when mentioned. It declines invites from anyone
   else, leaves a room when the last visitor who brought it leaves, and ignores every agent, bot and @pm.
 - **Never in the loop**: it is in nobody's `agents.json` line, so `ownership.agents_in` never lists it: @pm never
@@ -58,6 +60,36 @@ Step 1 only: talk. (0024 is left for the agent auto-update work.)
   (`common/redact.py`); the answer is scrubbed too. Never other people's words in the room. Said on the privacy
   page, in its hello and in @pm's "ready" message.
 
+## For everyone, and tiers (amendment, 2026-11-27)
+- **Who**: any signed-in person (`pm_trial.trial_eligible` is `may_have_agent`: never an agent, a bot or a refused
+  server), with or without agents of their own. The old "has their own agent: refused / steps aside" rule is gone.
+  People from other servers keep the smaller token allowance.
+- **Never competes**: outside its own private chat it still answers only when mentioned (a pill, its ID, or a
+  message starting "Server agent, …" / the old "Trial agent, …"), so in a project room where the person also
+  has their own agent it is silent unless named, and a person's own agent leaves "Server agent, …" alone (its
+  follow-up filter, `common/identity.SERVER_AGENT_NAME_RE`), and so does @pm (`pm_implicit.for_someone_else`). The rule is
+  words with a space or its exact id, never `server-agent`/`trial-agent` (a real person's agent); public sign-up and
+  SSO also keep `server` and `trial` as usernames (`deploy/sso_login.RESERVED_PEOPLE`). Still never a builder,
+  reviewer or merger (unchanged).
+- **Shared rooms**: someone else who uses it and names it in a room another person brought it into becomes one of
+  that room's sponsors (so it stays while either is there); people who never chose it are still ignored.
+- **A used-up day never reads GitHub**: a PR diff is only fetched while the shortest request still fits their tokens.
+- **Wording**: shown as "Server agent (free, limited)" (display name, its chat "Server agent", every reply ends
+  "— Server agent · <model>", @pm's offer, the My agents card, the privacy page). "server agent" / "house agent"
+  typed to @pm, and 🏠 on old offers, now say what it is and how to start it (before, "not here yet"); only
+  🧪, "try the server agent" or the card start it, never a decline ("I don’t want …") or "bring my own …". Edits are ignored.
+- **Offered to everyone**: the welcome adds it as "Or right away: 🧪 Server agent", not "No agent yet?"; the
+  My agents card (start / open its chat, model picker, today's usage as "12/50 messages") shows for everyone.
+- **Tiers** (`server/trial_tiers.py`, the one place for tier limits, R3): a per-person record
+  (`data/trial-tiers.json`, `{"tier", "since"}`), default and today only `free`, whose limits are the existing
+  settings (`TRIAL_PER_VISITOR`, `TRIAL_VISITOR_TOKENS`, `TRIAL_REMOTE_TOKENS`). `trial_limits.Usage` reads a
+  person's limits through it. No payment code and no way to change tier yet: a paid tier is a new `TIERS` entry
+  plus whatever later calls `set_tier`. Server-wide caps, the monthly budget guard and the one model slot are
+  unchanged and apply to every tier.
+- **A reached personal cap** (messages or tokens) says the limit, when it resets, "More usage is coming with
+  paid plans." (the tier's upgrade line, no link yet) and how to connect or use their own agent. Server-wide
+  stops don't add the upgrade line (they aren't the person's limit).
+
 ## Consequences
 - The balance is read between calls and other users of the key spend too, so `TRIAL_MAX_SHARE` is a soft line
   (read every minute once within 10 points of it). For a hard stop, the owner sets a pay-as-you-go spending limit
@@ -69,3 +101,5 @@ Step 1 only: talk. (0024 is left for the agent auto-update work.)
 - Messages sent to it while @pm restarts are not answered (it starts from "now"; invites are still checked).
 - A visitor who has the PR's room is assumed to be allowed to read its repo, as with @pm's status board.
 - Step 2 (tools, a sandbox, building) is a separate decision.
+- With everyone eligible, more people share the same server caps and the one model slot; the per-person and
+  server caps, the token allowances and the budget guard are what keep it inside the plan, as before.

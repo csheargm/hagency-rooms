@@ -89,7 +89,7 @@ class SecondPass(Base):
             self.run_(self.agent.enroll(NEW))
         self.run_(self.agent.enroll(NEW))
         self.assertEqual(len(sends), 2)
-        self.assertTrue(sends[1].startswith("Hi! I'm the Trial agent"))
+        self.assertTrue(sends[1].startswith("Hi! I'm the Server agent"))
         self.run_(self.agent.enroll(NEW))
         self.assertEqual(len(sends), 2)                           # greeted once it worked
 

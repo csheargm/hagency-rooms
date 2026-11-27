@@ -28,7 +28,7 @@ import sso_login
 MARKER = ".hagency-configured"
 WELCOME_LOCALPART = "welcome"                 # #welcome:<server>; pm_welcome.py looks for this room
 PM_LOCALPART = "pm"
-RESERVED_NAMES = (PM_LOCALPART, "owner")      # owner: bootstrap.sh's `admin_user.py ensure owner`
+RESERVED_NAMES = (PM_LOCALPART, "owner", *sso_login.RESERVED_PEOPLE)   # owner: bootstrap.sh's `admin_user.py ensure owner`
 
 
 def welcome_settings(server_name: str) -> dict:

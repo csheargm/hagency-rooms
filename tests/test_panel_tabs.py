@@ -178,6 +178,7 @@ window.addEventListener("load", () => setTimeout(async () => {
   const out = {bar: shown(document.getElementById("tabs")), agents: shown(pane), room: shown(document.getElementById("controls")), h2};
   const go = pane.querySelector('button[data-a="trial"]'), pick = document.getElementById("trialmodel");
   out.button = go && shown(go) ? go.textContent : "";
+  out.text = pane.textContent;
   if (pick) { pick.value = "gpt-oss:120b"; pick.focus(); pane.querySelector('button[data-a="trial_model"]').click(); }
   else if (go) go.click();
   await new Promise(r => setTimeout(r, 300));
@@ -187,7 +188,7 @@ window.addEventListener("load", () => setTimeout(async () => {
 </script><pre id="result"></pre>"""
 TRIAL_VIEW = {"room": "My Hagency", "personal": True, "user": "newbie", "html": "", "agents": [], "can_add": False,
               "first_pick": True, "kinds": [], "github": {"login": None, "code": None},
-              "trial": {"on": False, "left": 20, "per_day": 20, "model": "glm-5.3", "models": ["glm-5.3"]}}
+              "trial": {"on": False, "used": 0, "per_day": 20, "tier": "free", "model": "glm-5.3", "models": ["glm-5.3"]}}
 
 
 def page_file(view: dict, folder: str, flow: str = FLOW) -> str:
@@ -236,16 +237,17 @@ class TabsInABrowser(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             out = chrome(page_file(TRIAL_VIEW, folder, TRIAL_FLOW), str(Path(folder) / "profile"))
         self.assertEqual((out["bar"], out["agents"], out["room"]), (False, True, False))   # one tab: no bar
-        self.assertEqual(out["h2"], ["My agents · 0", "Trial agent (shared, limited)", "GitHub"])
-        self.assertEqual(out["button"], "Try it")
-        self.assertEqual(out["sent"], [["/console/action", "trial", "start"]])      # Try it reaches @pm
+        self.assertEqual(out["h2"], ["My agents · 0", "Server agent (free, limited)", "GitHub"])
+        self.assertEqual(out["button"], "Start it")
+        self.assertEqual(out["sent"], [["/console/action", "trial", "start"]])      # Start it reaches @pm
 
     def test_a_running_trial_offers_its_chat_and_the_model_picker(self):
-        """GPT review: the running card too: "Open its chat again", and Use sends the model chosen."""
-        on = {**TRIAL_VIEW, "trial": {**TRIAL_VIEW["trial"], "on": True, "left": 7, "models": ["glm-5.3", "gpt-oss:120b"]}}
+        """GPT review: the running card too: "Open its chat", and Use sends the model chosen."""
+        on = {**TRIAL_VIEW, "trial": {**TRIAL_VIEW["trial"], "on": True, "used": 13, "models": ["glm-5.3", "gpt-oss:120b"]}}
         with tempfile.TemporaryDirectory() as folder:
             out = chrome(page_file(on, folder, TRIAL_FLOW), str(Path(folder) / "profile"))
-        self.assertEqual(out["button"], "Open its chat again")
+        self.assertEqual(out["button"], "Open its chat")
+        self.assertIn("Today: 13/20 messages", out["text"])                 # today's usage on the card
         self.assertEqual(out["sent"], [["/console/action", "trial_model", "gpt-oss:120b"]])
 
 

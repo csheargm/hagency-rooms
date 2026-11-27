@@ -18,7 +18,7 @@ admin.hagencylabs.xyz   Synapse Admin, behind Cloudflare Access (the only way to
 @pm                     welcome, pairing, the console (no model: PM_BRAIN=off)
 ```
 
-Not on the VM: people's agents, the server agent (not built yet), any GitHub sign-in. The
+Not on the VM: people's agents, any GitHub sign-in (the server agent runs in @pm's container). The
 existing `app.hagencylabs.xyz`, the apex redirect and this Mac's cloudflared tunnel stay as they are.
 
 ## What runs (deploy/docker-compose.yml)
@@ -247,10 +247,10 @@ in any way, `synapse_modules/hagency_reserved_names.py` also refuses @pm, @owner
 names to email sign-up and to Google/GitHub ("Rate limited", deliberately vague); @pm still makes
 agents through the admin API. Everyone, however they signed up, lands in Welcome with @pm.
 
-## The trial agent (docs/adr/0025-trial-agent.md)
+## The server agent (code name trial; docs/adr/0025-trial-agent.md)
 
 Off until `OLLAMA_API_KEY` (an Ollama Cloud API key) is set in `deploy/.env`; then deploy as usual. @pm creates
-`@hagency.trial-agent` (password in `~/hagency/pm/.env`, like @pm's) and offers 🧪 to people without an agent.
+`@hagency.trial-agent` (password in `~/hagency/pm/.env`, like @pm's) and offers 🧪 "Server agent (free, limited)" to everyone.
 Its other settings have defaults in `.env.example`: `TRIAL_MODELS` (the models visitors may pick, first = default; glm-5.3), 50 messages per visitor and 1000 for the
 server per UTC day, `TRIAL_MAX_SHARE` 0.5 of the plan's month (all users of the key count) and
 `TRIAL_MONTHLY_TOKENS`, one call at a time. A 429/402 from Ollama pauses trials and logs
