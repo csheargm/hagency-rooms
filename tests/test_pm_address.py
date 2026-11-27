@@ -54,7 +54,7 @@ class Pill(unittest.TestCase):
         for body in (f"[Product Manager]({LINK}/extra) stop", f"{LINK}/extra stop", "@pm.ops:example.org stop",
                      "@pm:matrix.hagencylabs.xyz.evil stop",
                      "https://matrix.to/#/@pm:MATRIX.HAGENCYLABS.XYZ stop", "@pm+ops:x stop", "@pm:[::1] stop",
-                     "@pm:retry #13", f"[Product Manager](https://evil.example/#/{PM}) stop"):
+                     "@pm:retry #13", "@pm:x; stop", f"[Product Manager](https://evil.example/#/{PM}) stop"):
             with self.subTest(body=body):
                 self.assertIsNone(self.said(body, mentions=()))
 

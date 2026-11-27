@@ -25,7 +25,8 @@ def user_of(link: str) -> str | None:
 
 
 def leading(text: str) -> tuple[str, int] | None:
-    """(user id, where the rest of the text starts) for a pill at the very start, else None."""
+    """(user id, where the rest starts) for a pill at the very start; (its raw text, 0) for something
+    shaped like one that names no one exactly; None when the text doesn't start with one."""
     for pattern, from_link in ((MD_LINK_RE, True), (BARE_LINK_RE, True), (BARE_ID_RE, False)):
         m = pattern.match(text)
         if not m:
@@ -34,9 +35,8 @@ def leading(text: str) -> tuple[str, int] | None:
         if not from_link or pattern is BARE_LINK_RE:
             raw = raw.rstrip(":,")        # "@pm:server: stop", "https://matrix.to/#/@pm:server, stop"
         user = user_of(raw) if from_link else (raw if MXID_RE.fullmatch(raw) else None)
-        if user is None:
-            return None
-        rest = m.start(1) + len(raw)
-        tail = TAIL_RE.match(text, rest if pattern is not MD_LINK_RE else m.end())
-        return (user, tail.end()) if tail else None
+        tail = TAIL_RE.match(text, m.end() if pattern is MD_LINK_RE else m.start(1) + len(raw))
+        if user is None or tail is None:
+            return raw, 0             # looks like a pill but names no one exactly ("@pm:x; stop"): not @pm
+        return user, tail.end()
     return None
