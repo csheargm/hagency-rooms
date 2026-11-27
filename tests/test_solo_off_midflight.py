@@ -2,6 +2,7 @@
 the regular merge (no GitHub approval needed) never goes out on the solo verdict, and a solo merge task carries
 "solo" so the agent re-reads the switch itself before it merges.
 Run: .venv/bin/python -m unittest tests.test_solo_off_midflight"""
+import asyncio
 import unittest
 from unittest import mock
 
@@ -45,6 +46,41 @@ class AgentRechecksASoloMerge(unittest.TestCase):
 
     def test_a_merge_checked_by_another_person_never_needs_the_switch(self):
         self.run_task({"kind": "merge", "pr": 9, "sha": "a"}, on=False)[0].assert_awaited_once()
+
+
+class AgentMergesOnlyWhileStillOn(unittest.TestCase):
+    """GPT review: the bridge read the switch before the task, then the merge awaited GitHub and went ahead."""
+
+    def merge(self, still):
+        from adapters.agents import tasks
+        ran = []
+
+        async def run(args, agent=None, **kw):
+            ran.append(args)
+        with mock.patch.object(tasks.github, "merge_ready", mock.AsyncMock(return_value=(True, {"headRefOid": "a"}))), \
+                mock.patch.object(tasks, "run", run):
+            coro = tasks.merge("cx-agent", "codex", None, {"repo": "o/r", "issue": 7, "pr": 9, "sha": "a", "solo": True,
+                                                           **({"_still": still} if still else {})})
+            try:
+                asyncio.run(coro)
+            except tasks.TaskError as e:
+                return ran, str(e)
+        return ran, None
+
+    def test_switched_off_while_github_was_asked_it_doesnt_merge(self):
+        ran, err = self.merge(mock.AsyncMock(return_value=False))
+        self.assertEqual(ran, [])
+        self.assertIn("switched off", err)
+
+    def test_still_on_or_not_solo_it_merges(self):
+        for still in (mock.AsyncMock(return_value=True), None):
+            ran, err = self.merge(still)
+            self.assertEqual((err, ran[-1][:2]), (None, ["pr", "merge"]))
+
+    def test_the_bridge_hands_a_solo_merge_the_recheck(self):
+        handle = test_solo_github.BridgeRechecks.run_task(self, {"kind": "merge", "pr": 9, "sha": "a", "solo": True},
+                                                          on=True)[0]
+        self.assertTrue(callable(handle.call_args.args[3].get("_still")))
 
 
 if __name__ == "__main__":

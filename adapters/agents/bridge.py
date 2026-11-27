@@ -158,7 +158,7 @@ class Bridge(BridgeVoice, BridgeCustom, bridge_followup.BridgeFollowUp, BridgeSt
                     result = {"kind": kind, "issue": task.get("issue"), "task_id": task.get("task_id"),
                               "error": "solo review is off in this room", "line": f"{kind} refused: solo review is off here"}
                 else:
-                    if kind == "merge" and task.get("admin") is True:   # ADR 0023: read again right before --admin
+                    if kind == "merge" and any(task.get(f) is True for f in ("admin", "solo")):   # ADR 0023: again, at the merge
                         task = {**task, "_still": lambda: solo_review.still_allowed(self.client, room_id, task["repo"])}
                     base = ROOT / "rooms" / self.owner / "work" / (room_context.repo_dir(room_repo) if room_repo else "no-repo")
                     result = await tasks.handle(f"{self.owner}-agent", self.backend, base, task)
